@@ -36,7 +36,7 @@ def test_ui_never_generates_on_start_or_rerun_and_reuses_wav(podcast_archive):
         assert generate.call_count == 1
         app.button[0].click().run()
         assert generate.call_count == 2 and client.models.generate_content.call_count == 1
-        assert any("riutilizzato dalla cache" in item.value for item in app.caption)
+        assert any("Audio già disponibile" in item.value for item in app.caption)
         app.selectbox[1].select("Aoede").run()
         assert len(app.get("audio")) == 0
         assert generate.call_count == 2
@@ -62,7 +62,7 @@ def test_empty_editorial_cache_never_calls_api_or_creates_files(tmp_path):
         "edicola.podcast_ui.generate_podcast", side_effect=AssertionError("Audio automatico vietato")):
         app = AppTest.from_string(ui_script(tmp_path), default_timeout=10).run()
         assert not app.exception and not app.button
-        assert any("Nessun briefing" in info.value for info in app.info)
+        assert any("biblioteca audio è ancora vuota" in info.value for info in app.info)
         assert not list(tmp_path.iterdir())
 
 

@@ -56,11 +56,12 @@ def cover_thumbnail(data, total):
         return output.getvalue()
 
 
-def render_gallery(context, metadata):
-    st.header("Le edizioni")
+def render_gallery(context, metadata, *, documents=None, title="Le edizioni", key="archive_gallery"):
+    documents = context.documents if documents is None else documents
+    st.header(title)
     st.caption("Scegli un quotidiano e prenditi il tempo di leggerlo.")
     cards = []
-    for document in context.documents:
+    for document in documents:
         thumbnail = None
         if document.total_pages > 0:
             try:
@@ -70,15 +71,15 @@ def render_gallery(context, metadata):
                 pass
         cards.append({**metadata[document.filename], "thumbnail": thumbnail})
     def selected():
-        index = st.session_state.get("archive_gallery", {}).get("open_edition")
-        if type(index) is not int or not 0 <= index < len(context.documents):
+        index = st.session_state.get(key, {}).get("open_edition")
+        if type(index) is not int or not 0 <= index < len(documents):
             st.session_state["pdf_navigation_error"] = "Edizione non disponibile."
             return
         try:
-            open_reference(context, context.documents[index].filename, 1)
+            open_reference(context, documents[index].filename, 1)
         except PdfViewError:
             st.session_state["pdf_navigation_error"] = "Questa edizione non è consultabile al momento."
-    gallery_component(data={"editions": cards}, key="archive_gallery", on_open_edition_change=selected)
+    gallery_component(data={"editions": cards}, key=key, on_open_edition_change=selected)
 
 
 def render_reader(context, document, metadata):

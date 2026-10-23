@@ -1,5 +1,11 @@
 # Edicola Digitale Intelligente
 
+**Account cloud — Task 11A:** configurazione completa in [ACCOUNTS.md](ACCOUNTS.md),
+con Google OIDC, PostgreSQL Supabase, migrazione SQL, Secrets e prova con due utenti.
+La modalità predefinita è `accounts`: senza configurazione l'Archivio resta consultabile,
+ma non viene mostrato il vecchio profilo demo. Per il solo sviluppo Windows con SQLite
+impostare esplicitamente `$env:EDICOLA_PROFILE_MODE="local_demo"` prima dell'avvio.
+
 Task 1–9A.1 del prototipo universitario: acquisizione locale dei PDF, archivio editoriale con copertine e lettore delle pagine originali, pulizia, chunking, indicizzazione semantica, RAG, dossier, briefing, timeline, mappe concettuali, podcast editoriali, personalizzazione demo e valutazione sperimentale. La consultazione Streamlit e i consigli locali funzionano senza chiavi e senza chiamate esterne; indicizzazione, ricerca e prodotti Gemini richiedono azioni esplicite e autorizzazione.
 
 ## Avvio (PowerShell, Python 3.11 o successivo)
@@ -10,7 +16,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-Aprire l'indirizzo locale indicato da Streamlit. L'installazione iniziale delle dipendenze richiede accesso al repository dei pacchetti; l'applicazione lavora sui soli file locali.
+Aprire l'indirizzo locale indicato da Streamlit. L'installazione iniziale delle dipendenze richiede accesso al repository dei pacchetti. Il corpus resta locale; gli account personali, se configurati, usano Google OIDC e PostgreSQL Supabase.
 
 ## Acquisizione
 
@@ -340,7 +346,9 @@ Per il Task 6A i test simulano le API e verificano cronologia, date mancanti/imp
 
 ## Task 7 — Profilo demo e consigli personali
 
-Aprire la scheda **Personalizzazione**, che contiene **Il mio profilo**:
+Nella sola modalità di sviluppo Windows `EDICOLA_PROFILE_MODE=local_demo`, aprire
+la scheda **Personalizzazione**, che contiene **Il mio profilo**. Queste istruzioni
+Task 7 descrivono la demo SQLite; per gli account pubblici seguire [ACCOUNTS.md](ACCOUNTS.md):
 
 1. Inserire uno o più interessi, uno per riga (es. `Chieti`, `trasporti`, `scuola`), scegliere 2, 5 o 10 minuti e il formato testo, visuale o audio; premere **Salva preferenze**.
 2. **Consigliati per te** si aggiorna automaticamente dai soli chunk attualmente indicizzati. Ogni passaggio conserva PDF, pagina e motivo del suggerimento. Salvare un passaggio o dichiarare un argomento gradito/non pertinente modifica il successivo ordinamento locale.
@@ -365,7 +373,7 @@ Non sono state effettuate chiamate Gemini reali né compilate etichette o misure
 
 ## Task 9A — Navigazione e lettore PDF locale
 
-La piattaforma è divisa in sei schede: **Archivio**, **Chat AI**, **Approfondimenti**, **Timeline e Mappe**, **Podcast**, **Personalizzazione**. I form e i consensi restano montati durante la navigazione: cambiare scheda, pagina o zoom non genera richieste Gemini. L'acquisizione automatica preesistente resta invariata.
+La piattaforma è divisa in sette schede: **Home**, **Archivio**, **Chat AI**, **Approfondimenti**, **Timeline e Mappe**, **Podcast**, **Personalizzazione**. I controlli e i consensi restano montati durante la navigazione: cambiare scheda, pagina o zoom non genera richieste Gemini. L'acquisizione automatica preesistente resta invariata.
 
 Ambiente verificato: Streamlit **1.66.1**, pypdf **6.21.2**, Pillow **13.0.0**. L'estensione facoltativa di `st.pdf` non era installata. È stato aggiunto **pypdfium2 5.14.0** (wheel Windows di circa 3,9 MB): PDFium renderizza direttamente ogni pagina del PDF originale, inclusi grafica, fotografie, colonne, font e rotazioni, senza OCR né ricostruzione dal testo estratto. La dipendenza è dichiarata in `requirements.txt`; Streamlit richiede ora almeno 1.66 per le schede con stato. Nessun componente, font o script del lettore viene caricato da CDN o da servizi esterni.
 
@@ -415,4 +423,66 @@ I test coprono miniature reali, metadati mancanti/errati, dati della galleria pr
 Per Streamlit Community Cloud seguire [DEPLOYMENT.md](DEPLOYMENT.md): compatibilità,
 snapshot dei soli PDF autorizzati con embeddings esistenti, Secrets, limiti della
 persistenza e procedura manuale di pubblicazione. Nessun deployment automatico.
+
+## Esperienza editoriale — Task 11B
+
+L'app si apre su **Home**, accanto alle sei sezioni esistenti. Le edizioni recenti
+usano copertine reali e date del file `data/editions.json`; date mancanti o non valide
+non vengono ricostruite. La selezione di letture usa soltanto passaggi già indicizzati,
+alternati tra PDF e deduplicati localmente. Le brevi citazioni nelle schede sono
+estratti originali, **non titoli di articoli riconosciuti**: un passaggio può includere
+più notizie. Nessuna fotografia, notizia, data o chiamata API viene aggiunta all'avvio.
+
+**Chat AI** mostra domande e risposte in messaggi conversazionali, con fonti apribili
+alla pagina PDF originale e passaggi in pannelli espandibili. Lo storico contiene
+al massimo otto domande nella sola sessione; ogni domanda resta indipendente e non
+invia le conversazioni precedenti a Gemini. Modificare la bozza o il consenso, cambiare
+sezione o aprire una fonte non genera una nuova risposta: serve il pulsante esplicito.
+
+In **Personalizzazione → Il mio profilo**, selezionare o scrivere fino a dieci interessi
+in **Preferenze e impostazioni**, scegliere tempo/formato e salvare. Le schede permettono
+di salvare letture, ritrovabili in **Notizie salvate**, e di aprire il documento originale.
+**Il mio briefing** conserva generazione, consensi, cache, fonti e conversione audio
+esistenti. Salvataggi, feedback, rimozioni e cancellazioni hanno conferme visibili.
+
+### Autenticazione e profili — aggiornamento Task 11A
+
+La nuova UX usa ora Google OIDC nativo e PostgreSQL Supabase per l'area personale,
+secondo [ACCOUNTS.md](ACCOUNTS.md). Il proprietario deriva da issuer e subject
+verificati, non dall'email. La UI non importa il vecchio profilo demo in account
+personali e non mostra un fallback condiviso se mancano login o database.
+Il profilo SQLite resta soltanto nella modalità esplicita di sviluppo Windows.
+La configurazione esterna non è stata creata né simulata nel codice pubblico.
+
+### Controllo visivo locale
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Aprire `http://localhost:8501`. Controllare Home, le copertine e i quattro accessi rapidi;
+aprire una lettura e verificare il salto al PDF. Provare interessi, salvataggio e rimozione
+nel profilo personale configurato, oppure nella demo Windows abilitata esplicitamente.
+In Chat AI la generazione richiede consenso e invio volontario;
+per controllare solo il layout non è necessario chiamare Gemini.
+
+Ridurre la finestra oppure usare la modalità dispositivo degli strumenti sviluppatore
+del browser a **390 px** e **320 px**: verificare che schede e azioni vadano a capo,
+che la barra delle sezioni sia scorribile e che il lettore mantenga il comportamento
+approvato. Il tema è locale, neutro con accento petrolio, senza font remoti o CDN.
+Le schede usano il wrapping nativo Streamlit; la galleria e il lettore conservano
+i componenti isolati e i test di geometria precedenti. I test AppTest verificano
+rendering e stato dei controlli, non sostituiscono un controllo visivo su browser reali.
+
+Test mirati:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q tests/test_experience_ui.py tests/test_app.py tests/test_personalization.py tests/test_pdf_viewer.py tests/test_archive_design.py tests/test_cloud.py tests/test_podcast.py tests/test_podcast_ui.py
+```
+
+Test degli account, esclusivamente simulati:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q tests/test_personal_accounts.py
+```
 

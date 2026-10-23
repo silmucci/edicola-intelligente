@@ -1,12 +1,16 @@
 # Deployment dimostrativo su Streamlit Community Cloud
 
+**Aggiornamento Task 11A:** l'archivio usa ancora lo snapshot di questa guida;
+gli account personali richiedono anche [ACCOUNTS.md](ACCOUNTS.md). Il vecchio profilo
+demo condiviso non viene esposto nel cloud.
+
 Il progetto è preparato per il cloud ma **non è stato pubblicato**. Nessuna chiave,
 PDF o dato dell'archivio locale è stato caricato o esportato durante la preparazione.
 
 ## Compatibilità verificata e limiti della verifica
 
 - Ambiente di sviluppo: Windows, Python 3.14.4, SQLite 3.50.4.
-- Le sei dipendenze dirette sono fissate alle versioni installate e provate in
+- Le dipendenze dirette sono fissate alle versioni installate e provate in
   `requirements.txt`. Non ci sono dipendenze applicative esclusivamente Windows
   né percorsi assoluti Windows nel codice applicativo. I percorsi sono costruiti con `Path`.
 - Il vincolo `server.address = "127.0.0.1"` è stato rimosso dalla configurazione:
@@ -125,22 +129,22 @@ siano disponibili senza pagamento e nei limiti di quota. Le chiamate restano
 legate ai pulsanti e ai consensi esistenti, mai all'avvio. In un'app pubblica
 visitatori diversi possono consumare la stessa quota della chiave del gestore.
 
-## Persistenza e profilo dimostrativo
+## Persistenza del corpus e degli account
 
 Community Cloud **non garantisce la persistenza dei file locali**. La soluzione
 per questa demo è uno snapshot immutabile versionato, da cui ripartire senza
 generare nuovi embeddings. Dopo la perdita del filesystem, il corpus autorizzato
-viene ripristinato dal repository; preferenze, nuovi prodotti e audio generati
-durante l'esecuzione possono andare persi. Le cache evitano duplicati finché la
+viene ripristinato dal repository; nuovi prodotti generali e audio generati
+durante l'esecuzione possono andare persi. Le cache generali evitano duplicati finché la
 copia di lavoro esiste, non dopo la sua perdita.
 
-Il profilo è chiaramente indicato come **pubblico, condiviso e senza autenticazione**:
-ogni visitatore può modificarlo o cancellarlo. Non inserire dati personali.
-I profili del PC non entrano nello snapshot. Anche le cache generate dalla demo
-sono condivise tra visitatori. Per conservare durevolmente nuovi risultati e
-offrire profili privati servirebbero storage persistente esterno, autenticazione e
-isolamento degli utenti: non sono stati introdotti in questo task. Non utilizzare
-questa demo come archivio personale o unica copia dei dati.
+Con il Task 11A profili, preferenze, feedback, riferimenti e briefing personali sono
+memorizzati separatamente in PostgreSQL Supabase e protetti tramite identità OIDC e
+ownership server-side. Seguire **ACCOUNTS.md** per configurare provider, ruolo limitato,
+RLS e Secrets. Se la configurazione manca, l'area personale rimane chiusa: nessun
+fallback al profilo demo. I profili del PC non entrano nello snapshot né vengono
+importati. Audio personali, cache generali e storico della sessione restano temporanei;
+non utilizzare il disco cloud come unica copia dei dati.
 
 ## Procedura di pubblicazione (da eseguire personalmente)
 
@@ -164,7 +168,7 @@ questa demo come archivio personale o unica copia dei dati.
    del tipo `https://nome-demo.streamlit.app/`: il PC non deve restare acceso.
 9. Verificare nei log installazione e SQLite, poi visualizzazione/download dei PDF
    e navigazione delle fonti. Il primo avvio non deve contenere richieste Gemini.
-   Verificare che il profilo condiviso sia segnalato. Solo dopo questi controlli,
+   Verificare login, database e isolamento come descritto in ACCOUNTS.md. Solo dopo questi controlli,
    provare volontariamente una domanda con il consenso previsto: questa prova
    reale può consumare quota. Il progetto non l'ha eseguita automaticamente.
 10. Per aggiornare il corpus preparare e verificare un **nuovo** snapshot locale,

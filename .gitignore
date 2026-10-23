@@ -24,6 +24,7 @@ evaluation/results/
 
 # Tutti i dati locali e derivati restano privati per default.
 .cloud-runtime/
+.private-runtime/
 deployment/seed/
 **/secrets.toml
 *.sqlite

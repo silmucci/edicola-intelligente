@@ -153,7 +153,7 @@ def test_styles_and_metadata_rendering_are_isolated_and_offline():
     assert "https://" not in GALLERY_JS + READER_JS and "innerHTML" not in GALLERY_JS
 
 
-def test_full_app_client_home_keeps_six_sections_without_archive_diagnostics(archive):
+def test_full_app_client_home_keeps_all_sections_without_archive_diagnostics(archive):
     from edicola.profiles import Profile
     context, prepared = archive
     with patch("edicola.ingestion.ingest_directory", return_value=context.documents), patch(
@@ -165,7 +165,7 @@ def test_full_app_client_home_keeps_six_sections_without_archive_diagnostics(arc
     ):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=10).run()
         assert not app.exception and not app.dataframe and not app.metric
-        assert [tab.label for tab in app.tabs] == ["Archivio", "Chat AI", "Approfondimenti", "Timeline e Mappe", "Podcast", "Personalizzazione"]
+        assert [tab.label for tab in app.tabs] == ["Home", "Archivio", "Chat AI", "Approfondimenti", "Timeline e Mappe", "Podcast", "Personalizzazione"]
         assert app.checkbox(key="rag_authorized").value is False
         assert app.checkbox(key="editorial_authorized").value is False
         assert not app.get("file_uploader")

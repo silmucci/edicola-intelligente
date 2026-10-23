@@ -4,3 +4,5 @@ pypdfium2==5.14.0
 google-genai==2.32.0
 chromadb==1.5.9
 python-dotenv==1.2.4
+Authlib==1.9.1
+psycopg[binary]==3.3.6

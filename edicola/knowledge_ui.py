@@ -1,19 +1,25 @@
 """Visualizzazione nativa Streamlit; nessuna API e nessun modello locale."""
 
 import streamlit as st
+from pathlib import Path
 
 from edicola.knowledge_validation import compact_map, map_dot
 from edicola.pdf_viewer import source_button
+from edicola.archive_ui import diagnostics_enabled
 
 
 def render_knowledge(result, archive=None):
+    technical = diagnostics_enabled(archive.root if archive is not None else Path(__file__).resolve().parents[1])
     st.subheader(("Timeline: " if result.kind == "timeline" else "Mappa concettuale: ") + result.topic)
-    st.caption(f"Copertura: {result.coverage['indexed']} chunk su {result.coverage['total']}. "
-               + ("Risultato riutilizzato dalla cache." if result.from_cache else ""))
+    if result.from_cache:
+        st.caption("Rappresentazione già disponibile: nessuna nuova generazione.")
+    if technical:
+        st.caption(f"Copertura: {result.coverage['indexed']} chunk su {result.coverage['total']}.")
     if result.coverage["partial"]:
         st.warning("Archivio parzialmente indicizzato: rappresentazione limitata ai passaggi disponibili.")
-    for warning in result.coverage["warnings"]:
-        st.info(warning)
+    if technical:
+        for warning in result.coverage["warnings"]:
+            st.info(warning)
     if result.diagnostics.get("status") == "partial_validation":
         st.warning("Alcuni elementi o collegamenti sono stati scartati perché non validati.")
     if not result.data:
@@ -44,15 +50,15 @@ def render_knowledge(result, archive=None):
             st.info("Nessun evento supportato dalle fonti ha superato la validazione.")
     else:
         diagnostics = result.diagnostics
-        if "candidate_edges" in diagnostics:
+        if technical and "candidate_edges" in diagnostics:
             st.caption(f"Relazioni candidate: {diagnostics['candidate_edges']} · Accettate: {diagnostics['accepted_edges']} · Escluse: {diagnostics['rejected_edges']}")
             if diagnostics["relations_status"] == "none_generated":
                 st.info("Gemini non ha proposto relazioni per i passaggi selezionati.")
             elif diagnostics["relations_status"] == "all_rejected":
                 st.info("Gemini ha proposto relazioni, ma tutte sono state escluse dai controlli: consultare i motivi nei dettagli.")
-        else:
+        elif technical:
             st.caption("Conteggi delle relazioni non disponibili per questo risultato precedente: rigenerare la mappa.")
-        if "used_chunks" in diagnostics:
+        if technical and "used_chunks" in diagnostics:
             st.caption(f"Passaggi usati: {diagnostics['used_chunks']}, di cui {diagnostics['adjacent_chunks_used']} adiacenti. "
                        f"Esclusi per il budget: {diagnostics['chunks_dropped_for_budget']}.")
         if result.data["nodes"]:
@@ -76,7 +82,7 @@ def render_knowledge(result, archive=None):
                            "unknown_source": "Identificativo fonte sconosciuto", "invalid_citation": "Citazione non verificata",
                            "relation_not_explicit": "Relazione non esplicita o forma linguistica non verificabile",
                            "theme_not_supported": "Tema comune non documentato per entrambi i nodi"}
-                for reason, count in result.diagnostics.get("edge_rejections", {}).items():
+                for reason, count in (result.diagnostics.get("edge_rejections", {}) if technical else {}).items():
                     st.caption(f"{reasons.get(reason, 'Collegamento non verificato')}: {count}.")
                 details = {
                     "invalid_edge_structure": "Struttura della relazione non valida",
@@ -96,7 +102,7 @@ def render_knowledge(result, archive=None):
                     "verified_evidence": "Predicato e nodi verificati nel passaggio originale",
                     "adjacent_evidence": "Prova verificata su due chunk adiacenti della stessa pagina",
                 }
-                if diagnostics.get("edge_decisions"):
+                if technical and diagnostics.get("edge_decisions"):
                     st.dataframe([{"Candidata": d["candidate"], "Esito": "Accettata" if d["outcome"] == "accepted" else "Esclusa",
                                    "Motivo": details[d["reason"]]} for d in diagnostics["edge_decisions"]], hide_index=True)
                 nodes = {n["id"]: n["label"] for n in result.data["nodes"]}
@@ -118,7 +124,8 @@ def render_knowledge(result, archive=None):
     with st.expander("Fonti originali della rappresentazione"):
         for source in result.sources:
             st.text(f"[{source.id}] {source.filename} — pagina {source.page}")
-            st.caption(f"Chunk originale: {source.chunk_id}")
+            if technical:
+                st.caption(f"Chunk originale: {source.chunk_id}")
             st.text(source.text)
             source_button(source.filename, source.page, context=archive, chunk_id=source.chunk_id, key=f"knowledge_pdf_{source.id}")
 

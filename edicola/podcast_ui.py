@@ -9,18 +9,19 @@ from dotenv import load_dotenv
 from edicola.podcast import VOICES, generate_podcast
 from edicola.podcast_text import PodcastError, list_products, prepare_script
 from edicola.pdf_viewer import source_button
+from edicola.archive_ui import diagnostics_enabled
 
 
 def render_podcast_ui(root: Path, archive=None):
     st.subheader("Podcast editoriali")
-    st.caption("Lettura breve in italiano da briefing o dossier già salvati. Usare una chiave Gemini API Free Tier senza fatturazione attiva.")
+    st.caption("Le notizie da ascoltare, in italiano. Crea un audio breve da un briefing o dossier già disponibile, senza cambiare le fonti.")
     try:
         products = list_products(root)
     except PodcastError as exc:
         st.info(str(exc))
         return
     if not products:
-        st.info("Nessun briefing o dossier utilizzabile nella cache. Generare prima un prodotto editoriale con fonti valide.")
+        st.info("La tua biblioteca audio è ancora vuota. Crea prima un dossier o un briefing in Approfondimenti, poi trasformalo in un ascolto.")
         return
     load_dotenv(root / ".env", override=False)
     available = {p.key: p for p in products}
@@ -45,11 +46,12 @@ def render_podcast_ui(root: Path, archive=None):
         st.text(script.text)
         for source in script.sources:
             st.text(f"[{source['id']}] {source['filename']} — pagina {source['page']}")
-            st.caption(f"Chunk originale: {source['chunk_id']}")
+            if diagnostics_enabled(root):
+                st.caption(f"Chunk originale: {source['chunk_id']}")
             source_button(source["filename"], source["page"], context=archive, chunk_id=source["chunk_id"], key=f"podcast_pdf_{source['id']}")
     with st.form("podcast_generation"):
         authorized = st.checkbox("Autorizzo l'invio a Gemini TTS del copione visualizzato per generare l'audio.", key="podcast_authorized")
-        submitted = st.form_submit_button("Genera podcast")
+        submitted = st.form_submit_button("Genera podcast", type="primary")
     signature = (selected, voice, script.text)
     if submitted:
         st.session_state.pop("podcast_result", None)
@@ -65,12 +67,12 @@ def render_podcast_ui(root: Path, archive=None):
                 st.error(str(exc))
     if st.session_state.get("podcast_result_selection") == signature:
         result = st.session_state["podcast_result"]
-        st.caption(f"Audio {'riutilizzato dalla cache' if result.from_cache else 'generato'} · {result.seconds:.1f} secondi · {result.voice} · {result.model}")
+        st.caption(f"Audio {'già disponibile' if result.from_cache else 'pronto'} · {result.seconds:.1f} secondi · voce {result.voice}")
         try:
             data = result.audio_path.read_bytes()
         except OSError:
             st.error("File audio locale non disponibile; premere Genera podcast per recuperarlo.")
             return
         st.audio(data, format="audio/wav")
-        st.download_button("Scarica WAV", data, file_name=f"podcast-{result.audio_path.stem[:12]}.wav",
+        st.download_button("Scarica WAV", data, file_name="podcast-edicola.wav",
                            mime="audio/wav", key="podcast_download", on_click="ignore")

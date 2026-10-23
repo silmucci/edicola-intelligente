@@ -8,6 +8,7 @@ from streamlit.testing.v1 import AppTest
 from edicola.ingestion import ingest_directory
 from edicola.chunking import prepare_documents
 from edicola.rag import RagError, RagResult, Source
+from edicola.experience_ui import readable
 from edicola.editorial import EditorialResult
 from edicola.knowledge import KnowledgeResult
 from edicola.knowledge_validation import validate_map, validate_timeline
@@ -64,10 +65,10 @@ def test_app_acquires_on_start_and_consults_without_extracting_again(tmp_path):
         ):
             app.selectbox(key="archive_extracted_page").select_index(1).run()
             assert not app.exception
-            assert "Seconda pagina" in app.text[0].value
+            assert any("Seconda pagina" in item.value for item in app.text)
             app.selectbox(key="archive_chunk").select_index(1).run()
             assert not app.exception
-            assert app.text[1].value == "Seconda pagina"
+            assert any(item.value == "Seconda pagina" for item in app.text)
 
 
 def test_rag_ui_requires_authorization_and_keeps_response_on_rerun(tmp_path):
@@ -95,18 +96,18 @@ def test_rag_ui_requires_authorization_and_keeps_response_on_rerun(tmp_path):
         assert not app.exception
         ask.assert_called_once()
         assert ask.call_args.kwargs["authorize_external"] is True
-        assert any(item.value == result.answer for item in app.text)
+        assert any(item.value == readable(result.answer) for item in app.markdown)
         assert any("[S1] quotidiano.pdf" in item.value for item in app.text)
         app.selectbox(key="archive_extracted_page").select_index(1).run()
         assert ask.call_count == 1
-        assert any(item.value == result.answer for item in app.text)
+        assert any(item.value == readable(result.answer) for item in app.markdown)
         ask.side_effect = RagError("Quota Gemini esaurita.")
         app.text_input(key="rag_input").set_value("Quale piano è stato approvato?")
         app.checkbox(key="rag_authorized").check()
         app.button(key="rag_submit").click().run()
         assert not app.exception
         assert app.error[0].value == "Quota Gemini esaurita."
-        assert not any(item.value == result.answer for item in app.text)
+        assert len(app.chat_message) == 2  # Un errore non cancella una risposta precedente né aggiunge un turno fittizio.
         assert ask.call_count == 2  # Un flusso per ciascuno dei due invii autorizzati.
         app.selectbox(key="archive_extracted_page").select_index(0).run()
         assert not app.exception

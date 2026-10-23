@@ -106,10 +106,12 @@ def recommend(catalog, profile: Profile, limit=None):
     return result
 
 
-def generate_personal_briefing(root, profile, *, authorize_external=False, client=None, catalog=None):
+def generate_personal_briefing(root, profile, *, authorize_external=False, client=None, catalog=None, store=None):
     if not authorize_external:
         raise RagError("Autorizza l'invio dei passaggi selezionati e del tempo di lettura a Gemini.")
     validate(profile)
+    if store is not None:
+        store.assert_owner(profile.user_id)
     catalog = catalog if catalog is not None else read_catalog(root)
     selected = recommend(catalog, profile, limit={2: 6, 5: 10, 10: 12}[profile.minutes])
     if not selected:
@@ -127,8 +129,8 @@ def generate_personal_briefing(root, profile, *, authorize_external=False, clien
     prompt = json.dumps(data, ensure_ascii=False)
     identity = hashlib.sha256(json.dumps({"version": [VERSION, STRATEGY_VERSION], "model": model, "prompt": prompt,
         "chunks": [(r.chunk.id, r.chunk.fingerprint) for r in selected]}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-    path = personal_root(root, profile.user_id) / "data/editorial.sqlite3"
-    cached = read_personal_cache(path, identity)
+    path = personal_root(root, profile.user_id) / "data/editorial.sqlite3" if store is None else None
+    cached = read_personal_cache(path, identity) if store is None else store.get_briefing(identity)
     if cached is not None:
         return identity, cached
     own_client = client is None
@@ -161,5 +163,8 @@ def generate_personal_briefing(root, profile, *, authorize_external=False, clien
     if not kept and not result.message:
         result.message = "Nessuna notizia verificata disponibile nel limite scelto."
     if result.sufficient:
-        write_personal_cache(path, identity, result)
+        if store is None:
+            write_personal_cache(path, identity, result)
+        else:
+            store.save_briefing(identity, result)
     return identity, result

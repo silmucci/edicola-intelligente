@@ -5,15 +5,44 @@ import streamlit as st
 from edicola import editorial, knowledge, rag
 from edicola.knowledge_ui import render_knowledge
 from edicola.pdf_viewer import source_button
+from edicola.experience_ui import readable
+from edicola.archive_ui import diagnostics_enabled
 
 
 def render_chat(root, context):
     st.header("Chat AI")
-    st.caption("Fai una domanda ai quotidiani indicizzati. Le risposte riportano le fonti; ogni domanda è indipendente.")
-    with st.form("rag_question"):
+    st.caption("Una domanda, le informazioni dei quotidiani e le fonti da verificare. Ogni domanda è indipendente: lo storico è solo di consultazione.")
+    history = st.session_state.get("rag_history", [])
+    if not history:
+        st.info("Da dove vuoi iniziare? Chiedi un fatto o un approfondimento: la risposta si baserà solo sulle fonti disponibili.")
+    for index, turn in enumerate(history):
+        with st.chat_message("user"):
+            st.markdown(readable(turn["question"]))
+        with st.chat_message("assistant"):
+            result = turn["result"]
+            st.markdown(readable(result.answer))
+            if result.used_source_ids:
+                with st.expander("Fonti utilizzate", expanded=True):
+                    for source in result.sources:
+                        if source.id in result.used_source_ids:
+                            st.text(f"[{source.id}] {source.filename} — pagina {source.page}")
+                            key = f"rag_pdf_{source.id}" if index == len(history) - 1 else f"rag_history_{index}_{source.id}"
+                            source_button(source.filename, source.page, context=context, chunk_id=source.chunk_id, key=key)
+            if result.sources:
+                with st.expander("Passaggi originali recuperati"):
+                    for source in result.sources:
+                        st.text(f"[{source.id}] {source.filename} — pagina {source.page}")
+                        st.text(source.text)
+                        if diagnostics_enabled(root):
+                            st.caption(f"Chunk: {source.chunk_id} · distanza {source.distance:.6f}")
+    if history:
+        st.caption("Ultime 8 domande di questa sessione. Le conversazioni non vengono salvate nel profilo.")
+    # Il contenitore salva le bozze a ogni modifica, anche prima dell'invio.
+    # Soltanto il pulsante può eseguire il RAG; checkbox e navigazione restano locali.
+    with st.container(border=True):
         question = st.text_input("Inserisci una domanda", max_chars=2000, key="rag_input")
         authorized = st.checkbox("Autorizzo l'invio a Gemini della domanda e dei passaggi recuperati dai quotidiani.", key="rag_authorized")
-        submitted = st.form_submit_button("Chiedi all'Edicola", key="rag_submit")
+        submitted = st.button("Chiedi all'Edicola", key="rag_submit", type="primary")
     if submitted:
         st.session_state.pop("rag_result", None)
         st.session_state.pop("rag_question_answered", None)
@@ -27,33 +56,19 @@ def render_chat(root, context):
                     result = rag.ask_question(question, authorize_external=True, root=root)
                 st.session_state["rag_result"] = result
                 st.session_state["rag_question_answered"] = question
+                st.session_state["rag_history"] = (history + [{"question": question, "result": result}])[-8:]
+                st.rerun()
             except rag.RagError as exc:
                 st.error(str(exc))
-    if "rag_result" in st.session_state:
-        result = st.session_state["rag_result"]
-        st.subheader(st.session_state["rag_question_answered"])
-        st.text(result.answer)
-        if result.used_source_ids:
-            st.subheader("Fonti utilizzate")
-            for source in result.sources:
-                if source.id in result.used_source_ids:
-                    st.text(f"[{source.id}] {source.filename} — pagina {source.page}")
-                    source_button(source.filename, source.page, context=context, chunk_id=source.chunk_id, key=f"rag_pdf_{source.id}")
-        if result.sources:
-            with st.expander("Passaggi originali recuperati"):
-                for source in result.sources:
-                    st.text(f"[{source.id}] {source.filename} — pagina {source.page} — distanza {source.distance:.6f}")
-                    st.caption(f"Chunk: {source.chunk_id}")
-                    st.text(source.text)
 
 
 def render_editorial(root, context):
     st.header("Approfondimenti")
-    st.caption("Crea un dossier su un argomento o un briefing delle notizie disponibili. I risultati validati vengono conservati in cache.")
+    st.caption("Un tema da capire o una selezione di notizie da leggere. Ogni approfondimento conserva il legame con i quotidiani originali.")
     with st.form("editorial_products"):
         topic = st.text_input("Argomento del dossier", max_chars=500, key="editorial_topic")
         authorized = st.checkbox("Autorizzo l'invio a Gemini dell'argomento e dei passaggi selezionati per il prodotto editoriale.", key="editorial_authorized")
-        dossier = st.form_submit_button("Genera dossier tematico", key="dossier_submit")
+        dossier = st.form_submit_button("Genera dossier tematico", key="dossier_submit", type="primary")
         briefing = st.form_submit_button("Genera briefing", key="briefing_submit")
     if dossier or briefing:
         st.session_state.pop("editorial_result", None)
@@ -67,6 +82,7 @@ def render_editorial(root, context):
             except editorial.EditorialError as exc:
                 st.error(str(exc))
     if "editorial_result" not in st.session_state:
+        st.info("Scegli un argomento per il dossier oppure genera un briefing dalle notizie disponibili. La generazione parte solo dopo il tuo consenso.")
         return
     product = st.session_state["editorial_result"]
     coverage = product.coverage
@@ -78,22 +94,24 @@ def render_editorial(root, context):
     if product.message:
         st.info(product.message)
     for section in product.sections:
-        st.subheader(section["heading"])
-        st.text(section["text"])
+        with st.container(border=True):
+            st.subheader(section["heading"])
+            st.markdown(readable(section["text"]))
     if product.used_source_ids:
         st.subheader("Fonti del prodotto editoriale")
         for source in product.sources:
             if source.id in product.used_source_ids:
                 st.text(f"[{source.id}] {source.filename} — pagina {source.page}")
                 source_button(source.filename, source.page, context=context, chunk_id=source.chunk_id, key=f"editorial_pdf_{source.id}")
-    with st.expander("Copertura, diagnostica e passaggi selezionati"):
-        st.caption(f"Copertura: {coverage['indexed']} chunk indicizzati su {coverage['total']}.")
-        for warning in coverage["warnings"]:
-            st.info(warning)
-        st.dataframe(coverage["files"], hide_index=True)
-        st.caption(f"Selezione: {len(product.sources)} passaggi da {len({s.filename for s in product.sources})} PDF.")
-        if product.diagnostics:
-            st.caption(f"Strategia: {product.diagnostics.get('strategy', '')} · Stato: {product.diagnostics.get('status', '')}")
+    with st.expander("Passaggi originali e copertura"):
+        st.caption(f"Fonti selezionate da {len({s.filename for s in product.sources})} edizioni.")
+        if diagnostics_enabled(root):
+            st.caption(f"Copertura: {coverage['indexed']} chunk indicizzati su {coverage['total']}.")
+            for warning in coverage["warnings"]:
+                st.info(warning)
+            st.dataframe(coverage["files"], hide_index=True)
+            if product.diagnostics:
+                st.caption(f"Strategia: {product.diagnostics.get('strategy', '')} · Stato: {product.diagnostics.get('status', '')}")
         for source in product.sources:
             st.text(f"[{source.id}] {source.filename} — pagina {source.page}")
             st.text(source.text)
@@ -120,3 +138,5 @@ def render_visuals(root, context):
                 st.error(str(exc))
     if "knowledge_result" in st.session_state:
         render_knowledge(st.session_state["knowledge_result"], archive=context)
+    else:
+        st.info("Scegli un tema: la timeline ordina gli eventi con date verificate, la mappa mostra concetti e relazioni documentate.")

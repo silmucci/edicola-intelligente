@@ -195,7 +195,7 @@ def test_ui_local_start_preferences_recommendations_consent_and_rerun(tmp_path, 
         assert not app.exception and generate.call_count == 1
         app.run()
         assert generate.call_count == 1 and audio.call_count == 0
-        app.text_area(key="personal_interests").set_value("scuola\nambiente")
+        app.multiselect(key="personal_interests").set_value(["scuola", "ambiente"])
         app.button(key="FormSubmitter:personal_preferences-Salva preferenze").click().run()
         assert not app.exception and load_profile(tmp_path).interests == ["scuola", "ambiente"]
         app.button(key="personal_delete").click().run()

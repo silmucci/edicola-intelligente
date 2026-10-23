@@ -127,7 +127,7 @@ def test_cloud_ui_stops_before_ingestion_when_seed_missing(monkeypatch):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py")).run()
     assert not app.exception
     assert any("Snapshot cloud assente" in message.value for message in app.error)
-    assert any("profilo è condiviso" in message.value for message in app.info)
+    assert any("accesso Google e database configurati" in message.value for message in app.info)
 
 
 def test_settings_precedence_and_local_key(monkeypatch, tmp_path):
@@ -169,9 +169,10 @@ def test_cloud_full_start_and_rerun_make_no_external_calls(source, tmp_path, mon
     with patch("edicola.cloud.prepare_cloud", return_value=runtime), patch("edicola.ingestion.extract_pdf", side_effect=AssertionError), patch("edicola.chunking.build_chunks", side_effect=AssertionError):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15).run()
         assert not app.exception
-        assert len(app.tabs) == 6
+        assert len(app.tabs) == 7
         assert app.button(key="rag_submit")
-        assert any("pubblico e condiviso" in message.value for message in app.warning)
+        assert app.button(key="account_login").disabled
+        assert not app.multiselect  # Nessun fallback al profilo condiviso quando mancano i Secrets.
         app.run()
         assert not app.exception
 
