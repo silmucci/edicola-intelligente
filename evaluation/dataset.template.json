@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "snapshot_id": "",
+  "notes": "Compilare manualmente. Preferire init per collegare lo snapshot automaticamente.",
+  "questions": [
+    {
+      "id": "q01",
+      "question": "",
+      "annotator": "",
+      "answerability": null,
+      "judgments_complete": false,
+      "relevant_chunks": [],
+      "nonrelevant_chunk_ids": [],
+      "expected_points": [],
+      "annotation_notes": ""
+    }
+  ]
+}

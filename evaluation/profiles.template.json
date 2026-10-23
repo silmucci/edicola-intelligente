@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "user_id": "demo-a",
+      "interests": [],
+      "minutes": 2,
+      "format": "testo",
+      "feedback": {},
+      "saved": {}
+    },
+    {
+      "user_id": "demo-b",
+      "interests": [],
+      "minutes": 5,
+      "format": "audio",
+      "feedback": {},
+      "saved": {}
+    }
+  ]
+}
