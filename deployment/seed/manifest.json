@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "collection": {
+    "model": "gemini-embedding-2",
+    "dimensions": 768,
+    "prompt_format": "qa-v1",
+    "distance": "cosine"
+  },
+  "pdfs": 5,
+  "chunks": 597,
+  "indexed": 360,
+  "files": {
+    "vectors.json": "77c42d382e8ab730a33a3518e3e74261e178d362328022158111ea1e8aa50c27",
+    "data/archive.sqlite3": "aa1f33507b8039e15901f99db1f4e32ea2ac488df9454947facfe58e467489a1",
+    "data/incoming/7ZycEw6ad2611b84bd0_full.pdf": "328bebc4150d2810a4fdd01a59c19a3612f387637aa7da90ae0a7978f704b014",
+    "data/incoming/CiVxqv6ad7a57faacb4_full.pdf": "a8050caf28715ed5c8f0006abcea2bab236b913b73e6136989e7dbd8c809bdd6",
+    "data/incoming/KM4MRc6ad1222332d03_full.pdf": "f7b1ce11d7cbaa7b22387df24cef3a5ba85205610b1f3226b61b026657454947",
+    "data/incoming/QkUqmE6ad3aeaa4fe3b_full.pdf": "7f6e1c5af68530cc3c30c6a01516f4a22459bdf02a4211650c85925e7b3a659f",
+    "data/incoming/SV5BIe6ad6682464d6a_full.pdf": "11067a9412e60419d72d9d368a02e5455c03237347480ff513e1364b7783ce94"
+  }
+}
