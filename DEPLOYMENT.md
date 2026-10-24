@@ -1,11 +1,22 @@
 # Deployment dimostrativo su Streamlit Community Cloud
 
+**Task 12.2:** prima di aggiornare l'app applicare manualmente anche
+[`004_chat_history.sql`](migrations/004_chat_history.sql), dopo 001/002/003.
+Nessun nuovo Secret; cronologia su PostgreSQL soltanto con scelta dell'utente.
+[Configurazione e prova con due account](CHAT_HISTORY.md).
+
+**Task 12:** il rilascio del nuovo sistema di autorizzazioni richiede prima la
+migrazione additiva [`003_ai_consents.sql`](migrations/003_ai_consents.sql).
+Non modificare 001/002 già applicate. Procedura, limiti e checklist visuale in
+[UX_TASK12.md](UX_TASK12.md). Nessun nuovo Secret o deployment automatico.
+
 **Aggiornamento Task 11A:** l'archivio usa ancora lo snapshot di questa guida;
 gli account personali richiedono anche [ACCOUNTS.md](ACCOUNTS.md). Il vecchio profilo
 demo condiviso non viene esposto nel cloud.
 
-Il progetto è preparato per il cloud ma **non è stato pubblicato**. Nessuna chiave,
-PDF o dato dell'archivio locale è stato caricato o esportato durante la preparazione.
+L'app è già pubblicata dal gestore; questa guida descrive preparazione e aggiornamenti
+manuali. Nessun deployment automatico, caricamento di chiavi, PDF o dati personali
+è stato effettuato durante questo intervento.
 
 ## Compatibilità verificata e limiti della verifica
 

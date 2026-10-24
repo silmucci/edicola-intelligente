@@ -12,7 +12,7 @@ from edicola.settings import setting
 
 GOOGLE_ISSUER = "https://accounts.google.com"
 GOOGLE_METADATA = GOOGLE_ISSUER + "/.well-known/openid-configuration"
-PRIVATE_PREFIXES = ("rag_", "personal_", "editorial_", "knowledge_", "podcast_", "account_", "home_personal_")
+PRIVATE_PREFIXES = ("rag_", "personal_", "editorial_", "knowledge_", "podcast_", "account_", "home_personal_", "consent_")
 
 
 def secret_section(name):

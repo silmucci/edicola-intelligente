@@ -3,9 +3,14 @@ gatherUsageStats = false
 
 [theme]
 base = "light"
-primaryColor = "#255f75"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f3f4f5"
-textColor = "#17252f"
+primaryColor = "#0866D9"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F2F7FD"
+textColor = "#082654"
 font = "sans-serif"
+headingFont = "serif"
+baseRadius = "medium"
+buttonRadius = "medium"
+borderColor = "#E2E8F0"
+showWidgetBorder = true
 

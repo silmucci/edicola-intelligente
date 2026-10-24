@@ -19,6 +19,9 @@ from edicola.settings import setting
 from edicola.archive_ui import edition_metadata
 from edicola.experience_ui import INTERESTS, account_controls, excerpt, passage_card, readable
 from edicola.identity import local_demo
+from edicola.consent_ui import authorize_action, privacy_controls
+from edicola.consent import perform
+from edicola.api_guard import PermissionDenied
 
 
 def show_product(result, archive=None):
@@ -67,7 +70,9 @@ def render_personalization_ui(root, archive=None):
         from edicola.account_ui import render_account_profile
         render_account_profile(root, archive)
         return
-    st.header("Il mio profilo")
+    from edicola.design import section_intro
+    section_intro("Il mio profilo", "Interessi, letture e preferenze della demo locale.", "La tua edicola")
+    privacy_controls(key="demo_privacy")
     if setting("EDICOLA_CLOUD_DEMO", "0") == "1":
         st.warning("Profilo demo pubblico e condiviso: tutti i visitatori possono leggere, modificare o cancellare "
                    "le preferenze e lo storico. Nessuno spazio personale riservato; non inserire dati personali. "
@@ -167,24 +172,19 @@ def render_personalization_ui(root, archive=None):
                     st.session_state["personal_notice"] = "Lettura rimossa dai salvati."
                     st.rerun()
     st.subheader("Il mio briefing")
-    with st.form("personal_briefing_form"):
-        authorized = st.checkbox("Autorizzo l'invio a Gemini dei passaggi consigliati e del tempo di lettura per il mio briefing", key="personal_authorized")
-        submitted = st.form_submit_button("Genera il mio briefing")
-    if submitted:
-        if not authorized:
-            st.warning("Autorizza l'invio prima di generare il briefing personale.")
-        else:
-            try:
-                with st.spinner("Generazione del briefing personale con fonti validate…"):
-                    identity, result = generate_personal_briefing(root, profile, authorize_external=True, catalog=catalog)
-                if not result.sufficient:
-                    st.warning(result.message or "Informazioni insufficienti per un briefing verificabile.")
-                else:
-                    st.session_state["personal_product"] = identity
-            except RagError as exc:
-                st.error(str(exc))
-            except Exception:
-                st.error("Briefing personale non disponibile: verificare configurazione, connessione e cache locale.")
+    submitted = st.button("Genera il mio briefing", key="personal_briefing_submit", type="primary")
+    if authorize_action("personal_text", "personal_briefing", submitted, [profile.interests, profile.minutes, profile.feedback]):
+        try:
+            with st.spinner("Generazione del briefing personale con fonti validate…"):
+                identity, result = perform("personal_text", generate_personal_briefing, root, profile, authorize_external=True, catalog=catalog)
+            if not result.sufficient:
+                st.warning(result.message or "Informazioni insufficienti per un briefing verificabile.")
+            else:
+                st.session_state["personal_product"] = identity
+        except RagError as exc:
+            st.error(str(exc))
+        except Exception:
+            st.error("Briefing personale non disponibile: verificare configurazione, connessione e cache locale.")
 
     scope = personal_root(root, profile.user_id)
     products = list_products(scope)
@@ -201,20 +201,16 @@ def render_personalization_ui(root, archive=None):
         else:
             show_product(product.result, archive)
         st.caption("Per il formato audio puoi ascoltare un podcast già salvato o generarlo esplicitamente. Il TTS esistente legge un estratto di circa 1–2 minuti anche per briefing lunghi.")
-        with st.form("personal_audio_form"):
+        with st.expander("Ascolta questo briefing"):
             voice = st.selectbox("Voce del podcast personale", VOICES, key="personal_voice")
-            audio_authorized = st.checkbox("Autorizzo l'invio del copione a Gemini TTS", key="personal_audio_authorized")
-            audio_submit = st.form_submit_button("Genera podcast del mio briefing")
-        if audio_submit:
-            if not audio_authorized:
-                st.warning("Autorizza l'invio del copione prima di generare l'audio.")
-            else:
-                try:
-                    api_key(root)  # Stesso .env principale, senza copiarne le credenziali.
-                    with st.spinner("Generazione podcast personale…"):
-                        generate_podcast(selected, voice=voice, authorize_external=True, root=scope)
-                except PodcastError as exc:
-                    st.error(str(exc))
+            audio_submit = st.button("Genera podcast del mio briefing", key="personal_audio_submit")
+        if authorize_action("audio", "personal_audio", audio_submit, [selected, voice]):
+            try:
+                api_key(root)  # Stesso .env principale, senza copiarne le credenziali.
+                with st.spinner("Generazione podcast personale…"):
+                    perform("audio", generate_podcast, selected, voice=voice, authorize_external=True, root=scope)
+            except (PodcastError, PermissionDenied) as exc:
+                st.error(str(exc))
         existing = cached_audio(scope, selected, voice)
         if existing:
             data, manifest = existing

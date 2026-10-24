@@ -1,5 +1,16 @@
 # Account personali e persistenza — Task 11A
 
+**Task 12.2:** aggiunge chat persistenti opt-in con migrazione manuale
+[`004_chat_history.sql`](migrations/004_chat_history.sql). Non cambiano i Secrets.
+Per contesto, isolamento, limiti e prova con due utenti vedere
+[CHAT_HISTORY.md](CHAT_HISTORY.md). Dopo la 004 verificare RLS forzata e ownership
+anche su `chat_settings`, `conversations`, `chat_messages`.
+
+**Estensione Task 12:** autorizzazioni AI persistenti per finalità in
+`edicola_private.ai_consents`, con nuova migrazione 003, export e cancellazione
+per proprietario. [Procedura e controlli](UX_TASK12.md). Le indicazioni sull'audit
+001/002 più sotto si estendono a cinque tabelle e quattro policy dopo la 003.
+
 Il codice è pronto per configurazione manuale. **Non sono stati creati account,
 credenziali, progetti Google/Supabase, database remoti o deployment.** I test usano
 provider e database simulati; la persistenza reale e le policy SQL devono essere

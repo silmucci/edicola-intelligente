@@ -87,6 +87,8 @@ def audio_bytes(response) -> bytes:
 def synthesize(client, model, voice, script):
     logger.info("phase=podcast_tts model=%r voice=%s event=start chars=%d", model, voice, len(script))
     try:
+        from edicola.api_guard import require_permission
+        require_permission("audio")
         response = client.models.generate_content(model=model,
             contents=[types.Content(role="user", parts=[types.Part(text=script,
                 speech_metadata=types.SpeechMetadata(style=STYLE))])],

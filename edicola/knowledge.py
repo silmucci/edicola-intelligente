@@ -164,6 +164,8 @@ def generate_data(client, model, prompt, schema, *, sleep=time.sleep, system_ins
     for attempt in range(3):
         logger.info("phase=knowledge_generation model=%r version=%s attempt=%d", model, VERSION, attempt + 1)
         try:
+            from edicola.api_guard import require_permission
+            require_permission("text")
             response = client.models.generate_content(model=model, contents=prompt, config=types.GenerateContentConfig(
                 system_instruction=system_instruction, temperature=0, tools=[], max_output_tokens=8192,
                 response_mime_type="application/json", response_json_schema=schema))

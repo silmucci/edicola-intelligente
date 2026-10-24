@@ -9,12 +9,14 @@ from datetime import date
 
 import streamlit as st
 
-from edicola.archive_ui import edition_metadata, render_gallery
+from edicola.archive_ui import edition_metadata, edition_filter, render_gallery
 from edicola.editorial_selection import headline_priority, near_duplicate, read_catalog
 from edicola.pdf_viewer import source_button
 from edicola.personalization import recommend
 from edicola.profiles import load_profile, save_passage
 from edicola import identity
+from edicola.design import section_intro, empty_state
+from edicola.editorial_components import render_products, render_highlights
 
 SECTIONS = ["Home", "Archivio", "Chat AI", "Approfondimenti", "Timeline e Mappe", "Podcast", "Personalizzazione"]
 INTERESTS = ["Ambiente", "Cultura", "Economia", "Politica", "Salute", "Scuola", "Sport", "Tecnologia", "Trasporti"]
@@ -23,6 +25,8 @@ INTERESTS = ["Ambiente", "Cultura", "Economia", "Politica", "Salute", "Scuola", 
 def navigate(section):
     if section in SECTIONS:
         st.session_state["nav_section"] = section
+        if section == "Approfondimenti":
+            st.session_state["editorial_kind"] = "Briefing"
 
 
 def authenticated():
@@ -55,15 +59,15 @@ def excerpt(text, limit):
 
 def readable(text):
     """Testo leggibile senza rendere attivi HTML, immagini o link del documento."""
-    return re.sub(r"([\\`*_{}\[\]()#+.!|>~\-])", r"\\\1", html.escape(text))
+    return re.sub(r"([\\`*_{}\[\]()#+.!|>~\-])", r"\\\1", html.escape(html.unescape(text), quote=False))
 
 
 def passage_card(chunk, *, context, editions, key, reason=None, root=None, profile=None, store=None):
     info = editions.get(chunk.metadata["filename"], {})
-    with st.container(border=True, width=340):
+    with st.container(border=True, width=320):
         st.caption(info.get("title", "Dall’archivio") + " · " + info.get("date", "Data non disponibile"))
         # Le virgolette indicano un estratto, non un titolo ricostruito dall'app.
-        st.markdown("**Dal quotidiano**")
+        st.markdown("**Una lettura da scoprire**")
         st.markdown(readable("«" + excerpt(chunk.text, 230) + "»"))
         st.caption(f"Pagina {chunk.metadata['page']} · Estratto originale")
         if reason:
@@ -127,26 +131,15 @@ def recent_editions(context, limit=3):
 
 def render_home(root, context):
     identity.synchronize_identity()
-    if not identity.local_demo():
-        identity.login_controls(key="home_auth")
-    st.html('''<section class="edi-home-intro" aria-label="La tua edicola digitale">
-<style>.edi-home-intro{padding:28px 30px;margin:8px 0 24px;border:1px solid #e2e5e9;border-radius:16px;background:#f3f6f7;color:#17252f;font-family:system-ui,sans-serif}
-.edi-home-intro h2{font-size:clamp(26px,4vw,40px);line-height:1.18;letter-spacing:-.025em;margin:0 0 14px;max-width:760px}
-.edi-home-intro p{font-size:17px;line-height:1.6;max-width:680px;margin:0;color:#52636c}
-@media(max-width:540px){.edi-home-intro{padding:20px 18px;border-radius:12px}.edi-home-intro p{font-size:15px}}</style>
-<h2>I quotidiani, il tempo per capirli.</h2><p>Sfoglia le edizioni originali, ritrova le fonti e scegli come approfondire: una domanda, un briefing o un ascolto.</p></section>''')
-    with st.container(horizontal=True, gap="small"):
-        for label, destination, key in (("Fai una domanda", "Chat AI", "home_chat"),
-                                        ("Leggi un briefing", "Approfondimenti", "home_briefing"),
-                                        ("Ascolta un podcast", "Podcast", "home_podcast"),
-                                        ("Il mio profilo", "Personalizzazione", "home_profile")):
-            st.button(label, key=key, on_click=navigate, args=(destination,))
+    render_products()
     metadata = edition_metadata(root, context.documents)
     if context.documents:
-        render_gallery(context, metadata, documents=recent_editions(context), title="Edizioni recenti", key="home_gallery")
+        ordered = recent_editions(context, limit=len(context.documents))
+        visible = edition_filter(ordered, metadata, key="home_edition_date")
+        render_gallery(context, metadata, documents=visible, title="Quotidiani in primo piano", key="home_gallery")
     else:
-        st.info("La tua edicola è ancora vuota. Le edizioni appariranno qui quando saranno disponibili nell’archivio.")
-    st.subheader("Selezionati dall’archivio")
+        empty_state("La tua edicola è ancora vuota", "Le copertine appariranno qui quando saranno disponibili edizioni nell’archivio.")
+    section_intro("In evidenza", "Estratti dalle edizioni disponibili, senza aggiornamenti in tempo reale.", "Dalle fonti originali")
     st.caption("Estratti originali, alternati tra le edizioni disponibili. Nessuna notizia aggiunta o riscritta.")
     try:
         catalog = read_catalog(root)
@@ -157,10 +150,9 @@ def render_home(root, context):
         st.caption("La selezione copre soltanto la parte dell’archivio attualmente disponibile alla ricerca.")
     selected = home_selection(catalog)
     if not selected:
-        st.info("Non ci sono ancora letture disponibili per questa selezione. Puoi intanto sfogliare le edizioni originali.")
-    with st.container(horizontal=True, gap="medium"):
-        for index, chunk in enumerate(selected):
-            passage_card(chunk, context=context, editions=metadata, key=f"home_selected_{index}")
+        empty_state("Le letture arriveranno qui", "Non ci sono passaggi indicizzati per questa selezione. Puoi intanto sfogliare le edizioni originali.")
+    if selected:
+        render_highlights(selected, metadata=metadata, context=context, shorten=excerpt)
     if authenticated():
         st.subheader("Consigliati per te")
         try:

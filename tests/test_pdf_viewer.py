@@ -174,15 +174,15 @@ def test_chat_citation_navigates_without_regenerating_answer(archive):
     source = script(context) + '\nfrom edicola.reading_ui import render_chat\nrender_chat(root, context)'
     with patch("edicola.rag.ask_question", return_value=answer) as ask:
         app = AppTest.from_string(source, default_timeout=10).run()
-        app.text_input(key="rag_input").set_value("Domanda di prova")
-        app.checkbox(key="rag_authorized").check()
-        app.button(key="rag_submit").click().run()
+        app.chat_input(key="rag_input").set_value("Domanda di prova")
+        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.run()
         assert not app.exception
         ask.assert_called_once()
         app.button(key="rag_pdf_S1").click().run()
         assert not app.exception and app.session_state["archive_page"] == 2
         ask.assert_called_once()
-        assert app.checkbox(key="rag_authorized").value
+        assert app.session_state["consent_choices"][("text", "text-v2")]
 
 
 @pytest.mark.parametrize("kind", ["dossier", "briefing", "personal", "timeline", "map"])

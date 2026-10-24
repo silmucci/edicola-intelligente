@@ -147,6 +147,8 @@ def generate_briefing_response(client, model: str, prompt: str, sources: list[So
         logger.info("request_id=%s phase=briefing_generation model=%r strategy=%s event=start attempt=%d",
                     request_id, model, STRATEGY_VERSION, attempt + 1)
         try:
+            from edicola.api_guard import require_permission
+            require_permission("text")
             response = client.models.generate_content(
                 model=model, contents=prompt, config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_INSTRUCTION, temperature=0, tools=[],

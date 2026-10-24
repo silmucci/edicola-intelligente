@@ -12,6 +12,7 @@ import streamlit as st
 
 from edicola.archive_components import gallery_component, reader_component
 from edicola.pdf_viewer import PdfViewError, open_reference, read_original, render_page, resolve_reference
+from edicola.design import section_intro
 
 
 def diagnostics_enabled(root):
@@ -56,10 +57,17 @@ def cover_thumbnail(data, total):
         return output.getvalue()
 
 
+def edition_filter(documents, metadata, *, key):
+    """Filtro condiviso Home/Archivio: soltanto date curate, mai Oggi/Ieri fittizi."""
+    dates = list(dict.fromkeys(metadata[d.filename]["date"] for d in documents
+                              if metadata[d.filename]["date"] != "Data non disponibile"))
+    selected = st.selectbox("Edizioni disponibili", ["Tutte le edizioni"] + dates, key=key, width=280)
+    return [d for d in documents if selected == "Tutte le edizioni" or metadata[d.filename]["date"] == selected]
+
+
 def render_gallery(context, metadata, *, documents=None, title="Le edizioni", key="archive_gallery"):
     documents = context.documents if documents is None else documents
-    st.header(title)
-    st.caption("Scegli un quotidiano e prenditi il tempo di leggerlo.")
+    section_intro(title, "Sfoglia le prime pagine e apri il quotidiano originale.", "Le edizioni dell’archivio")
     cards = []
     for document in documents:
         thumbnail = None
@@ -91,6 +99,18 @@ def render_reader(context, document, metadata):
     st.subheader(metadata["title"])
     st.caption(f"{metadata['date']} · {document.total_pages} pagine")
     page = st.session_state.get("archive_page", 1)
+    if type(page) is not int or not 1 <= page <= document.total_pages:
+        st.info("La pagina richiesta non è disponibile. Torna alle edizioni e riapri il quotidiano.")
+        return
+    st.session_state["archive_page_jump"] = page
+    def jump():
+        target = st.session_state.get("archive_page_jump")
+        if type(target) is int and 1 <= target <= document.total_pages:
+            st.session_state["archive_page"] = target
+    with st.container(horizontal=True, width="content", vertical_alignment="center"):
+        st.number_input("Vai a pagina", min_value=1, max_value=document.total_pages,
+                        key="archive_page_jump", on_change=jump, width=150)
+        st.caption("Frecce per sfogliare · zoom e schermo intero nel lettore")
     try:
         resolve_reference(context, document.filename, page)
         original = read_original(context, document)
@@ -150,5 +170,6 @@ def render_archive_view(context, prepared):
     else:
         with st.container(horizontal=True, horizontal_alignment="center"):
             with st.container(width=1120):
-                render_gallery(context, metadata)
+                visible = edition_filter(context.documents, metadata, key="archive_edition_date")
+                render_gallery(context, metadata, documents=visible)
     render_diagnostics(context, prepared)

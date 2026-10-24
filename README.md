@@ -1,5 +1,56 @@
 # Edicola Digitale Intelligente
 
+**Design editoriale — Task 13:** nuova testata con ricerca locale, card dei prodotti,
+copertine autentiche in carosello e fascia In evidenza con estratti documentati.
+Tema bianco/blu, accenti rossi, font locali e layout adattivi; conservati account,
+consensi, cronologia e prodotti AI. Nessuna nuova dipendenza o migrazione SQL.
+[Componenti, limiti e checklist desktop/tablet/mobile](DESIGN_TASK13.md).
+
+**Chat AI - Task 12.2:** conversazioni multiple con titoli modificabili, sidebar
+nativa e un solo `st.chat_input`. La domanda compare subito e ogni invio viene
+consumato una sola volta, anche dopo il consenso. Ospiti: conversazioni temporanee.
+Account Google: cronologia PostgreSQL solo dopo una scelta esplicita, distinta dal
+consenso Gemini. Applicare manualmente la nuova
+[004_chat_history.sql](migrations/004_chat_history.sql), dopo 001/002/003.
+
+La guida [CHAT_HISTORY.md](CHAT_HISTORY.md) descrive migrazione, privacy, limiti,
+verifiche con due account e test su un secondo dispositivo. Lo storico della sola
+chat attiva aiuta a interpretare i follow-up, ma ogni risposta recupera nuove fonti.
+Il nuovo consenso testuale `text-v2` spiega questo trattamento e richiede una nuova
+scelta; le autorizzazioni audio e briefing personali restano invariate.
+
+Fonti compatte cliccabili per PDF/pagina, con etichette editoriali verificate o
+neutre, aprono il documento originale. I passaggi sono secondari in un popover.
+Hash e chunk salvati impediscono di aprire fonti appartenenti a versioni obsolete.
+
+Il prompt del solo chatbot riceve le date ISO valide delle edizioni recuperate.
+Per richieste di novità/ultimi aggiornamenti la finestra prudenziale è di sette
+giorni; per oggi/attualmente/adesso si cercano date del giorno. È un criterio di
+copertura, non prova che i fatti siano ancora attuali. Date assenti o future non
+attestano aggiornamenti: un avviso esplicito segnala il limite. Nessuna ricerca
+web o verifica in tempo reale viene effettuata. Le previsioni degli articoli
+rimangono previsioni riferite al loro contesto, senza trasformare «entro due anni»
+in una scadenza attuale. Il miglioramento della fluidità usa istruzioni al modello:
+non riscrive le prove e non sostituisce la verifica giornalistica delle fonti.
+
+Verifica manuale: avviare `python -m streamlit run app.py`, aprire Chat AI e inviare
+una domanda con apostrofi, per esempio «Ci sono novità per la ricostruzione delle
+case all'Aquila?». Controllare domanda immediata, consenso al primo invio, risposta,
+date e collegamenti PDF; cambiare sezione e tornare senza nuove richieste.
+Provare anche rifiuto/revoca e una domanda «oggi» su fonti datate. Su smartphone
+verificare il composer unico sotto il riquadro scorrevole, Invio/Maiusc+Invio e
+consultazione delle fonti. Dentro le schede Streamlit il composer è inline sotto
+la conversazione, non fissato al fondo globale della finestra; non vengono usati
+hack CSS. La verifica visiva sui dispositivi reali resta manuale.
+
+**UX e autorizzazioni AI — Task 12:** [guida e checklist](UX_TASK12.md).
+Dialogo al primo invio, scelte distinte per testi, briefing personali e audio,
+revocabili nel profilo; account su Supabase, ospiti nella sola sessione.
+Prima del rilascio applicare manualmente
+[`003_ai_consents.sql`](migrations/003_ai_consents.sql), senza modificare 001/002.
+Tema editoriale locale, selettori compatti, profilo organizzato e accesso diretto
+alle pagine originali. Nessuna chiamata AI all'apertura delle sezioni.
+
 **Account cloud — Task 11A:** configurazione completa in [ACCOUNTS.md](ACCOUNTS.md),
 con Google OIDC, PostgreSQL Supabase, migrazione SQL, Secrets e prova con due utenti.
 La modalità predefinita è `accounts`: senza configurazione l'Archivio resta consultabile,
@@ -433,11 +484,11 @@ alternati tra PDF e deduplicati localmente. Le brevi citazioni nelle schede sono
 estratti originali, **non titoli di articoli riconosciuti**: un passaggio può includere
 più notizie. Nessuna fotografia, notizia, data o chiamata API viene aggiunta all'avvio.
 
-**Chat AI** mostra domande e risposte in messaggi conversazionali, con fonti apribili
-alla pagina PDF originale e passaggi in pannelli espandibili. Lo storico contiene
-al massimo otto domande nella sola sessione; ogni domanda resta indipendente e non
-invia le conversazioni precedenti a Gemini. Modificare la bozza o il consenso, cambiare
-sezione o aprire una fonte non genera una nuova risposta: serve il pulsante esplicito.
+**Chat AI** mostra messaggi conversazionali e fonti compatte apribili alla pagina
+originale. Il Task 12.2 sostituisce lo storico RAM di otto domande indipendenti del
+Task 11B/12.1: ora le chat sono separate e contestuali, con persistenza account
+facoltativa. Bozze, navigazione, apertura e consenso da soli non generano risposte:
+serve un invio dal composer (il consenso puo riprendere soltanto quello pendente).
 
 In **Personalizzazione → Il mio profilo**, selezionare o scrivere fino a dieci interessi
 in **Preferenze e impostazioni**, scegliere tempo/formato e salvare. Le schede permettono

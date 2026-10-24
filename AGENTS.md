@@ -1,5 +1,42 @@
 # Regole del progetto
 
+- Design Task 13: token condivisi in `design_tokens.py`, tema bianco/blu con
+  accento rosso, font di sistema senza CDN. Header unico con ricerca testuale
+  locale su funzioni/edizioni/chunk indicizzati; nessun embedding. Ricerca nel
+  namespace privato della sessione, cancellata al cambio identità. Sette schede
+  native come navigazione principale; card dei prodotti soltanto nella Home.
+  Card e caroselli v2 con CSS isolato, breakpoint fluidi e scorrimento interno
+  touch; testi dinamici via `textContent`, indici degli eventi verificati lato
+  server. Nessun selettore DOM globale o HTML attivo dei documenti. Copertine
+  autentiche con proporzioni conservate, filtri solo su date curate e fascia
+  In evidenza con estratti letterali, senza titoli o attualità inventati.
+
+- Chat: un solo `st.chat_input`, invio esplicito e domanda subito nello storico;
+  richiesta pendente consumata una sola volta anche dopo consenso. Rerun, errori,
+  rifiuti e interruzioni non ritentano le API. Rendering Markdown escapato con
+  HTML disabilitato, apostrofi leggibili e soli link di citazione creati dal codice.
+  Date del chatbot esclusivamente dai metadati curati delle edizioni recuperate;
+  avvisi di copertura per domande attuali, mai scambiare pubblicazione/evento,
+  previsione/esito o archivio/verifica in tempo reale. Non cambiare prompt degli
+  altri prodotti né il validatore delle evidenze per migliorare la fluidità.
+- Conversazioni: ospiti solo RAM (20 chat), account su PostgreSQL soltanto con
+  opt-in distinto dal consenso Gemini; massimo 200 chat/100 turni per chat/10 MB
+  di messaggi per account. Nessuna importazione automatica delle chat temporanee.
+  Contesto della sola chat attiva: massimo 6 messaggi/4000 byte UTF-8, mai prove;
+  retrieval nuovo a ogni invio. Salvataggio atomico e idempotente per coppia di
+  messaggi completata; errori di scrittura espliciti e retry solo manuale del DB.
+  Fonti compatte per PDF/pagina, riferimenti persistenti hash/chunk e controlli
+  di versione prima dell'apertura. Navigazione e ripresa mai chiamano Gemini.
+
+- Autorizzazioni web centralizzate in `consent`/`consent_ui`: finalità versionate
+  distinte per testo generale, briefing personale e audio; account su PostgreSQL,
+  ospiti soltanto in sessione. Nessuna scelta preselezionata, fallback ospite per
+  account o generazione automatica. Ogni richiesta SDK passa da `api_guard`, con
+  verifica aggiornata di scelta e identità anche prima dei retry. Logout cancella
+  scelte ospiti e azioni pendenti. Cambi materiali richiedono una nuova versione.
+- Migrazioni già applicate immutabili: nuove tabelle con migrazioni additive,
+  transazionali, RLS forzata e ownership. Mai applicarle automaticamente.
+
 - Prototipo universitario: Python, Streamlit e pypdf; mantenere i moduli piccoli e leggibili.
 - I PDF provengono esclusivamente da `data/incoming/`: acquisizione automatica, consultazione e chat sui testi, nessun upload.
 - Riutilizzare le estrazioni persistenti tramite SHA-256, inclusi gli esiti negativi e i duplicati.
@@ -23,7 +60,7 @@
 - Eseguire `python -m pytest -q` dopo modifiche all'acquisizione e aggiornare il README se cambia il comportamento.
 - UI in sette schede Streamlit con stato: Home e sei sezioni esistenti, mantenendo controlli/consensi e risultati durante i rerun. Lettore locale PDFium delle pagine originali, cache RAM limitata e accesso al motore serializzato; nessun OCR, CDN o servizio esterno. Aprire soltanto PDF acquisiti dentro `data/incoming/`, verificando percorso, SHA, pagina e chunk della versione corrente; rifiutare fonti obsolete e percorsi arbitrari/symlink. Download dei byte originali. Nessuna chiamata Gemini associata a navigazione, fonti o zoom.
 - Archivio cliente: galleria di copertine reali e soli metadati verificati in `data/editions.json`, con etichette neutre quando mancanti. Lettore centrato, pagina intera adattata a 70vh e massimo iniziale 520px, zoom locale e scorrimento interno, ritorno alla galleria. CSS isolato nei componenti v2, mai selettori globali delle altre schede. Hash, nomi tecnici, chunk, testo completo, stati e tabelle solo in diagnostica attivata da configurazione `EDICOLA_ARCHIVE_DIAGNOSTICS=1`, disattivata di default e senza interruttore cliente.
-- Home e consigli: selezione esclusivamente locale di fonti indicizzate, schede con estratti letterali esplicitamente distinti da titoli di articoli, niente metadati o immagini inventati. Controlli nativi con wrapping, tema locale e CSS della sola introduzione limitato alla sua classe. Chat con storico RAM di otto domande indipendenti, nessuna chiamata su bozza o navigazione. Login/logout nativi Streamlit; al cambio identità svuotare dati privati della sessione prima di montare i controlli. Nessuna cache globale di profili, export o briefing personali. Export/audio personali via payload della sessione e Blob URL del browser, senza URL media pubblici condivisi. Nascondere ID di chunk e diagnostica nella vista cliente, conservando le citazioni PDF/pagina e i passaggi verificabili.
+- Home e consigli: selezione esclusivamente locale di fonti indicizzate, schede con estratti letterali esplicitamente distinti da titoli di articoli, niente metadati o immagini inventati. Controlli nativi con wrapping, tema locale e CSS della sola introduzione limitato alla sua classe. Chat multiple con contesto limitato e cronologia account opt-in, nessuna chiamata su bozza o navigazione. Login/logout nativi Streamlit; al cambio identità svuotare dati privati della sessione prima di montare i controlli. Nessuna cache globale di profili, export o briefing personali. Export/audio personali via payload della sessione e Blob URL del browser, senza URL media pubblici condivisi. Nascondere ID di chunk e diagnostica nella vista cliente, conservando le citazioni PDF/pagina e i passaggi verificabili.
 # Deployment dimostrativo
 
 - Cloud solo su pubblicazione esplicita dell'utente: mai push, PDF o Secrets automatici.

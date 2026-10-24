@@ -75,6 +75,8 @@ class GeminiEmbedder:
     def embed(self, prompt: str) -> list[float]:
         for attempt in range(self.max_attempts):
             try:
+                from edicola.api_guard import require_permission
+                require_permission("text")
                 response = self.client.models.embed_content(
                     model=MODEL, contents=prompt,
                     config=types.EmbedContentConfig(output_dimensionality=DIMENSIONS),

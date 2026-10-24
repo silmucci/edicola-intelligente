@@ -10,7 +10,7 @@ from google.genai import errors, types
 
 from edicola.embeddings import EmbeddingError
 from edicola.rag import (
-    DEFAULT_MODEL, INSUFFICIENT, SYSTEM_INSTRUCTION, RagError, Source,
+    DEFAULT_MODEL, INSUFFICIENT, SYSTEM_INSTRUCTION, CHAT_INSTRUCTION, RagError, Source,
     ask_question, build_prompt, generate_response, response_schema, validate_response,
 )
 
@@ -51,7 +51,7 @@ def test_question_with_relevant_documents_and_configurable_model(monkeypatch):
     assert search.call_args.kwargs["authorize_external"] is True
     request = client.models.generate_content.call_args.kwargs
     assert request["model"] == "gemini-2.5-flash-lite"
-    assert request["config"].system_instruction == SYSTEM_INSTRUCTION
+    assert request["config"].system_instruction == CHAT_INSTRUCTION
     assert request["config"].tools == []
     assert request["config"].response_json_schema["properties"]["claims"]
     prompt = json.loads(request["contents"])

@@ -26,20 +26,19 @@ def test_ui_never_generates_on_start_or_rerun_and_reuses_wav(podcast_archive):
         assert any("giornale.pdf — pagina 3" in text.value for text in app.text)
         app.button[0].click().run()
         generate.assert_not_called()
-        assert app.warning
-        app.checkbox[0].check()
-        app.button[0].click().run()
+        assert app.button(key="consent_accept")
+        app.button(key="consent_accept").click().run()
         assert not app.exception
         assert len(app.get("audio")) == 1 and len(app.get("download_button")) == 1
         assert client.models.generate_content.call_count == 1
         app.run()
         assert generate.call_count == 1
-        app.button[0].click().run()
-        assert generate.call_count == 2 and client.models.generate_content.call_count == 1
+        assert app.button(key="podcast_submit").disabled
+        assert generate.call_count == 1 and client.models.generate_content.call_count == 1
         assert any("Audio già disponibile" in item.value for item in app.caption)
         app.selectbox[1].select("Aoede").run()
         assert len(app.get("audio")) == 0
-        assert generate.call_count == 2
+        assert generate.call_count == 1
         app.button[0].click().run()
         assert client.models.generate_content.call_count == 2
         assert client.models.generate_content.call_args.kwargs["config"].speech_config.voice_config.voice == "Aoede"
@@ -49,9 +48,9 @@ def test_ui_api_error_does_not_retry_on_rerun(podcast_archive):
     with patch("edicola.podcast_ui.generate_podcast", side_effect=PodcastError("Gemini TTS HTTP 429. Quota esaurita.")) as generate, patch(
         "google.genai.Client", side_effect=AssertionError("API reali vietate")):
         app = AppTest.from_string(ui_script(podcast_archive), default_timeout=10).run()
-        app.checkbox[0].check()
+        app.session_state["consent_choices"] = {("audio", "audio-v1"): True}
         app.button[0].click().run()
-        assert not app.exception and "429" in app.error[0].value
+        assert not app.exception and "limite di utilizzo" in app.error[0].value
         assert not app.get("audio")
         app.run()
         generate.assert_called_once()

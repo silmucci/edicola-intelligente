@@ -166,15 +166,35 @@ class PostgresPersonalStore:
         with self.transaction() as (db, owner):
             db.execute("DELETE FROM edicola_private.profiles WHERE owner_id=%s", (owner,))
 
+    def get_consent(self, purpose, version):
+        with self.transaction() as (db, owner):
+            row = db.execute("SELECT granted FROM edicola_private.ai_consents WHERE owner_id=%s AND purpose=%s AND version=%s",
+                             (owner, purpose, version)).fetchone()
+        return row[0] if row else None
+
+    def set_consent(self, purpose, version, granted):
+        if purpose not in {"text", "personal_text", "audio"} or type(granted) is not bool or not isinstance(version, str) or not 1 <= len(version) <= 80:
+            raise ValueError("Autorizzazione non valida.")
+        with self.transaction() as (db, owner):
+            self.ensure_profile(db, owner)
+            db.execute("INSERT INTO edicola_private.ai_consents(owner_id,purpose,version,granted) VALUES (%s,%s,%s,%s) "
+                       "ON CONFLICT(owner_id,purpose) DO UPDATE SET version=excluded.version,granted=excluded.granted,updated_at=now()",
+                       (owner, purpose, version, granted))
+
     def export_data(self):
         # Una sola transazione/snapshot coerente per tutto l'export.
         with self.transaction(repeatable=True) as (db, owner):
             profile = db.execute("SELECT owner_id,interests,minutes,preferred_format,feedback,updated_at FROM edicola_private.profiles WHERE owner_id=%s", (owner,)).fetchone()
             saved = db.execute("SELECT chunk_id,reference,created_at FROM edicola_private.saved_passages WHERE owner_id=%s ORDER BY chunk_id", (owner,)).fetchall()
             briefs = db.execute("SELECT cache_key,created_at,result_json FROM edicola_private.briefings WHERE owner_id=%s ORDER BY cache_key", (owner,)).fetchall()
+            consents = db.execute("SELECT purpose,version,granted,updated_at FROM edicola_private.ai_consents WHERE owner_id=%s ORDER BY purpose", (owner,)).fetchall()
+            from edicola.chat_store import ChatStore
+            chat_history = ChatStore.export_history(db, owner)
         profile_data = dict(zip(("owner_id", "interests", "minutes", "format", "feedback"), profile[:5])) if profile else None
         if profile_data is not None:
             profile_data["updated_at"] = profile[5].isoformat()
-        return {"version": 1, "profile": profile_data,
+        return {"version": 2, "profile": profile_data, "chat_history": chat_history,
                 "saved": [{"chunk_id": key, "reference": ref, "created_at": created.isoformat()} for key, ref, created in saved],
-                "briefings": [{"key": key, "created_at": created.isoformat(), "result": data} for key, created, data in briefs]}
+                "briefings": [{"key": key, "created_at": created.isoformat(), "result": data} for key, created, data in briefs],
+                "ai_consents": [{"purpose": purpose, "version": version, "granted": granted, "updated_at": updated.isoformat()}
+                                for purpose, version, granted, updated in consents]}

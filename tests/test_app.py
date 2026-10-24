@@ -9,6 +9,7 @@ from edicola.ingestion import ingest_directory
 from edicola.chunking import prepare_documents
 from edicola.rag import RagError, RagResult, Source
 from edicola.experience_ui import readable
+from edicola.reading_ui import chat_markdown
 from edicola.editorial import EditorialResult
 from edicola.knowledge import KnowledgeResult
 from edicola.knowledge_validation import validate_map, validate_timeline
@@ -53,7 +54,7 @@ def test_app_acquires_on_start_and_consults_without_extracting_again(tmp_path):
         assert app.metric[0].value == "1"
         assert app.metric[2].value == "2"
         assert app.get("bidi_component")
-        assert app.button(key="rag_submit").label == "Chiedi all'Edicola"
+        assert len(app.chat_input) == 1
         ask.assert_not_called()
         generate.assert_not_called()
         knowledge.assert_not_called()
@@ -77,7 +78,8 @@ def test_rag_ui_requires_authorization_and_keeps_response_on_rerun(tmp_path):
     (incoming / "quotidiano.pdf").write_bytes(make_pdf())
     registry = tmp_path / "registry.sqlite3"
     result = RagResult("Il consiglio ha approvato il piano. [S1]", [
-        Source("S1", "chunk-1", "quotidiano.pdf", 1, "Il consiglio ha approvato il piano.", 0.2)
+        Source("S1", prepare_documents(ingest_directory(incoming, registry), registry)[0].chunks[0].id,
+               "quotidiano.pdf", 1, "Il consiglio ha approvato il piano.", 0.2)
     ], ["S1"], True)
     with patch("edicola.ingestion.ingest_directory", side_effect=lambda *_: ingest_directory(incoming, registry)), patch(
         "edicola.chunking.prepare_documents", side_effect=lambda docs, _: prepare_documents(docs, registry)
@@ -85,29 +87,27 @@ def test_rag_ui_requires_authorization_and_keeps_response_on_rerun(tmp_path):
         "google.genai.Client", side_effect=AssertionError("API reali vietate")
     ):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=10).run()
-        app.text_input(key="rag_input").set_value("Quale piano è stato approvato?")
+        app.chat_input(key="rag_input").set_value("Quale piano è stato approvato?")
         ask.assert_not_called()
-        app.button(key="rag_submit").click().run()
+        app.run()
         ask.assert_not_called()
-        assert app.warning
-        app.text_input(key="rag_input").set_value("Quale piano è stato approvato?")
-        app.checkbox(key="rag_authorized").check()
-        app.button(key="rag_submit").click().run()
+        assert app.button(key="consent_accept")
+        app.button(key="consent_accept").click().run()
         assert not app.exception
         ask.assert_called_once()
         assert ask.call_args.kwargs["authorize_external"] is True
-        assert any(item.value == readable(result.answer) for item in app.markdown)
-        assert any("[S1] quotidiano.pdf" in item.value for item in app.text)
+        assert any(item.value == chat_markdown(result.answer) for item in app.markdown)
+        assert app.button(key="rag_pdf_S1")
         app.selectbox(key="archive_extracted_page").select_index(1).run()
         assert ask.call_count == 1
-        assert any(item.value == readable(result.answer) for item in app.markdown)
+        assert any(item.value == chat_markdown(result.answer) for item in app.markdown)
         ask.side_effect = RagError("Quota Gemini esaurita.")
-        app.text_input(key="rag_input").set_value("Quale piano è stato approvato?")
-        app.checkbox(key="rag_authorized").check()
-        app.button(key="rag_submit").click().run()
+        app.chat_input(key="rag_input").set_value("Quale piano è stato approvato?")
+        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.run()
         assert not app.exception
-        assert app.error[0].value == "Quota Gemini esaurita."
-        assert len(app.chat_message) == 2  # Un errore non cancella una risposta precedente né aggiunge un turno fittizio.
+        assert "limite di utilizzo" in app.error[0].value
+        assert len(app.chat_message) == 4  # La nuova domanda e il suo errore non cancellano il turno precedente.
         assert ask.call_count == 2  # Un flusso per ciascuno dei due invii autorizzati.
         app.selectbox(key="archive_extracted_page").select_index(0).run()
         assert not app.exception
@@ -131,10 +131,11 @@ def test_editorial_ui_only_generates_on_authorized_submit(tmp_path):
     ):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=10).run()
         generate.assert_not_called()
+        app.segmented_control(key="editorial_kind").set_value("Dossier").run()
         app.button(key="dossier_submit").click().run()
         generate.assert_not_called()
         app.text_input(key="editorial_topic").set_value("Trasporti")
-        app.checkbox(key="editorial_authorized").check()
+        app.session_state["consent_choices"] = {("text", "text-v2"): True}
         app.button(key="dossier_submit").click().run()
         assert not app.exception
         generate.assert_called_once()
@@ -144,7 +145,8 @@ def test_editorial_ui_only_generates_on_authorized_submit(tmp_path):
         assert any("quotidiano.pdf" in item.value for item in app.text)
         app.selectbox(key="archive_extracted_page").select_index(1).run()
         assert generate.call_count == 1
-        app.checkbox(key="editorial_authorized").check()
+        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.segmented_control(key="editorial_kind").set_value("Briefing").run()
         app.button(key="briefing_submit").click().run()
         assert not app.exception
         assert generate.call_args.args[0] == "briefing"
@@ -237,10 +239,12 @@ def test_knowledge_ui_renders_and_does_not_repeat_calls(tmp_path, kind, submit_k
     ):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=10).run()
         generate.assert_not_called()
+        if kind == "map":
+            app.segmented_control(key="knowledge_kind").set_value("Mappa").run()
         app.button(key=submit_key).click().run()
         generate.assert_not_called()
         app.text_input(key="knowledge_topic").set_value("Trasporti")
-        app.checkbox(key="knowledge_authorized").check()
+        app.session_state["consent_choices"] = {("text", "text-v2"): True}
         app.button(key=submit_key).click().run()
         assert not app.exception
         assert generate.call_args.args[:2] == (kind, "Trasporti")

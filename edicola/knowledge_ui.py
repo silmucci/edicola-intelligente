@@ -6,6 +6,7 @@ from pathlib import Path
 from edicola.knowledge_validation import compact_map, map_dot
 from edicola.pdf_viewer import source_button
 from edicola.archive_ui import diagnostics_enabled
+from edicola.design_tokens import COLORS
 
 
 def render_knowledge(result, archive=None):
@@ -30,7 +31,7 @@ def render_knowledge(result, archive=None):
         if events:
             st.vega_lite_chart(
                 [{"date": event["event_date"], "title": event["title"], "description": event["description"]} for event in events],
-                {"mark": {"type": "point", "filled": True, "size": 120},
+                {"mark": {"type": "point", "filled": True, "size": 120, "color": COLORS["primary"]},
                  "encoding": {
                      "x": {"field": "date", "type": "temporal", "title": "Data documentata dell'evento"},
                      "y": {"field": "title", "type": "nominal", "sort": None, "title": "Evento", "axis": {"labelLimit": 220}},

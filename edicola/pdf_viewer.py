@@ -33,13 +33,15 @@ def archive_context(root, documents, prepared):
     return ArchiveContext(root, documents, references)
 
 
-def resolve_reference(context, filename, page, chunk_id=None):
+def resolve_reference(context, filename, page, chunk_id=None, *, pdf_sha256=None):
     if (not isinstance(filename, str) or not filename or any(c in filename for c in ("/", "\\", ":", "\0"))
             or Path(filename).name != filename or Path(filename).suffix.lower() != ".pdf"):
         raise PdfViewError("Riferimento al PDF non valido.")
     document = next((d for d in context.documents if d.filename == filename), None)
     if document is None:
         raise PdfViewError("Il PDF non appartiene all'archivio corrente.")
+    if pdf_sha256 is not None and document.sha256 != pdf_sha256:
+        raise PdfViewError("La fonte non corrisponde più all'edizione salvata nella conversazione.")
     if type(page) is not int or not 1 <= page <= document.total_pages:
         raise PdfViewError("La pagina richiesta non esiste in questo quotidiano.")
     if chunk_id is not None and (filename, page, document.sha256) not in context.chunk_references.get(chunk_id, set()):
@@ -108,8 +110,8 @@ def raster_page(data, page, total, zoom):
                 resource.close()
 
 
-def open_reference(context, filename, page, chunk_id=None):
-    document = resolve_reference(context, filename, page, chunk_id)
+def open_reference(context, filename, page, chunk_id=None, *, pdf_sha256=None):
+    document = resolve_reference(context, filename, page, chunk_id, pdf_sha256=pdf_sha256)
     read_original(context, document)  # Verifica anche il contenuto attuale prima del salto.
     st.session_state["archive_pdf"] = filename
     st.session_state["archive_page"] = page
@@ -117,21 +119,22 @@ def open_reference(context, filename, page, chunk_id=None):
     st.session_state["nav_section"] = "Archivio"
 
 
-def source_button(filename, page, *, context=None, key, chunk_id=None):
+def source_button(filename, page, *, context=None, key, chunk_id=None, label=None, help_text=None, pdf_sha256=None):
     if context is None:
         return
     try:
-        resolve_reference(context, filename, page, chunk_id)
+        resolve_reference(context, filename, page, chunk_id, pdf_sha256=pdf_sha256)
     except PdfViewError as exc:
         st.caption(str(exc))
         return
     def navigate():
         try:
-            open_reference(context, filename, page, chunk_id)
+            open_reference(context, filename, page, chunk_id, pdf_sha256=pdf_sha256)
         except PdfViewError as exc:
             st.session_state["pdf_navigation_error"] = str(exc)
             st.session_state["nav_section"] = "Archivio"
-    st.button(f"Apri PDF · pagina {page}", key=key, help=filename, on_click=navigate)
+    st.button(label or f"Apri PDF · pagina {page}", key=key, help=help_text if help_text is not None else filename,
+              on_click=navigate, type="tertiary" if label else "secondary", width="content")
 
 
 def render_archive(context, prepared):

@@ -18,6 +18,7 @@ from edicola.pdf_viewer import archive_context
 from edicola.profiles import Profile, load_profile, save_profile
 from edicola.rag import RagError, RagResult, Source
 from test_ingestion import make_pdf
+from editorial_adapter import cards_adapter
 
 
 @pytest.fixture
@@ -37,7 +38,7 @@ def archive(tmp_path, monkeypatch):
     catalog = Catalog(chunks, {}, {"indexed": len(chunks), "total": len(chunks) + 2, "partial": True, "files": files, "warnings": []})
     (tmp_path / "data/editions.json").write_text(json.dumps({"a.pdf": {"publication": "Edizione A", "date": "2026-10-21"},
                                                           "b.pdf": {"publication": "Edizione B", "date": "2026-10-23"}}), encoding="utf-8")
-    with patch("google.genai.Client", side_effect=AssertionError("API vietate")), patch(
+    with patch("edicola.editorial_components.cards_component", side_effect=cards_adapter), patch("google.genai.Client", side_effect=AssertionError("API vietate")), patch(
         "edicola.experience_ui.read_catalog", return_value=catalog
     ), patch("edicola.personalization_ui.read_catalog", return_value=catalog), patch(
         "edicola.personalization_ui.list_products", return_value=[]
@@ -86,27 +87,27 @@ def test_identity_home_and_logout_are_not_fake_authentication(archive, logged_in
             app.session_state["rag_history"] = [{"question": "Domanda", "result": RagResult("Risposta", [], [], False)}]
             app.button(key="account_logout").click().run()
             logout.assert_called_once()
-            assert "rag_history" not in app.session_state
+            assert app.session_state["rag_history"] == []
             assert load_profile(root).interests == ["trasporti"]  # Logout non cancella dati persistenti.
         else:
             logout.assert_not_called()
 
 
-@pytest.mark.parametrize("button,destination", [("home_chat", "Chat AI"), ("home_briefing", "Approfondimenti"),
-                                                ("home_podcast", "Podcast"), ("home_profile", "Personalizzazione")])
+@pytest.mark.parametrize("button,destination", [("home_products_test_1", "Chat AI"), ("home_products_test_8", "Approfondimenti"),
+                                                ("home_products_test_5", "Podcast"), ("home_products_test_6", "Personalizzazione")])
 def test_shortcuts_keep_consents_and_do_not_generate(archive, button, destination):
     root, _, _ = archive
     with patch("edicola.rag.ask_question", side_effect=AssertionError("RAG automatico")), patch(
         "edicola.personalization_ui.generate_personal_briefing", side_effect=AssertionError("Generazione automatica")
     ):
         app = AppTest.from_string(script(root), default_timeout=15).run()
-        app.checkbox(key="rag_authorized").check().run()
-        app.text_input(key="rag_input").set_value("Quali opere pubbliche?").run()
+        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.run()
         app.button(key=button).click().run()
         assert not app.exception
         assert app.session_state["nav_section"] == destination
-        assert app.text_input(key="rag_input").value == "Quali opere pubbliche?"
-        assert app.checkbox(key="rag_authorized").value
+        assert len(app.chat_input) == 1
+        assert app.session_state["consent_choices"][("text", "text-v2")]
         assert [tab.label for tab in app.tabs] == SECTIONS
 
 
@@ -154,7 +155,7 @@ def test_home_source_opens_original_page_without_api(archive):
     root, _, catalog = archive
     expected = home_selection(catalog)[0]
     app = AppTest.from_string(script(root), default_timeout=15).run()
-    app.button(key="home_selected_0_pdf").click().run()
+    app.button(key="home_highlights_test_0").click().run()
     assert not app.exception
     assert app.session_state["nav_section"] == "Archivio"
     assert app.session_state["archive_pdf"] == expected.metadata["filename"]
@@ -167,21 +168,21 @@ def test_conversational_history_does_not_repeat_requests_and_handles_failure(arc
     result = RagResult("Risposta documentata. [S1]", [Source("S1", chunk.id, chunk.metadata["filename"], chunk.metadata["page"], chunk.text, .2)], ["S1"], True)
     with patch("edicola.rag.ask_question", return_value=result) as ask:
         app = AppTest.from_string(script(root), default_timeout=15).run()
-        app.text_input(key="rag_input").set_value("Prima domanda")
-        app.checkbox(key="rag_authorized").check()
-        app.button(key="rag_submit").click().run()
+        app.chat_input(key="rag_input").set_value("Prima domanda")
+        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.run()
         assert not app.exception and len(app.chat_message) == 2
         assert app.chat_message[0].name == "user" and app.chat_message[1].name == "assistant"
-        app.button(key="home_profile").click().run()
+        app.button(key="home_products_test_6").click().run()
         assert ask.call_count == 1
-        app.text_input(key="rag_input").set_value("Seconda domanda")
-        app.button(key="rag_submit").click().run()
+        app.chat_input(key="rag_input").set_value("Seconda domanda")
+        app.run()
         assert not app.exception and len(app.chat_message) == 4 and ask.call_count == 2
         app.button(key="rag_pdf_S1").click().run()
         assert ask.call_count == 2
         ask.side_effect = RagError("Servizio momentaneamente non disponibile.")
-        app.button(key="rag_submit").click().run()
-        assert not app.exception and app.error and len(app.chat_message) == 4
+        app.chat_input(key="rag_input").set_value("Terza domanda").run()
+        assert not app.exception and app.error and len(app.chat_message) == 6
         assert ask.call_count == 3
         visible = " ".join(item.value for item in app.caption)
         assert chunk.id not in visible and "distanza" not in visible
@@ -193,7 +194,7 @@ def test_empty_home_and_guest_have_clear_states_and_no_fake_content(archive):
     with patch("streamlit.user", SimpleNamespace(is_logged_in=False)):
         app = AppTest.from_string(script(root), default_timeout=15).run()
     assert not app.exception
-    assert any("Non ci sono ancora letture" in message.value for message in app.info)
+    assert any("Non ci sono passaggi indicizzati" in message.value for message in app.caption)
     assert not any("account personale" in item.value and "non" not in item.value for item in app.caption)
     assert not app.get("file_uploader")
 
@@ -214,9 +215,10 @@ def test_cards_and_shortcuts_wrap_for_narrow_containers(archive):
     horizontal = [block for block in app.get("flex_container")
                   if block.proto.flex_container.direction == Block.FlexContainer.HORIZONTAL]
     assert horizontal and all(block.proto.flex_container.wrap for block in horizontal)
-    # Un'unica griglia non impone la larghezza di quattro schede al viewport.
-    cards = [block for block in app.get("flex_container") if block.proto.width_config.pixel_width == 340]
-    assert cards and all(block.proto.flex_container.border for block in cards)
+    from edicola.editorial_components import CARD_CSS
+    assert "overflow-x:auto" in CARD_CSS and "@media(max-width:600px)" in CARD_CSS
+    assert "scroll-snap-align:start" in CARD_CSS
+
 
 
 def test_untrusted_session_flags_do_not_authenticate(archive):

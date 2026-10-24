@@ -22,6 +22,7 @@ from edicola.cloud import prepare_cloud
 from edicola.settings import setting
 from edicola.experience_ui import SECTIONS, render_home
 from edicola.identity import synchronize_identity, local_demo
+from edicola.header_ui import render_header
 
 ROOT = Path(__file__).resolve().parent
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -29,12 +30,10 @@ logging.getLogger("edicola").setLevel(logging.INFO)
 
 st.set_page_config(page_title="Edicola Digitale Intelligente", layout="wide", page_icon="📰")
 synchronize_identity()
-st.title("Edicola Digitale Intelligente")
-st.caption("I quotidiani originali, le fonti e gli strumenti per approfondire le notizie.")
-
 if setting("EDICOLA_CLOUD_DEMO", "0") == "1":
-    st.info("Archivio dimostrativo pubblico. I profili personali richiedono accesso Google e database configurati. "
-            "Gli audio e i risultati generali locali possono andare persi al riavvio.")
+    with st.expander("Informazioni su questa edicola dimostrativa"):
+        st.caption("Archivio pubblico · spazio personale con accesso Google. "
+                   "Gli audio e i prodotti generali possono non essere disponibili dopo un riavvio; preferenze e briefing personali restano nel tuo account.")
     try:
         with st.spinner("Verifica dello snapshot dimostrativo…"):
             ROOT = prepare_cloud(ROOT)
@@ -58,6 +57,7 @@ if diagnostics_enabled(ROOT):
         middle.metric("PDF disponibili", len(documents))
         right.metric("Pagine complessive", sum(d.total_pages for d in documents))
 context = archive_context(ROOT, documents, prepared)
+render_header(ROOT, context)
 sections = SECTIONS
 if st.session_state.get("nav_section") not in sections:
     st.session_state["nav_section"] = "Home"
@@ -69,13 +69,15 @@ with tabs[0]:
 with tabs[1]:
     render_archive(context, prepared)
 with tabs[2]:
-    render_chat(ROOT, context)
+    with st.container(width=960):
+        render_chat(ROOT, context)
 with tabs[3]:
-    render_editorial(ROOT, context)
+    with st.container(width=900):
+        render_editorial(ROOT, context)
 with tabs[4]:
     render_visuals(ROOT, context)
 with tabs[5]:
-    st.header("Podcast")
-    render_podcast_ui(ROOT, archive=context)
+    with st.container(width=900):
+        render_podcast_ui(ROOT, archive=context)
 with tabs[6]:
     render_personalization_ui(ROOT, archive=context)

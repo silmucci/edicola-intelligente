@@ -187,11 +187,11 @@ def test_ui_local_start_preferences_recommendations_consent_and_rerun(tmp_path, 
         assert any(s.value == "Consigliati per te" for s in app.subheader)
         generate.assert_not_called()
         audio.assert_not_called()
-        app.button(key="FormSubmitter:personal_briefing_form-Genera il mio briefing").click().run()
-        assert not app.exception and app.warning
+        app.button(key="personal_briefing_submit").click().run()
+        assert not app.exception and app.button(key="consent_accept")
         generate.assert_not_called()
-        app.checkbox(key="personal_authorized").check()
-        app.button(key="FormSubmitter:personal_briefing_form-Genera il mio briefing").click().run()
+        app.session_state["consent_choices"] = {("personal_text", "personal-text-v1"): True}
+        app.button(key="personal_briefing_submit").click().run()
         assert not app.exception and generate.call_count == 1
         app.run()
         assert generate.call_count == 1 and audio.call_count == 0
@@ -287,10 +287,10 @@ def test_personal_audio_requires_consent_reuses_cache_and_is_deleted(tmp_path, o
         "edicola.personalization_ui.generate_podcast", side_effect=lambda key, **kw: generate_podcast(key, client=client, **kw)
     ) as generate:
         app = AppTest.from_string(source).run()
-        submit = "FormSubmitter:personal_audio_form-Genera podcast del mio briefing"
+        submit = "personal_audio_submit"
         app.button(key=submit).click().run()
         generate.assert_not_called()
-        app.checkbox(key="personal_audio_authorized").check()
+        app.session_state["consent_choices"] = {("audio", "audio-v1"): True}
         app.button(key=submit).click().run()
         assert not app.exception and app.get("audio")
         client.models.generate_content.assert_called_once()

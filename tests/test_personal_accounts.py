@@ -39,7 +39,8 @@ def user(actor=A, **claims):
 class FakeDatabase:
     """Memoria condivisa fra connessioni/sessioni, con transazioni e scoping simulati."""
     def __init__(self):
-        self.profiles, self.saved, self.briefs = {}, {}, {}
+        self.profiles, self.saved, self.briefs, self.consents = {}, {}, {}, {}
+        self.chat_settings, self.chats, self.messages = {}, {}, {}
         self.calls = []
         self.role = ("edicola_app", False, False, False, False, False)
         self.fail = False
@@ -51,7 +52,7 @@ class FakeDatabase:
     def connect(self):
         if self.fail:
             raise OSError("private-password DATABASE-DOWN")
-        before = copy.deepcopy((self.profiles, self.saved, self.briefs))
+        before = copy.deepcopy((self.profiles, self.saved, self.briefs, self.consents, self.chat_settings, self.chats, self.messages))
         connection = FakeConnection(self)
         self.connections.append(connection)
         try:
@@ -59,7 +60,7 @@ class FakeDatabase:
             if self.fail_commit:
                 raise OSError("private-password COMMIT-FAILED")
         except Exception:
-            self.profiles, self.saved, self.briefs = before
+            self.profiles, self.saved, self.briefs, self.consents, self.chat_settings, self.chats, self.messages = before
             raise
         finally:
             connection.owner = None  # SET LOCAL non sopravvive a commit/rollback.
@@ -95,9 +96,22 @@ class FakeConnection:
         else:
             assert self.owner is not None
             assert params, "Le query dati devono essere parametrizzate"
+            if any("edicola_private." + table in sql for table in ("chat_settings", "conversations", "chat_messages")):
+                from chat_fake import execute_chat
+                self.rows = execute_chat(self.db, sql, params, self.owner)
+                return self
             owner = params[-1] if sql.startswith("UPDATE") else params[0]
             assert owner == self.owner, "RLS simulata: identità differente"
-            if sql.startswith("INSERT INTO edicola_private.profiles"):
+            if sql.startswith("INSERT INTO edicola_private.ai_consents"):
+                self.db.consents[(owner, params[1])] = (params[2], params[3])
+            elif sql.startswith("SELECT") and "FROM edicola_private.ai_consents" in sql:
+                if sql.startswith("SELECT granted"):
+                    result = self.db.consents.get((owner, params[1]))
+                    self.rows = [(result[1],)] if result and result[0] == params[2] else []
+                else:
+                    self.rows = [(purpose, version, granted, datetime(2026, 10, 23, tzinfo=timezone.utc))
+                                 for (who, purpose), (version, granted) in self.db.consents.items() if who == owner]
+            elif sql.startswith("INSERT INTO edicola_private.profiles"):
                 self.db.profiles.setdefault(owner, [[], 5, "testo", {}])
             elif sql.startswith("SELECT") and "FROM edicola_private.profiles" in sql:
                 row = self.db.profiles.get(owner)
@@ -137,6 +151,10 @@ class FakeConnection:
                 self.db.profiles.pop(owner, None)
                 self.db.saved = {key: ref for key, ref in self.db.saved.items() if key[0] != owner}
                 self.db.briefs = {key: ref for key, ref in self.db.briefs.items() if key[0] != owner}
+                self.db.consents = {key: ref for key, ref in self.db.consents.items() if key[0] != owner}
+                self.db.chat_settings.pop(owner, None)
+                self.db.chats = {key: ref for key, ref in self.db.chats.items() if key[0] != owner}
+                self.db.messages = {key: ref for key, ref in self.db.messages.items() if key[0] != owner}
             else:
                 raise AssertionError("Query simulata non prevista: " + sql)
         return self
@@ -451,7 +469,7 @@ def test_unconfigured_database_after_verified_login_fails_closed(auth, tmp_path)
     with patch("edicola.personalization_ui.load_profile", side_effect=AssertionError("Demo vietata")):
         app = AppTest.from_string(ui(tmp_path)).run()
     assert not app.exception and app.error and not app.success and not app.multiselect
-    assert any("non configurato" in e.value for e in app.error)
+    assert any("spazio personale" in e.value for e in app.error)
 
 
 def test_personal_audio_is_scoped_ephemeral_and_briefings_stay_in_postgres(backend, tmp_path, monkeypatch):
@@ -495,7 +513,7 @@ def test_ui_loads_persistent_briefing_without_generation_or_local_sqlite(auth, b
         "edicola.account_ui.generate_personal_briefing", side_effect=AssertionError("Rigenerazione automatica vietata")):
         app = AppTest.from_string(ui(tmp_path)).run()
     assert not app.exception and app.selectbox(key="personal_product").value == key
-    assert any("PostgreSQL" in caption.value for caption in app.caption)
+    assert any("spazio personale" in caption.value for caption in app.caption)
     assert any("temporanei" in caption.value for caption in app.caption)
     assert not list(tmp_path.rglob("*.sqlite3"))
 
@@ -571,7 +589,8 @@ def test_permission_error_is_visible_in_ui_without_false_save(auth, backend, tmp
     with patch("edicola.account_ui.PostgresPersonalStore", side_effect=lambda _: factory()):
         app = AppTest.from_string(ui(tmp_path)).run()
     assert not app.exception and not app.success
-    assert any("migrazione 002" in error.value for error in app.error)
+    assert any("spazio personale" in error.value for error in app.error)
+    assert all("migrazione" not in error.value for error in app.error)
     assert not db.profiles
 
 
