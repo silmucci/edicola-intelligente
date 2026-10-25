@@ -98,7 +98,8 @@ def test_map_preserves_documented_and_thematic_sources_and_styles():
     dot = map_dot(data)
     assert "style=dashed, dir=none" in dot
     assert "style=solid, dir=forward" in dot
-    assert "[S1]" in dot
+    assert "[S1]" not in dot
+    assert "S1" in data["edges"][0]["source_ids"]
     assert not counts["rejected_edges"]
 
 
@@ -171,7 +172,7 @@ def test_generation_cache_coverage_and_model_preserved(setup_knowledge, kind):
     assert client.models.generate_content.call_count == 1
     assert client.models.generate_content.call_args.kwargs["model"] == "configured-flash"
     assert search.call_count == 1
-    assert search.call_args.kwargs["diversify_by_pdf"]
+    assert search.call_args.kwargs["diversify_by_pdf"] is (kind != "map")
     assert not list(root.rglob("*.sqlite3"))  # Cache esclusivamente JSON.
 
 

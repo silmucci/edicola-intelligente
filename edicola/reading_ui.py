@@ -148,9 +148,14 @@ def render_chat(root, context):
         st.rerun()
 
 
-def render_editorial(root, context):
-    section_intro("Approfondimenti", "Il quadro delle notizie o un tema da esplorare: scegli il tuo ritmo di lettura.", "Oltre il titolo")
-    kind = st.segmented_control("Cosa vuoi leggere?", ["Briefing", "Dossier"], default="Briefing", selection_mode="single", key="editorial_kind") or "Briefing"
+def render_editorial(root, context, *, kind=None):
+    if kind is None:  # Compatibilità delle viste richiamate separatamente.
+        kind = st.segmented_control("Cosa vuoi leggere?", ["Briefing", "Dossier"], default="Briefing", key="editorial_kind") or "Briefing"
+    section_intro(kind, "Una sintesi delle edizioni disponibili." if kind == "Briefing" else "Un percorso tra le fonti su un tema a tua scelta.", "Oltre il titolo")
+    results = st.session_state.setdefault("editorial_results", {})
+    previous = st.session_state.get("editorial_result")
+    if previous is not None:
+        results[previous.kind] = previous
     if kind == "Dossier":
         topic = st.text_input("Argomento del dossier", max_chars=500, key="editorial_topic", placeholder="Un argomento, un luogo, una questione")
         st.caption("Un percorso ragionato tra le fonti, con introduzione, sezioni e conclusioni.")
@@ -164,21 +169,21 @@ def render_editorial(root, context):
         st.warning("Scegli un argomento per il dossier.")
     if valid and authorize_action("text", kind.lower(), submitted, topic):
         st.session_state.pop("editorial_result", None)
+        results.pop(kind.lower(), None)
         try:
             with st.spinner("Seleziono le fonti e preparo la lettura…"):
                 st.session_state["editorial_result"] = perform("text", editorial.generate_product,
                     kind.lower(), topic, authorize_external=True, root=root)
+                results[kind.lower()] = st.session_state["editorial_result"]
         except (editorial.EditorialError, PermissionDenied, PersonalStoreError) as exc:
             st.error(friendly_error(exc))
-    if "editorial_result" not in st.session_state:
-        st.info("Scegli un argomento per il dossier oppure genera un briefing dalle notizie disponibili. La generazione parte solo dopo il tuo consenso.")
+    if kind.lower() not in results:
+        st.info("Scegli un argomento per iniziare." if kind == "Dossier" else "Il tuo briefing raccoglierà le notizie disponibili. Premi Genera briefing per iniziare.")
         return
-    product = st.session_state["editorial_result"]
+    product = results[kind.lower()]
     coverage = product.coverage
     if coverage["partial"]:
         st.warning("Archivio parzialmente indicizzato: il prodotto copre soltanto i contenuti disponibili, non tutti i quotidiani.")
-    if product.from_cache:
-        st.caption("Risultato riutilizzato dalla cache.")
     st.subheader(readable(product.title))
     if product.message:
         st.info(product.message)
@@ -202,23 +207,46 @@ def render_editorial(root, context):
                 st.text(source.text)
 
 
-def render_visuals(root, context):
-    section_intro("Timeline e Mappe", "Segui gli eventi nel tempo o esplora i legami documentati tra concetti.", "Le notizie, da un altro punto di vista")
-    kind = st.segmented_control("Come vuoi esplorare?", ["Timeline", "Mappa"], default="Timeline", key="knowledge_kind") or "Timeline"
-    topic = st.text_input("Argomento della timeline o mappa", max_chars=500, key="knowledge_topic", placeholder="Quale storia vuoi esplorare?")
+def render_visuals(root, context, *, kind=None):
+    standalone = kind is None
+    if standalone:
+        kind = st.segmented_control("Come vuoi esplorare?", ["Timeline", "Mappa"], default="Timeline", key="knowledge_kind") or "Timeline"
+    section_intro("Timeline" if kind == "Timeline" else "Mappe concettuali",
+                  "Segui gli eventi e gli sviluppi nelle fonti." if kind == "Timeline" else "Esplora i concetti e i loro collegamenti.")
+    result_kind = "timeline" if kind == "Timeline" else "map"
+    results = st.session_state.setdefault("knowledge_results", {})
+    previous = st.session_state.get("knowledge_result")
+    if previous is not None:
+        results[previous.kind] = previous
+    versions = st.session_state.setdefault("knowledge_result_versions", {})
+    strategies = {"map": (knowledge.MAP_VERSION, knowledge.RELEVANCE_VERSION),
+                  "timeline": (knowledge.TIMELINE_CONTENT_VERSION, knowledge.TIMELINE_VERSION, knowledge.RELEVANCE_VERSION)}
+    outdated = result_kind in results and versions.get(result_kind) != strategies[result_kind]
+    if outdated:
+        results.pop(result_kind, None)
+        if previous is not None and previous.kind == result_kind:
+            st.session_state.pop("knowledge_result", None)
+    topic_key = "knowledge_topic" if standalone else "knowledge_topic_" + result_kind
+    topic = st.text_input("Quale tema vuoi esplorare?", max_chars=500, key=topic_key, placeholder="Un argomento, un luogo, una questione")
     submitted = st.button("Genera timeline" if kind == "Timeline" else "Genera mappa concettuale",
                           key="timeline_submit" if kind == "Timeline" else "map_submit", type="primary")
     if submitted and not topic.strip():
         st.warning("Scegli un argomento da esplorare.")
     if topic.strip() and authorize_action("text", "visual_" + kind, submitted, topic):
         st.session_state.pop("knowledge_result", None)
+        results.pop(result_kind, None)
         try:
-            with st.spinner("Cerco e verifico i riferimenti nelle fonti…"):
+            with st.spinner("Preparo la timeline…" if kind == "Timeline" else "Preparo la mappa…"):
                 st.session_state["knowledge_result"] = perform("text", knowledge.generate_knowledge,
                     "timeline" if kind == "Timeline" else "map", topic, authorize_external=True, root=root)
+                results[result_kind] = st.session_state["knowledge_result"]
+                versions[result_kind] = strategies[result_kind]
         except (knowledge.KnowledgeError, PermissionDenied, PersonalStoreError) as exc:
             st.error(friendly_error(exc))
-    if "knowledge_result" in st.session_state:
-        render_knowledge(st.session_state["knowledge_result"], archive=context)
+    if result_kind in results:
+        result = results[result_kind]
+        if " ".join(topic.split()) != result.topic:
+            st.caption("Risultato dell’argomento precedente: modifica la richiesta e avvia la generazione per aggiornarlo.")
+        render_knowledge(result, archive=context)
     else:
-        st.info("Scegli un tema: la timeline ordina gli eventi con date verificate, la mappa mostra concetti e relazioni documentate.")
+        st.info("La mappa o timeline precedente va aggiornata: premi Genera per usare i nuovi criteri." if outdated else "Scegli un tema per iniziare.")

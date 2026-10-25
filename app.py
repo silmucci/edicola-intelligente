@@ -20,9 +20,10 @@ from edicola.podcast_ui import render_podcast_ui
 from edicola.personalization_ui import render_personalization_ui
 from edicola.cloud import prepare_cloud
 from edicola.settings import setting
-from edicola.experience_ui import SECTIONS, render_home
-from edicola.identity import synchronize_identity, local_demo
+from edicola.experience_ui import render_home
+from edicola.identity import synchronize_identity
 from edicola.header_ui import render_header
+from edicola.product_navigation import render_navigation, active_product
 
 ROOT = Path(__file__).resolve().parent
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -58,26 +59,24 @@ if diagnostics_enabled(ROOT):
         right.metric("Pagine complessive", sum(d.total_pages for d in documents))
 context = archive_context(ROOT, documents, prepared)
 render_header(ROOT, context)
-sections = SECTIONS
-if st.session_state.get("nav_section") not in sections:
-    st.session_state["nav_section"] = "Home"
-# Tutti i controlli restano montati: cambiare scheda conserva input e consensi.
-# Nessuna generazione è associata al cambio scheda o all'apertura delle fonti.
-tabs = st.tabs(sections, key="nav_section", on_change="rerun")
-with tabs[0]:
+section = render_navigation()
+product = active_product(section)
+# Si monta solo la destinazione scelta. Risultati RAM e input conservati dalla
+# navigazione; i pulsanti di generazione non vengono ripristinati.
+if product["id"] == "home":
     render_home(context.root, context)
-with tabs[1]:
+elif product["id"] == "archive":
     render_archive(context, prepared)
-with tabs[2]:
+elif product["id"] == "chat":
     with st.container(width=960):
         render_chat(ROOT, context)
-with tabs[3]:
+elif product["id"] in {"briefing", "dossier"}:
     with st.container(width=900):
-        render_editorial(ROOT, context)
-with tabs[4]:
-    render_visuals(ROOT, context)
-with tabs[5]:
+        render_editorial(ROOT, context, kind=product["kind"])
+elif product["id"] in {"timeline", "map"}:
+    render_visuals(ROOT, context, kind=product["kind"])
+elif product["id"] == "podcast":
     with st.container(width=900):
         render_podcast_ui(ROOT, archive=context)
-with tabs[6]:
+elif product["id"] == "profile":
     render_personalization_ui(ROOT, archive=context)

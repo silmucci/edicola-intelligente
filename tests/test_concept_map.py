@@ -114,16 +114,17 @@ def test_compact_layout_limits_nodes_wraps_labels_and_preserves_source_data():
     view = compact_map(data)
     assert len(view["nodes"]) == 10
     identities = {node["id"] for node in view["nodes"]}
-    assert "N1" not in identities  # L'isolato non prende il posto di un estremo.
+    assert "N1" in identities  # L'isolato pertinente non scompare a favore degli archi.
     assert all({edge["from_id"], edge["to_id"]} <= identities for edge in view["edges"])
     assert data == original
     dot = map_dot(data)
-    assert "rankdir=LR" in dot and "fontsize=10" in dot and "nodesep=0.16" in dot
-    assert 'size="9,4.2"' in dot and "\\n" in dot
+    assert "rankdir=TB" in dot and "fontsize=12" in dot and "nodesep=0.22" in dot
+    assert 'size="' not in dot and "\\n" in dot
     assert dot.count("fillcolor=") == 10
-    for color in ("#eeeeef", "#eaf1e8", "#f5eddf", "#e8eef5"):
+    for color in ("#F2F7FD", "#EDF5FF", "#FFF1F2", "#E6F0FF"):
         assert color in dot
-    assert 'tooltip="Concetto' in dot and "[S1]" in dot
+    assert 'tooltip="Concetto' in dot and "[S1]" not in dot
+    assert data == original  # I riferimenti restano nel risultato, non nell'etichetta.
 
 
 def test_no_edges_returns_compact_concept_list():

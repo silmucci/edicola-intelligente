@@ -25,7 +25,7 @@ def render_podcast_ui(root: Path, archive=None):
         st.info(str(exc))
         return
     if not products:
-        st.info("La tua biblioteca audio è ancora vuota. Crea prima un dossier o un briefing in Approfondimenti, poi trasformalo in un ascolto.")
+        st.info("La tua biblioteca audio è ancora vuota. Crea prima un dossier o un briefing, poi trasformalo in un ascolto.")
         return
     load_dotenv(root / ".env", override=False)
     available = {p.key: p for p in products}

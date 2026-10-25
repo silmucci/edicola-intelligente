@@ -18,15 +18,14 @@ from edicola import identity
 from edicola.design import section_intro, empty_state
 from edicola.editorial_components import render_products, render_highlights
 
-SECTIONS = ["Home", "Archivio", "Chat AI", "Approfondimenti", "Timeline e Mappe", "Podcast", "Personalizzazione"]
+from edicola.product_navigation import SECTIONS, cancel_navigation_action
 INTERESTS = ["Ambiente", "Cultura", "Economia", "Politica", "Salute", "Scuola", "Sport", "Tecnologia", "Trasporti"]
 
 
 def navigate(section):
     if section in SECTIONS:
+        cancel_navigation_action()
         st.session_state["nav_section"] = section
-        if section == "Approfondimenti":
-            st.session_state["editorial_kind"] = "Briefing"
 
 
 def authenticated():

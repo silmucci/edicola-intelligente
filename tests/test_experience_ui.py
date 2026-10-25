@@ -61,12 +61,12 @@ docs = ingest_directory(root / "data/incoming", root / "data/archive.sqlite3")
 prepared = prepare_documents(docs, root / "data/archive.sqlite3")
 context = archive_context(root, docs, prepared)
 if "nav_section" not in st.session_state:
-    st.session_state["nav_section"] = "Home"
+    st.session_state["nav_section"] = SECTIONS[0]
 tabs = st.tabs(SECTIONS, key="nav_section", on_change="rerun")
 with tabs[0]: render_home(root, context)
 with tabs[1]: render_archive(context, prepared)
 with tabs[2]: render_chat(root, context)
-with tabs[6]: render_personalization_ui(root, archive=context)
+with tabs[8]: render_personalization_ui(root, archive=context)
 '''
 
 
@@ -93,8 +93,8 @@ def test_identity_home_and_logout_are_not_fake_authentication(archive, logged_in
             logout.assert_not_called()
 
 
-@pytest.mark.parametrize("button,destination", [("home_products_test_1", "Chat AI"), ("home_products_test_8", "Approfondimenti"),
-                                                ("home_products_test_5", "Podcast"), ("home_products_test_6", "Personalizzazione")])
+@pytest.mark.parametrize("button,destination", [("home_products_test_2", "Chat AI"), ("home_products_test_3", "Briefing"),
+                                                ("home_products_test_7", "Podcast"), ("home_products_test_8", "Il mio profilo")])
 def test_shortcuts_keep_consents_and_do_not_generate(archive, button, destination):
     root, _, _ = archive
     with patch("edicola.rag.ask_question", side_effect=AssertionError("RAG automatico")), patch(
@@ -157,7 +157,7 @@ def test_home_source_opens_original_page_without_api(archive):
     app = AppTest.from_string(script(root), default_timeout=15).run()
     app.button(key="home_highlights_test_0").click().run()
     assert not app.exception
-    assert app.session_state["nav_section"] == "Archivio"
+    assert app.session_state["nav_section"] == "Archivio PDF"
     assert app.session_state["archive_pdf"] == expected.metadata["filename"]
     assert app.session_state["archive_page"] == expected.metadata["page"]
 

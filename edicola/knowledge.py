@@ -22,6 +22,9 @@ from edicola.search import semantic_search
 from edicola.timeline_dates import VERSION as TIMELINE_VERSION
 from edicola.map_relations import VERSION as MAP_VERSION
 from edicola.map_context import contiguous, select_map_chunks
+from edicola.knowledge_presentation import TIMELINE_CONTENT_VERSION
+from edicola.proposal_extraction import proposal_items
+from edicola.knowledge_relevance import Topic, select_topic_chunks, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION
 
 
 VERSION = "knowledge-v2"
@@ -35,7 +38,7 @@ nella stessa evidenza temporale del medesimo evento, altrimenti null. Non inferi
 pubblicazione, date relative da oggi o date dell'evento dalla data del giornale. date_evidence
 riporta la citazione temporale o null. Mantieni gli eventi senza data, senza inventarne una.
 MAPPA: nodi N1, N2, ecc.; label.text deve essere una denominazione letteralmente presente
-nelle evidenze. Tipi: concept, event, place, organization. Gli archi documented richiedono una
+nelle evidenze. Tipi: concept, event, place, organization, person, measure, proposal. Gli archi documented richiedono una
 quote che menzioni entrambi i nodi e la relazione: label.text è una breve locuzione relazionale
 presente letteralmente nella quote. Gli archi thematic sono solo associazioni tematiche:
 non rappresentano causalità o direzione e non possono contenere etichette causali. Non inventare
@@ -43,6 +46,12 @@ collegamenti per completare la mappa. I passaggi possono contenere colonne o art
 Limiti: massimo 12 eventi, 16 nodi e 24 archi; da 1 a 5 evidenze per ogni affermazione.
 Se non ci sono informazioni supportate, restituisci liste vuote."""
 TIMELINE_INSTRUCTIONS = """
+Ricerca anche sviluppi documentati senza calendario: proposte, richieste di misure,
+decisioni, annunci e programmi. Una proposta contro il caro carburante è uno sviluppo
+utile anche senza giorno/mese/anno. Non escluderla solo perché non è databile.
+Seleziona proposizioni specifiche pertinenti al tema, non generiche descrizioni.
+Titoli brevi, massimo circa 80 caratteri, senza ripetere la domanda. Le evidence
+devono essere citazioni focalizzate sul medesimo sviluppo, senza mescolare articoli.
 Per la timeline conserva SEMPRE date_evidence quando il testo contiene giorno e mese,
 anche senza anno: event_date resta null e Python verifica l'eventuale anno usando
 esclusivamente l'edizione della fonte. La quote includa il giorno della settimana e
@@ -51,11 +60,24 @@ Non completare anni nelle descrizioni. Distingui annunci/programmi da fatti avve
 mantieni futuro e condizionale originali, non trasformare un evento previsto in compiuto.
 """
 MAP_INSTRUCTIONS = """
+Gli elenchi introdotti da 'Tra le proposte' non autorizzano a inventare un agente
+o a dire che le misure siano approvate. Le denominazioni devono essere quelle
+letterali del passaggio, anche 'credito di imposta' invece di una parafrasi.
+Sono verificabili anche locuzioni nominali esplicite: ad esempio 'modifica dei
+criteri del Bando (ex 5.68) per il ristoro alle imprese' collega i due sintagmi
+con predicate='per', conservando il riferimento numerico nella prova. Non usare
+un arco verso il caro carburante solo perché è menzionato nello stesso articolo.
+Puoi distinguere anche person, measure e proposal: una proposta non è una misura
+approvata. Etichette brevi ma letterali, senza abbreviazioni inventate. Nessun nodo
+centrale aggiunto artificialmente: scegli concetti già provati e pertinenti al tema.
 Per questa mappa preferisci 8-10 nodi, massimo 10, e massimo 14 archi; meno se le prove non bastano.
 Usa esclusivamente gli identificativi S1, S2, ecc. ricevuti per evidence.source_id;
 N1, N2, ecc. sono invece gli identificativi dei nodi in from_id/to_id. Non usare nomi PDF come ID.
-Prima individua proposizioni con relazioni esplicite e ricava da esse i nodi: privilegia
-piccoli gruppi con prove comuni invece di un elenco di concetti isolati. Non mescolare colonne o articoli.
+Privilegia prima le informazioni utili alla domanda, conservando anche concetti
+pertinenti senza archi. Una citazione valida su un settore diverso non basta:
+rispetta destinatari, luoghi e tema richiesti, anche quando il problema generale è comune.
+Una relazione generica come 'chiede al' non sostituisce le misure concretamente proposte.
+Non mescolare colonne o articoli. Non privilegiare il numero di archi rispetto alla pertinenza.
 Scegli denominazioni letterali complete e non ambigue. Per documented cita una frase che lega
 effettivamente il nodo iniziale al finale: label.text conserva la locuzione originale,
 inclusi ausiliari e preposizioni, anche nelle forme passive, senza invertire soggetto e oggetto.
@@ -110,7 +132,7 @@ def knowledge_schema(kind: str, sources: list[Source]) -> dict:
         properties = {
             "nodes": {"type": "array", "maxItems": 16, "items": {
                 "type": "object", "additionalProperties": False, "required": ["id", "kind", "label"],
-                "properties": {"id": {"type": "string"}, "kind": {"type": "string", "enum": ["concept", "event", "place", "organization"]}, "label": claim}}},
+                "properties": {"id": {"type": "string"}, "kind": {"type": "string", "enum": ["concept", "event", "place", "organization", "person", "measure", "proposal"]}, "label": claim}}},
             "edges": {"type": "array", "maxItems": 24, "items": {
                 "type": "object", "additionalProperties": False, "required": ["from_id", "to_id", "kind", "label"],
                 "properties": {"from_id": {"type": "string"}, "to_id": {"type": "string"},
@@ -220,18 +242,23 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
         }
         if kind == "timeline":
             cache_identity["timeline_dates_version"] = TIMELINE_VERSION
+            cache_identity["timeline_content_version"] = TIMELINE_CONTENT_VERSION
         else:
             cache_identity["map_strategy_version"] = MAP_VERSION
             cache_identity["map_adjacent_chunks"] = neighbors
+        cache_identity["relevance_version"] = RELEVANCE_VERSION
         identity = hashlib.sha256(json.dumps(cache_identity, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         cache = root / "data/knowledge_cache" / f"{identity}.json"
         if cache.exists():
             saved = json.loads(cache.read_text(encoding="utf-8"))
+            if saved.get("kind") != kind or saved.get("topic") != topic:
+                raise KnowledgeError("Cache non coerente con il prodotto o l’argomento richiesto; nessuna rigenerazione automatica.")
             saved["sources"] = [Source(**item) for item in saved["sources"]]
             saved["from_cache"] = True
             logger.info("phase=knowledge_cache kind=%s event=hit", kind)
             return KnowledgeResult(**saved)
-        hits = semantic_search(topic, authorize_external=True, root=root, top_k=top_k, diversify_by_pdf=True) if catalog.chunks else []
+        matcher = Topic(topic, catalog.chunks)
+        hits = semantic_search(topic, authorize_external=True, root=root, top_k=top_k, diversify_by_pdf=kind != "map") if catalog.chunks else []
         current = {chunk.id: chunk for chunk in catalog.chunks}
         seen = set()
         seeds, distances = [], {}
@@ -241,14 +268,16 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                 seeds.append(chunk)
                 distances[chunk.id] = float(hit["distance"])
                 seen.add(chunk.id)
-        selected_chunks = select_map_chunks(seeds, catalog.chunks, neighbors) if kind == "map" else seeds
+        if kind == "map":
+            seeds = select_topic_chunks(matcher, catalog.chunks, hits, top_k)
+        selected_chunks = select_map_chunks(seeds, catalog.chunks, neighbors, topic=topic) if kind == "map" else seeds
         sources = [Source(f"S{i}", chunk.id, chunk.metadata["filename"], chunk.metadata["page"], chunk.text,
                           distances.get(chunk.id, 0.0)) for i, chunk in enumerate(selected_chunks, 1)]
         if not sources:
             return KnowledgeResult(kind, topic, {}, [], catalog.coverage, {"status": "no_sources"})
         instruction = SYSTEM + (TIMELINE_INSTRUCTIONS if kind == "timeline" else MAP_INSTRUCTIONS)
-        def prompt_for(cap):
-            selected = [Source(s.id, s.chunk_id, s.filename, s.page, s.text[:cap], s.distance) for s in sources]
+        def prompt_for():
+            selected = list(sources)
             payload = {"task": kind, "topic": topic, "editions": catalog.coverage["files"],
                                         "sources": [{"source_id": s.id, "chunk_id": s.chunk_id, "pdf": s.filename,
                                                      "page": s.page, "text": s.text} for s in selected]}
@@ -256,35 +285,24 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                 payload["adjacent_sources"] = [[a.id, b.id] for a in selected for b in selected
                     if contiguous(current[a.chunk_id], current[b.chunk_id])]
             return selected, json.dumps(payload, ensure_ascii=False)
-        selection_diagnostics = {}
-        if kind == "map":
-            initial = len(sources)
-            while sources:
-                selected, prompt = prompt_for(max(len(s.text) for s in sources))
-                if len(instruction) + len(prompt) <= budget:
-                    break
-                sources.pop()
-            if not sources:
-                raise KnowledgeError("Budget insufficiente per un chunk originale completo della mappa; aumentare KNOWLEDGE_MAX_PROMPT_CHARS.")
-            seed_ids = {c.id for c in seeds}
-            selection_diagnostics = {"retrieved_chunks": len(seeds), "used_chunks": len(sources),
-                "adjacent_chunks_used": sum(s.chunk_id not in seed_ids for s in sources),
-                "chunks_dropped_for_budget": initial - len(sources)}
-            fitted = (selected, prompt)
-        else:
-            fitted = None
-        low, high = 40, max(len(s.text) for s in sources)
-        while kind == "timeline" and low <= high:
-            middle = (low + high) // 2
-            subset, prompt = prompt_for(middle)
+        candidates = list(sources)
+        kept = []
+        for source in candidates:
+            sources = kept + [source]
+            _, prompt = prompt_for()
             if len(instruction) + len(prompt) <= budget:
-                fitted = (subset, prompt)
-                low = middle + 1
-            else:
-                high = middle - 1
-        if fitted is None:
-            raise KnowledgeError("Budget del prompt troppo basso per le fonti e i metadati selezionati.")
-        sources, prompt = fitted
+                kept.append(source)
+        sources = kept
+        if not sources:
+            raise KnowledgeError("Budget insufficiente per un passaggio originale completo; verificare KNOWLEDGE_MAX_PROMPT_CHARS.")
+        sources, prompt = prompt_for()
+        seed_ids = {c.id for c in seeds}
+        selection_diagnostics = {"retrieved_chunks": len(seeds), "used_chunks": len(sources),
+            "adjacent_chunks_used": sum(s.chunk_id not in seed_ids for s in sources),
+            "chunks_dropped_for_budget": len(candidates) - len(sources)}
+        selection_diagnostics["semantic_hits"] = len(hits)
+        selection_diagnostics["selection"] = [{"source_id": s.id, "reason": "verified_adjacent" if s.chunk_id not in seed_ids else "semantic_and_local" if s.chunk_id in distances else "local_indexed",
+                                                 "score": round(matcher.score(s.text), 3)} for s in sources]
         if client is None:
             if not key:
                 raise KnowledgeError("Configurare GEMINI_API_KEY nell'ambiente o in .env.")
@@ -293,16 +311,37 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
             own_client = True
         raw = generate_data(client, model, prompt, knowledge_schema(kind, sources), system_instruction=instruction)
         try:
-            data = json.loads(raw)
+            raw_data = json.loads(raw)
+            data = raw_data
             data, diagnostics = (validate_timeline(data, sources, catalog.coverage) if kind == "timeline" else validate_map(
                 data, sources, contexts={s.id: current[s.chunk_id].metadata for s in sources}))
+            if kind == "timeline" and not (data["events"] or data["undated_events"]):
+                # Solo dopo JSON valido e verifica AI: mai mascherare errori API o
+                # formato. Gli elenchi estratti ripassano per gli stessi validatori.
+                extracted = proposal_items(sources)
+                if extracted:
+                    local_data, local_counts = validate_timeline({"events": extracted}, sources, catalog.coverage)
+                    if local_data["undated_events"]:
+                        data = local_data
+                        diagnostics["extracted_developments"] = len(data["undated_events"])
+                        diagnostics["undated_events"] = local_counts["undated_events"]
+            if kind == "map":
+                data, relevance = relevant_map(data, raw_data, sources, matcher,
+                                              contexts={s.id: current[s.chunk_id].metadata for s in sources})
+                diagnostics.update(relevance)
+            else:
+                data, diagnostics["off_topic_events"] = relevant_timeline(data, sources, matcher)
+                diagnostics["relevant_dated_events"] = len(data["events"])
+                diagnostics["relevant_undated_events"] = len(data["undated_events"])
             diagnostics.update(selection_diagnostics)
         except (ValueError, TypeError, KeyError):
             raise KnowledgeError("Dati strutturati non validi: risultato non visualizzato e non salvato in cache.") from None
         diagnostics["status"] = "partial_validation" if any(value for name, value in diagnostics.items() if name.startswith("rejected")) else "ok"
+        diagnostics["relevance_version"] = RELEVANCE_VERSION
         result = KnowledgeResult(kind, topic, data, sources, catalog.coverage, diagnostics)
         logger.info("phase=knowledge_validation kind=%s diagnostics=%s", kind,
-                    {key: value for key, value in diagnostics.items() if key != "edge_decisions"})
+                    {key: value for key, value in diagnostics.items() if isinstance(value, (int, str))}
+                    | {key: diagnostics[key] for key in ("edge_rejections", "edge_rejection_details") if key in diagnostics})
         useful = data.get("events") or data.get("undated_events") or data.get("nodes")
         if useful:
             cache.parent.mkdir(parents=True, exist_ok=True)

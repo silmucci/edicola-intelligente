@@ -165,7 +165,8 @@ def test_full_app_client_home_keeps_all_sections_without_archive_diagnostics(arc
     ):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=10).run()
         assert not app.exception and not app.dataframe and not app.metric
-        assert [tab.label for tab in app.tabs] == ["Home", "Archivio", "Chat AI", "Approfondimenti", "Timeline e Mappe", "Podcast", "Personalizzazione"]
+        from edicola.product_navigation import SECTIONS
+        assert app.pills(key="nav_section").options == SECTIONS
         assert not app.checkbox
         assert "consent_choices" not in app.session_state
         assert not app.get("file_uploader")

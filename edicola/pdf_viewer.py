@@ -116,7 +116,9 @@ def open_reference(context, filename, page, chunk_id=None, *, pdf_sha256=None):
     st.session_state["archive_pdf"] = filename
     st.session_state["archive_page"] = page
     st.session_state["archive_open"] = True
-    st.session_state["nav_section"] = "Archivio"
+    from edicola.product_navigation import destination, cancel_navigation_action
+    cancel_navigation_action()
+    st.session_state["nav_section"] = destination("archive")
 
 
 def source_button(filename, page, *, context=None, key, chunk_id=None, label=None, help_text=None, pdf_sha256=None):
@@ -132,7 +134,9 @@ def source_button(filename, page, *, context=None, key, chunk_id=None, label=Non
             open_reference(context, filename, page, chunk_id, pdf_sha256=pdf_sha256)
         except PdfViewError as exc:
             st.session_state["pdf_navigation_error"] = str(exc)
-            st.session_state["nav_section"] = "Archivio"
+            from edicola.product_navigation import destination, cancel_navigation_action
+            cancel_navigation_action()
+            st.session_state["nav_section"] = destination("archive")
     st.button(label or f"Apri PDF · pagina {page}", key=key, help=help_text if help_text is not None else filename,
               on_click=navigate, type="tertiary" if label else "secondary", width="content")
 

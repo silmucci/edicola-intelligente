@@ -225,4 +225,4 @@ def render_personalization_ui(root, archive=None):
                     st.text(f"{source['filename']} — pagina {source['page']}")
                     source_button(source["filename"], source["page"], context=archive, chunk_id=source["chunk_id"], key=f"personal_audio_pdf_{source['id']}")
     else:
-        st.info("Il tuo primo briefing ti aspetta: scegli gli interessi e autorizza la generazione. Gli altri prodotti sono in Approfondimenti e Podcast.")
+        st.info("Il tuo primo briefing ti aspetta: scegli gli interessi e autorizza la generazione. Puoi esplorare anche Briefing, Dossier e Podcast.")

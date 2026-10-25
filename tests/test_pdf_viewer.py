@@ -46,7 +46,7 @@ root=Path({str(context.root)!r})
 documents=ingest_directory(root / "data/incoming", root / "data/archive.sqlite3")
 prepared=prepare_documents(documents, root / "data/archive.sqlite3")
 context=archive_context(root, documents, prepared)
-st.tabs(["Archivio", "Chat AI"], key="nav_section", on_change="rerun")
+st.tabs(["Archivio PDF", "Chat AI"], key="nav_section", on_change="rerun")
 render_archive(context, prepared)
 '''
 
@@ -152,7 +152,7 @@ source_button("a.pdf", 2, context=context, chunk_id={chunk.id!r}, key="open_sour
     app.run()
     app.button(key="open_source").click().run()
     assert not app.exception and not app.error
-    assert app.session_state["nav_section"] == "Archivio"
+    assert app.session_state["nav_section"] == "Archivio PDF"
     assert app.session_state["archive_pdf"] == "a.pdf"
     assert app.session_state["archive_page"] == 2 and app.session_state["archive_open"]
     assert app.checkbox(key="consent").value
@@ -197,7 +197,7 @@ coverage={{"indexed":1,"total":2,"partial":True,"warnings":[],"files":[]}}
 result=EditorialResult({kind!r}, "Titolo", [{{"heading":"Notizia [S1]","text":"Seconda pagina. [S1]"}}], [source], ["S1"], coverage, True)
 '''
     if kind in ("dossier", "briefing"):
-        action = '\nfrom edicola.reading_ui import render_editorial\nst.session_state["editorial_result"]=result\nrender_editorial(root, context)'
+        action = '\nfrom edicola.reading_ui import render_editorial\nst.session_state["editorial_result"]=result\nrender_editorial(root, context, kind=result.kind.title())'
         button = "editorial_pdf_S1"
     elif kind == "personal":
         action = '\nfrom edicola.personalization_ui import show_product\nshow_product(result, context)'
@@ -214,7 +214,7 @@ else:
     data, diagnostics=validate_map({{"nodes":[{{"id":"N1","kind":"concept","label":claim}}],"edges":[]}}, [source])
 render_knowledge(KnowledgeResult({kind!r}, "Argomento", data, [source], coverage, diagnostics), context)
 '''
-        button = "knowledge_pdf_S1"
+        button = "undated_0_pdf_S1" if kind == "timeline" else "map_node_N1_pdf_S1"
     app = AppTest.from_string(script(context) + setup + action, default_timeout=10).run()
     assert not app.exception
     app.button(key=button).click().run()

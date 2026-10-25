@@ -1,5 +1,28 @@
 # Edicola Digitale Intelligente
 
+**Mappe — Task 14.4:** etichette senza troncamenti, gruppi per tipo e dettagli
+dedicati a ogni concetto, con pagina PDF originale verificata. Solo presentazione,
+senza rigenerare risultati. [Comportamento e prova locale](MAPS_TASK14_4.md).
+
+**Mappe — Task 14.3:** pertinenza distinta dalla verifica delle fonti, selezione
+locale dei passaggi indicizzati, conservazione dei concetti isolati e grafici
+con dimensioni intrinseche. [Diagnosi, limiti e verifiche](MAPS_TASK14_3.md).
+
+**UI — Task 14.2:** nove destinazioni autonome, con nomi e ordine condivisi fra
+card e barra di navigazione responsive. Mappe con Grafo/Elenco alternativi,
+timeline sintetiche, fonti e dettagli su richiesta.
+[Modifiche, test e checklist visiva](UI_TASK14_2.md).
+
+**Timeline e Mappe — Task 14.1:** raggruppamento visuale anche senza archi,
+stati vuoti distinti per fase e proposte nominali documentate senza date inventate.
+[Diagnosi, test e verifica manuale](KNOWLEDGE_TASK14_1.md).
+
+**Timeline e Mappe — Task 14:** cronologia soltanto per date evento verificate;
+proposte, decisioni e annunci senza data in **Eventi e sviluppi documentati**, con
+ordine di lettura esplicito. Card verticali, fonti compatte, mappe Graphviz con
+elenco alternativo, passaggi interi nel budget e cache versionate separatamente.
+[Comportamento, limiti e prova locale](KNOWLEDGE_TASK14.md).
+
 **Design editoriale — Task 13:** nuova testata con ricerca locale, card dei prodotti,
 copertine autentiche in carosello e fascia In evidenza con estratti documentati.
 Tema bianco/blu, accenti rossi, font locali e layout adattivi; conservati account,

@@ -54,11 +54,12 @@ def test_app_acquires_on_start_and_consults_without_extracting_again(tmp_path):
         assert app.metric[0].value == "1"
         assert app.metric[2].value == "2"
         assert app.get("bidi_component")
-        assert len(app.chat_input) == 1
+        assert not app.chat_input
         ask.assert_not_called()
         generate.assert_not_called()
         knowledge.assert_not_called()
         assert len(app.get("file_uploader")) == 0
+        app.pills(key="nav_section").set_value("Archivio PDF").run()
         assert app.dataframe[0].value.iloc[0]["Pagine"] == 2
         assert "pagina 1" in app.selectbox(key="archive_chunk").options[0]
         with patch("edicola.ingestion.extract_pdf", side_effect=AssertionError("estrazione ripetuta")), patch(
@@ -87,6 +88,7 @@ def test_rag_ui_requires_authorization_and_keeps_response_on_rerun(tmp_path):
         "google.genai.Client", side_effect=AssertionError("API reali vietate")
     ):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=10).run()
+        app.pills(key="nav_section").set_value("Chat AI").run()
         app.chat_input(key="rag_input").set_value("Quale piano è stato approvato?")
         ask.assert_not_called()
         app.run()
@@ -98,7 +100,9 @@ def test_rag_ui_requires_authorization_and_keeps_response_on_rerun(tmp_path):
         assert ask.call_args.kwargs["authorize_external"] is True
         assert any(item.value == chat_markdown(result.answer) for item in app.markdown)
         assert app.button(key="rag_pdf_S1")
+        app.pills(key="nav_section").set_value("Archivio PDF").run()
         app.selectbox(key="archive_extracted_page").select_index(1).run()
+        app.pills(key="nav_section").set_value("Chat AI").run()
         assert ask.call_count == 1
         assert any(item.value == chat_markdown(result.answer) for item in app.markdown)
         ask.side_effect = RagError("Quota Gemini esaurita.")
@@ -109,6 +113,7 @@ def test_rag_ui_requires_authorization_and_keeps_response_on_rerun(tmp_path):
         assert "limite di utilizzo" in app.error[0].value
         assert len(app.chat_message) == 4  # La nuova domanda e il suo errore non cancellano il turno precedente.
         assert ask.call_count == 2  # Un flusso per ciascuno dei due invii autorizzati.
+        app.pills(key="nav_section").set_value("Archivio PDF").run()
         app.selectbox(key="archive_extracted_page").select_index(0).run()
         assert not app.exception
         assert ask.call_count == 2  # Il rerun dopo l'errore non ritenta la domanda.
@@ -131,7 +136,7 @@ def test_editorial_ui_only_generates_on_authorized_submit(tmp_path):
     ):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=10).run()
         generate.assert_not_called()
-        app.segmented_control(key="editorial_kind").set_value("Dossier").run()
+        app.pills(key="nav_section").set_value("Dossier").run()
         app.button(key="dossier_submit").click().run()
         generate.assert_not_called()
         app.text_input(key="editorial_topic").set_value("Trasporti")
@@ -143,10 +148,11 @@ def test_editorial_ui_only_generates_on_authorized_submit(tmp_path):
         assert generate.call_args.kwargs["authorize_external"] is True
         assert any("parzialmente indicizzato" in item.value for item in app.warning)
         assert any("quotidiano.pdf" in item.value for item in app.text)
+        app.pills(key="nav_section").set_value("Archivio PDF").run()
         app.selectbox(key="archive_extracted_page").select_index(1).run()
         assert generate.call_count == 1
         app.session_state["consent_choices"] = {("text", "text-v2"): True}
-        app.segmented_control(key="editorial_kind").set_value("Briefing").run()
+        app.pills(key="nav_section").set_value("Briefing").run()
         app.button(key="briefing_submit").click().run()
         assert not app.exception
         assert generate.call_args.args[0] == "briefing"
@@ -206,20 +212,18 @@ render_knowledge(result)
     with patch("google.genai.Client", side_effect=AssertionError("API reali vietate")):
         app = AppTest.from_string(script, default_timeout=10).run()
     assert not app.exception
-    assert len(app.get("graphviz_chart")) == int(has_edges is True)
-    assert list(app.dataframe[0].value["Concetto"]) == ["Comune di Roma", "piano"]
+    assert len(app.get("graphviz_chart")) == 1  # Anche soli concetti: raggruppamento senza archi.
+    assert any(exp.label == "Diagnostica · sviluppo" for exp in app.expander)
     if has_edges is True:
-        assert any("Relazioni candidate: 1 · Accettate: 1 · Escluse: 0" in caption.value for caption in app.caption)
+        assert app.json
         assert any("[S1] giornale.pdf — pagina 3" in caption.value for caption in app.caption)
         assert any("ha approvato il piano" in text.value for text in app.text)
     elif has_edges == "rejected":
-        assert any("Relazioni candidate: 1 · Accettate: 0 · Escluse: 1" in caption.value for caption in app.caption)
-        assert any("Gemini ha proposto relazioni, ma tutte" in info.value for info in app.info)
+        assert app.json and not app.info
         assert any("Predicato non presente" in str(frame.value) for frame in app.dataframe)
     else:
-        assert any("Relazioni candidate: 0 · Accettate: 0 · Escluse: 0" in caption.value for caption in app.caption)
-        assert any("Gemini non ha proposto relazioni" in info.value for info in app.info)
-        assert any("nessun collegamento validato" in info.value for info in app.info)
+        assert app.json and not app.info
+        assert any("senza relazioni documentate" in caption.value for caption in app.caption)
 
 
 @pytest.mark.parametrize("kind,submit_key", [("timeline", "timeline_submit"), ("map", "map_submit")])
@@ -239,21 +243,21 @@ def test_knowledge_ui_renders_and_does_not_repeat_calls(tmp_path, kind, submit_k
     ):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=10).run()
         generate.assert_not_called()
-        if kind == "map":
-            app.segmented_control(key="knowledge_kind").set_value("Mappa").run()
+        app.pills(key="nav_section").set_value("Mappe concettuali" if kind == "map" else "Timeline").run()
         app.button(key=submit_key).click().run()
         generate.assert_not_called()
-        app.text_input(key="knowledge_topic").set_value("Trasporti")
+        app.text_input(key="knowledge_topic_" + kind).set_value("Trasporti")
         app.session_state["consent_choices"] = {("text", "text-v2"): True}
         app.button(key=submit_key).click().run()
         assert not app.exception
         assert generate.call_args.args[:2] == (kind, "Trasporti")
         assert generate.call_args.kwargs["authorize_external"] is True
-        assert any("parzialmente indicizzato" in item.value for item in app.warning)
+        assert any("Copertura parziale" in item.value for item in app.caption)
         if kind == "map":
             assert len(app.get("graphviz_chart")) == 1
         else:
             assert any("2026-10-12" in item.value for item in app.caption)
+        app.pills(key="nav_section").set_value("Archivio PDF").run()
         app.selectbox(key="archive_extracted_page").select_index(1).run()
         assert not app.exception
         assert generate.call_count == 1

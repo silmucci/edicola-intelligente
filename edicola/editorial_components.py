@@ -46,7 +46,7 @@ cards_component = st.components.v2.component("edicola_editorial_cards", html='<n
 def render_products():
     def selected():
         open_product(st.session_state.get("home_products", {}).get("selected"))
-    cards_component(data={"mode": "products", "items": [{**p, "active": p["section"] == "Home"} for p in PRODUCTS]},
+    cards_component(data={"mode": "products", "items": [{**p, "active": p["section"] == st.session_state.get("nav_section", PRODUCTS[0]["section"])} for p in PRODUCTS]},
                     key="home_products", on_selected_change=selected)
 
 

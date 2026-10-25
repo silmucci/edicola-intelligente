@@ -169,8 +169,10 @@ def test_cloud_full_start_and_rerun_make_no_external_calls(source, tmp_path, mon
     with patch("edicola.cloud.prepare_cloud", return_value=runtime), patch("edicola.ingestion.extract_pdf", side_effect=AssertionError), patch("edicola.chunking.build_chunks", side_effect=AssertionError):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15).run()
         assert not app.exception
-        assert len(app.tabs) == 7
-        assert len(app.chat_input) == 1
+        from edicola.product_navigation import SECTIONS
+        assert app.pills(key="nav_section").options == SECTIONS
+        assert not app.chat_input
+        app.pills(key="nav_section").set_value("Il mio profilo").run()
         assert app.button(key="account_login").disabled
         assert not app.multiselect  # Nessun fallback al profilo condiviso quando mancano i Secrets.
         app.run()

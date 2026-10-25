@@ -3,14 +3,15 @@
 import re
 
 
-VERSION = "concept-map-v2"
+VERSION = "concept-map-v5"
 # Solo elementi grammaticali trasparenti; niente wildcard che scavalchino altri attori.
 ADVERB = r"(?:oggi|ieri|anche|già|poi|ufficialmente|formalmente|direttamente|definitivamente)"
 AUXILIARY = r"(?:ha|hanno|aveva|avevano|è|sono|era|erano|stato|stata|stati|state)"
-BEFORE = rf"(?:\s*,?\s+(?:{ADVERB}|{AUXILIARY})){{0,3}}\s*,?\s+"
+LEGAL_REFERENCE = r"\(\s*(?:ex\s+)?\d{1,4}(?:[./]\d{1,4}){0,2}\s*\)"
+BEFORE = rf"(?:\s*,?\s+(?:{ADVERB}|{AUXILIARY})){{0,3}}(?:\s+{LEGAL_REFERENCE})?\s*,?\s+"
 AFTER = rf"(?:\s+{ADVERB}){{0,2}}(?:\s+con\s+(?:una?\s+)?(?:delibera|decreto|voto|decisione)(?:\s+unanime)?)?\s+"
 ARTICLE = r"(?:(?:il|lo|la|i|gli|le|un|una|uno|l['’])\s*)?"
-UNCERTAIN = re.compile(r"\b(non|mai|nessun[oa]?|senza|potrebbe|potrebbero|dovrebbe|dovrebbero|sarebbe|sarebbero|forse|possibile|probabilmente|ipotizza|ipotizzano|smentisce|smentiscono|nega|negano|se)\b", re.I)
+UNCERTAIN = re.compile(r"\b(non|mai|nessun[oa]?|senza|potrebbe|potrebbero|dovrebbe|dovrebbero|sarebbe|sarebbero|avrebbe|avrebbero|vorrebbe|vorrebbero|forse|possibile|probabilmente|ipotizza|ipotizzano|smentisce|smentiscono|nega|negano|se)\b", re.I)
 THEME_LINKS = ("riguarda", "riguardano", "si occupa di", "si occupano di", "tratta", "trattano",
                "è dedicato a", "è dedicata a", "sono dedicati a", "sono dedicate a",
                "si concentra su", "si concentrano su")

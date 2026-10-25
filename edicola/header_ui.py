@@ -4,7 +4,7 @@ import re
 import streamlit as st
 from edicola import identity
 from edicola.design_tokens import page_css
-from edicola.product_navigation import PRODUCTS, open_product
+from edicola.product_navigation import PRODUCTS, open_product, destination, cancel_navigation_action
 from edicola.archive_ui import edition_metadata
 from edicola.pdf_viewer import source_button
 
@@ -25,7 +25,8 @@ def local_matches(query, documents, metadata, chunks=()):
 
 
 def _profile():
-    st.session_state["nav_section"] = "Personalizzazione"
+    cancel_navigation_action()
+    st.session_state["nav_section"] = destination("profile")
     st.session_state["personal_area"] = "Preferenze"
 
 

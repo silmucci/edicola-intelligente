@@ -1,6 +1,7 @@
 """Contesto adiacente delle mappe: solo chunk indicizzati e intervalli verificabili."""
 
 from itertools import combinations
+import re
 
 
 def contiguous(left, right):
@@ -11,6 +12,10 @@ def contiguous(left, right):
         return False
     if any(a[key] != b[key] for key in ("pdf_sha256", "chunk_config", "page", "filename")):
         return False
+    # Se è disponibile un'identità articolo, non attraversarla. Non la inferiamo
+    # dalle colonne o da semplici metadati di pagina.
+    if a.get("article_id") != b.get("article_id"):
+        return False
     if b["position"] != a["position"] + 1 or not a["start"] < b["start"] <= a["end"] < b["end"]:
         return False
     if len(left.text) != a["end"] - a["start"] or len(right.text) != b["end"] - b["start"]:
@@ -19,9 +24,11 @@ def contiguous(left, right):
     return not overlap or left.text[-overlap:] == right.text[:overlap]
 
 
-def select_map_chunks(seeds, available, max_neighbors=2):
+def select_map_chunks(seeds, available, max_neighbors=2, *, topic=""):
     """Aggiunge al più due vicini per default, senza nuove query o nuovi vettori."""
-    lookup = {(c.metadata.get("pdf_sha256"), c.metadata.get("position")): c for c in available}
+    fields = ("pdf_sha256", "chunk_config", "filename", "page")
+    lookup = {tuple(c.metadata.get(k) for k in fields) + (c.metadata.get("position"),): c for c in available}
+    terms = {word for word in re.findall(r"\w+", topic.casefold()) if len(word) > 3}
     selected, seen = [], set()
     seed_ids = {c.id for c in seeds}
     added = 0
@@ -29,8 +36,13 @@ def select_map_chunks(seeds, available, max_neighbors=2):
         if seed.id not in seen:
             selected.append(seed)
             seen.add(seed.id)
+        candidates = []
         for delta in (-1, 1):
-            neighbor = lookup.get((seed.metadata.get("pdf_sha256"), seed.metadata.get("position", 0) + delta))
+            neighbor = lookup.get(tuple(seed.metadata.get(k) for k in fields) + (seed.metadata.get("position", 0) + delta,))
+            if neighbor is not None:
+                candidates.append((delta, neighbor))
+        candidates.sort(key=lambda pair: -len(terms & set(re.findall(r"\w+", pair[1].text.casefold()))))
+        for delta, neighbor in candidates:
             if neighbor is None or neighbor.id in seen or neighbor.id in seed_ids or added >= max_neighbors:
                 continue
             left, right = (neighbor, seed) if delta < 0 else (seed, neighbor)

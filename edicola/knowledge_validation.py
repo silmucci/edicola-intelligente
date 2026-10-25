@@ -9,6 +9,10 @@ from edicola.map_relations import documented_relation, relation_failure, themati
 from edicola.map_context import joined_proofs
 from edicola.rag import Source, validate_response
 from edicola.timeline_dates import documented_dates, event_status, resolve_date
+from edicola.knowledge_presentation import development_kind, short_text, deadline_reference
+from edicola.design_tokens import COLORS
+from edicola.map_presentation import GROUPS, node_captions, node_groups
+from edicola.proposal_extraction import ITEM as NOMINAL_PROPOSAL
 
 
 CAUSAL = re.compile(r"\b(causa|causato|causata|provoca|provocato|provocata|determina|comporta)\b|a causa di|per effetto", re.I)
@@ -64,7 +68,10 @@ def validate_timeline(data: dict, sources: list[Source], coverage: dict) -> tupl
                     identity = evidence["source_id"]
                     filename = source_map[identity].filename
                     published = publications.get(filename, "")
-                    temporal = resolve_date(temporal_quote, proposed, published)
+                    if deadline_reference(temporal_quote):
+                        temporal.update(date_status="deadline_reference", date_reason="deadline_reference")
+                    else:
+                        temporal = resolve_date(temporal_quote, proposed, published)
                     if temporal["date_origin"] == "edition_metadata":
                         anchor = {"source_id": identity, "pdf": filename, "publication_date": published,
                                   "rule": temporal["date_rule"]}
@@ -72,22 +79,33 @@ def validate_timeline(data: dict, sources: list[Source], coverage: dict) -> tupl
                 unverified += 1
         temporal_source = evidence.get("source_id") if isinstance(evidence, dict) else None
         published = publications.get(source_map[temporal_source].filename, "") if temporal_source in source_map else ""
-        lifecycle = event_status(temporal_quote, temporal["event_date"], published)
+        proof_quotes = list(dict.fromkeys(e["quote"] for key in ("title", "description") for e in item[key]["evidence"]))
+        # Anche senza data conserviamo lo stato documentato; gli stati discordanti
+        # restano indeterminati, senza usare la data editoriale per colmare il vuoto.
+        status_quotes = [temporal_quote] if temporal_quote else proof_quotes
+        states = {event_status(q, temporal["event_date"], published) for q in status_quotes}
+        lifecycle = states.pop() if len(states) == 1 else "conflicting"
+        category = development_kind(status_quotes, lifecycle)
         # Per annunci e futuro mostrare il passo letterale, non una parafrasi al passato.
-        if lifecycle in {"announced", "future", "conflicting"}:
-            title_text = "Evento annunciato" if lifecycle == "announced" else "Evento con stato da verificare"
-            title_text += " " + " ".join(f"[{identity}]" for identity in used)
-            description_text = temporal_quote
+        if lifecycle in {"announced", "future", "conflicting"} or category == "proposal":
+            title_text = short_text(temporal_quote or proof_quotes[0], 90)
+            description_text = temporal_quote or "\n".join(proof_quotes)
+            if category == "proposal" and NOMINAL_PROPOSAL.match(item["title"]["text"]) and all(
+                    any(item[key]["text"] in e["quote"] for e in item[key]["evidence"]) for key in ("title", "description")):
+                title_text, description_text = title.answer, description.answer
         else:
             title_text, description_text = title.answer, description.answer
         events.append({"title": title_text, "description": description_text,
-                       **temporal, "date_anchor": anchor, "event_status": lifecycle, "temporal_quote": temporal_quote,
+                       **temporal, "date_anchor": anchor, "event_status": lifecycle, "development_kind": category,
+                       "evidence": list({(e["source_id"], e["quote"]): e for key in ("title", "description") for e in item[key]["evidence"]}.values()),
+                       "temporal_quote": temporal_quote,
                        "source_ids": used, "publication_dates": [
                            {"source_id": identity, "date": publications.get(source_map[identity].filename, "")}
                            for identity in used]})
     dated = sorted((event for event in events if event["event_date"]), key=lambda event: event["event_date"])
     undated = [event for event in events if event["event_date"] is None]
     return {"events": dated, "undated_events": undated}, {
+        "candidate_events": len(data["events"]),
         "rejected_events": rejected, "unverified_dates": unverified,
         "dated_events": len(dated), "undated_events": len(undated),
     }
@@ -103,7 +121,7 @@ def validate_map(data: dict, sources: list[Source], *, contexts=None) -> tuple[d
         if (not isinstance(item, dict) or set(item) != {"id", "kind", "label"}
                 or not isinstance(item["id"], str) or not re.fullmatch(r"N[1-9]\d?", item["id"])
                 or item["id"] in nodes or not isinstance(item["kind"], str)
-                or item["kind"] not in {"concept", "event", "place", "organization"}):
+                or item["kind"] not in {"concept", "event", "place", "organization", "person", "measure", "proposal"}):
             rejected_nodes += 1
             continue
         check = checked_claim(item["label"], sources)
@@ -209,40 +227,49 @@ def validate_map(data: dict, sources: list[Source], *, contexts=None) -> tuple[d
 
 
 def compact_map(data: dict, limit: int = 10) -> dict:
-    """Priorità agli archi documentati; conserva gli estremi, senza alterare il risultato."""
+    """Ordine editoriale di pertinenza, inclusi gli isolati; nessun bonus agli archi."""
     if not 2 <= limit <= 10:
         raise ValueError("Il grafico mostra da 2 a 10 nodi.")
-    chosen, edges = set(), []
-    for edge in sorted(data["edges"], key=lambda e: e["kind"] != "documented"):
-        endpoints = {edge["from_id"], edge["to_id"]}
-        if len(chosen | endpoints) <= limit:
-            chosen.update(endpoints)
-            edges.append(edge)
-    nodes = [node for node in data["nodes"] if node["id"] in chosen] if edges else data["nodes"][:limit]
+    nodes = data["nodes"][:limit]
+    chosen = {n["id"] for n in nodes}
+    edges = [e for e in data["edges"] if {e["from_id"], e["to_id"]} <= chosen]
     return {"nodes": nodes, "edges": edges}
 
 
-def map_dot(data: dict) -> str:
+def map_focus(data, topic=""):
+    degree = Counter(endpoint for edge in data["edges"] for endpoint in (edge["from_id"], edge["to_id"]))
+    terms = set(re.findall(r"\w+", topic.casefold()))
+    return max(data["nodes"], key=lambda node: (len(terms & set(re.findall(r"\w+", node["label"].casefold()))),
+                -data["nodes"].index(node), degree[node["id"]]))["id"] if data["nodes"] else None
+
+
+def map_dot(data: dict, *, topic="", grouping=False) -> str:
     """DOT con identificativi validati e stringhe quotate, senza HTML o URL eseguibili."""
     quote = lambda value: json.dumps(value, ensure_ascii=False)
     data = compact_map(data)
-    def short(value, width=24):
-        value = " ".join(value.split())
-        return textwrap.fill(value[:87] + "…" if len(value) > 90 else value, width=width)
+    focus = None if grouping else map_focus(data, topic)
+    def wrapped(value, width=24):
+        return textwrap.fill(" ".join(value.split()), width=width, break_long_words=False, break_on_hyphens=False)
+    captions = node_captions(data["nodes"])
+    direction = "TB" if grouping or len(data["nodes"]) > 5 else "LR"
     lines = ['digraph Knowledge {',
-             'graph [rankdir=LR, nodesep=0.16, ranksep=0.30, pad=0.06, margin=0, size="9,4.2"];',
-             'node [fontname="Arial", fontsize=10, width=0, height=0, margin="0.08,0.05", style=filled, color="#94a3b8", fontcolor="#1f2937"];',
-             'edge [fontname="Arial", fontsize=9, arrowsize=0.6, color="#64748b", fontcolor="#475569"];']
-    for node in data["nodes"]:
-        shape, color = {"concept": ("ellipse", "#eeeeef"), "event": ("box", "#f5eddf"),
-                        "place": ("hexagon", "#eaf1e8"), "organization": ("box", "#e8eef5")}[node["kind"]]
-        style = "rounded,filled" if node["kind"] == "organization" else "filled"
-        lines.append(f'{quote(node["id"])} [label={quote(short(node["label"]))}, tooltip={quote(node["label"])}, shape={shape}, style="{style}", fillcolor="{color}"];')
-    for edge in data["edges"]:
-        label = edge["label"] + " " + " ".join(f"[{identity}]" for identity in edge["source_ids"])
+             f'graph [rankdir={direction}, pack=true, packmode="array_3", nodesep=0.22, ranksep=0.32, pad=0.08, margin=0];',
+             f'node [fontname="Arial", fontsize=12, width=0, height=0, margin="0.10,0.07", style=filled, color="{COLORS["border"]}", fontcolor="{COLORS["ink"]}"];',
+             f'edge [fontname="Arial", fontsize=11, arrowsize=0.6, color="{COLORS["primary"]}", fontcolor="{COLORS["muted"]}"];']
+    for kind, members in node_groups(data["nodes"]):
+        _, title, shape, color = GROUPS[kind]
+        lines.append(f'subgraph cluster_{kind} {{')
+        lines.append(f'graph [label={quote(title)}, fontname="Arial", fontsize=11, fontcolor="{COLORS["muted"]}", style=rounded, color="{COLORS["border"]}", bgcolor="{COLORS["paper"]}", margin=10];')
+        for node in members:
+            style = "rounded,filled" if kind in {"organization", "measure", "proposal"} else "filled"
+            emphasis = f', penwidth=2, color="{COLORS["primary"]}"' if node["id"] == focus else ''
+            lines.append(f'{quote(node["id"])} [label={quote(wrapped(captions[node["id"]]))}, tooltip={quote(node["label"])}, shape={shape}, style="{style}", fillcolor="{color}"{emphasis}];')
+        lines.append('}')
+    for edge in ([] if grouping else data["edges"]):
+        label = edge["label"]
         if edge.get("topic"):
-            label = edge["topic"] + " " + " ".join(f"[{identity}]" for identity in edge["source_ids"])
+            label = edge["topic"]
         style = "solid" if edge["kind"] == "documented" else "dashed"
         direction = "forward" if edge["kind"] == "documented" else "none"
-        lines.append(f'{quote(edge["from_id"])} -> {quote(edge["to_id"])} [label={quote(short(label))}, tooltip={quote(label)}, style={style}, dir={direction}];')
+        lines.append(f'{quote(edge["from_id"])} -> {quote(edge["to_id"])} [label={quote(wrapped(label))}, tooltip={quote(label)}, style={style}, dir={direction}];')
     return "\n".join(lines + ["}"])
