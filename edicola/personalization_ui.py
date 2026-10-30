@@ -3,13 +3,15 @@
 import hashlib
 import json
 from collections import Counter
+from dataclasses import asdict
+import os
 
 import streamlit as st
 
 from edicola.editorial_selection import read_catalog
 from edicola.embeddings import api_key
 from edicola.personalization import generate_personal_briefing, recommend
-from edicola.podcast import VOICES, generate_podcast, wav_duration
+from edicola.podcast import VOICES, MODEL, VERSION, STYLE, generate_podcast, wav_duration
 from edicola.podcast_text import PodcastError, list_products
 from edicola.profiles import (delete_profile, load_profile, personal_root, remove_passage,
                              save_profile, set_feedback)
@@ -44,7 +46,7 @@ def show_product(result, archive=None):
                 source_button(source.filename, source.page, context=archive, chunk_id=source.chunk_id, key=f"personal_brief_pdf_{source.id}")
 
 
-def cached_audio(scope, product_key, voice=None):
+def cached_audio(scope, product_key, voice=None, *, script=None):
     """Solo lettura locale dei manifest del modulo TTS esistente, con verifica WAV."""
     directory = scope / "data/podcast_cache"
     for path in sorted(directory.glob("*.json")):
@@ -52,6 +54,12 @@ def cached_audio(scope, product_key, voice=None):
             item = json.loads(path.read_text(encoding="utf-8"))
             if item["product_key"] != product_key or (voice is not None and item["voice"] != voice):
                 continue
+            if script is not None:
+                model = os.getenv("GEMINI_TTS_MODEL", MODEL).strip() or MODEL
+                identity = hashlib.sha256(json.dumps([VERSION, script.text, model, item["voice"], STYLE], ensure_ascii=False).encode()).hexdigest()
+                if (item.get("script") != asdict(script) or item.get("model") != model
+                        or item.get("version") != VERSION or item.get("audio_file") != identity + ".wav"):
+                    continue
             filename = item["audio_file"]
             audio = directory / filename
             if audio.resolve().parent != directory.resolve() or audio.suffix != ".wav":

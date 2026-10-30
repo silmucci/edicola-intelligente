@@ -23,7 +23,7 @@ from edicola.settings import setting
 from edicola.experience_ui import render_home
 from edicola.identity import synchronize_identity
 from edicola.header_ui import render_header
-from edicola.product_navigation import render_navigation, active_product
+from edicola.product_navigation import render_navigation, active_product, cancel_navigation_action
 
 ROOT = Path(__file__).resolve().parent
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -72,7 +72,15 @@ elif product["id"] == "chat":
         render_chat(ROOT, context)
 elif product["id"] in {"briefing", "dossier"}:
     with st.container(width=900):
-        render_editorial(ROOT, context, kind=product["kind"])
+        if product["id"] == "briefing":
+            mode = st.segmented_control("Prodotto editoriale", ["Briefing", "Infografica"], default="Briefing", key="editorial_workspace", on_change=cancel_navigation_action) or "Briefing"
+            if mode == "Infografica":
+                from edicola.infographic_ui import render_infographic
+                render_infographic(ROOT, context)
+            else:
+                render_editorial(ROOT, context, kind="Briefing")
+        else:
+            render_editorial(ROOT, context, kind=product["kind"])
 elif product["id"] in {"timeline", "map"}:
     render_visuals(ROOT, context, kind=product["kind"])
 elif product["id"] == "podcast":

@@ -243,11 +243,13 @@ def map_focus(data, topic=""):
                 -data["nodes"].index(node), degree[node["id"]]))["id"] if data["nodes"] else None
 
 
-def map_dot(data: dict, *, topic="", grouping=False) -> str:
+def map_dot(data: dict, *, topic="", grouping=False, focused_node=None) -> str:
     """DOT con identificativi validati e stringhe quotate, senza HTML o URL eseguibili."""
     quote = lambda value: json.dumps(value, ensure_ascii=False)
     data = compact_map(data)
     focus = None if grouping else map_focus(data, topic)
+    if focused_node in {node["id"] for node in data["nodes"]}:
+        focus = focused_node
     def wrapped(value, width=24):
         return textwrap.fill(" ".join(value.split()), width=width, break_long_words=False, break_on_hyphens=False)
     captions = node_captions(data["nodes"])

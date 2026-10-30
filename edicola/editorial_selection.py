@@ -11,6 +11,7 @@ import numpy as np  # Già dipendenza di ChromaDB.
 
 from edicola.archive import IndexChunk, read_active_chunks
 from edicola.vectorstore import open_collection, stored_records
+from edicola.corpus_versions import source_version
 
 
 @dataclass
@@ -45,8 +46,11 @@ def read_catalog(root: Path) -> Catalog:
             date.fromisoformat(published)  # Non inferire date da file o ordine dei chunk.
         files.append({"pdf": filename, "publication": publication, "date": published,
                       "indexed": counts[filename], "total": count})
+        if info.get("scope") in {"nazionale", "internazionale"}:
+            files[-1]["scope"] = info["scope"]
     coverage = {"indexed": len(current), "total": len(chunks), "files": files,
                 "partial": len(current) < len(chunks), "warnings": warnings}
+    coverage["corpus_version"] = source_version(current, metadata=files)
     if any(not item["publication"] or not item["date"] for item in files if item["indexed"]):
         warnings.append("Testata o data non disponibili per alcune edizioni: selezione bilanciata per PDF, senza inferire metadati.")
     return Catalog(current, vectors, coverage)

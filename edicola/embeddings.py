@@ -55,7 +55,7 @@ def validate_vector(values) -> list[float]:
 
 
 class GeminiEmbedder:
-    def __init__(self, key: str, *, client=None, max_attempts=3, sleep=time.sleep):
+    def __init__(self, key: str, *, client=None, max_attempts=3, sleep=time.sleep, on_attempt=None):
         if not key:
             raise EmbeddingError("Configurare GEMINI_API_KEY nell'ambiente o in .env.")
         if not 1 <= max_attempts <= 3:
@@ -68,15 +68,18 @@ class GeminiEmbedder:
         )
         self.max_attempts = max_attempts
         self.sleep = sleep
+        self.on_attempt = on_attempt
 
     def close(self):
         self.client.close()
 
     def embed(self, prompt: str) -> list[float]:
         for attempt in range(self.max_attempts):
+            from edicola.api_guard import require_permission
+            require_permission("text")
+            if self.on_attempt is not None:
+                self.on_attempt()
             try:
-                from edicola.api_guard import require_permission
-                require_permission("text")
                 response = self.client.models.embed_content(
                     model=MODEL, contents=prompt,
                     config=types.EmbedContentConfig(output_dimensionality=DIMENSIONS),

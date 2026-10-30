@@ -111,7 +111,7 @@ def prepare_script(product: CachedProduct) -> Script:
             block += "."
         candidate = "\n\n".join(parts + [block])
         if len(candidate) > MAX_CHARS or len(candidate.split()) > MAX_WORDS:
-            break  # Non tagliare frasi, importi o sezioni per riempire il minutaggio.
+            continue  # Saltare la sezione intera; quelle successive possono entrare nel budget.
         parts.append(block)
         original.extend([section.get("heading", ""), section["text"]])
         selected += 1

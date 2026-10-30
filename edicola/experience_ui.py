@@ -152,6 +152,13 @@ def render_home(root, context):
         empty_state("Le letture arriveranno qui", "Non ci sono passaggi indicizzati per questa selezione. Puoi intanto sfogliare le edizioni originali.")
     if selected:
         render_highlights(selected, metadata=metadata, context=context, shorten=excerpt)
+    st.subheader("Consulta la rassegna")
+    from edicola.press_review_ui import review_controls, render_review_passages
+    from edicola.reading_ui import render_editorial
+    review_catalog, selection = review_controls(root, catalog)
+    if review_catalog is not None:
+        render_review_passages(review_catalog, context, metadata)
+        render_editorial(root, context, kind="Briefing", review=selection)
     if authenticated():
         st.subheader("Consigliati per te")
         try:

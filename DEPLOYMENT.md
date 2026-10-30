@@ -1,5 +1,19 @@
 # Deployment dimostrativo su Streamlit Community Cloud
 
+La console locale descritta in [GESTIONE_ARCHIVIO.md](GESTIONE_ARCHIVIO.md) può
+preparare un nuovo snapshot dopo selezione dei singoli PDF e autorizzazione della
+distribuzione. Non pubblica nulla e non abilita upload o amministrazione dal sito.
+Il ruolo Google autenticato non è un ruolo amministrativo; l’eventuale upload Cloud
+resta una progettazione futura con autorizzazioni server e storage persistente.
+
+**Aggiornamento corpus, ottobre 2026:** seguire [CORPUS_UPDATE.md](CORPUS_UPDATE.md)
+per audit locale, acquisizione incrementale, piano senza API e autorizzazioni.
+Un nuovo snapshot può essere verificato con
+`python -m edicola.cloud --validate PERCORSO` prima di sostituire manualmente quello
+pubblicato. Nessun PDF è stato esportato o pubblicato in questo aggiornamento.
+I conteggi storici riportati più sotto descrivono la prima preparazione, non il
+corpus locale aggiornato: consultare il report privato in `data/corpus_updates`.
+
 **Task 12.2:** prima di aggiornare l'app applicare manualmente anche
 [`004_chat_history.sql`](migrations/004_chat_history.sql), dopo 001/002/003.
 Nessun nuovo Secret; cronologia su PostgreSQL soltanto con scelta dell'utente.
