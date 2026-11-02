@@ -32,7 +32,7 @@ def test_all_product_cards_reach_real_sections_without_generating(archive, index
         product = PRODUCTS[index]
         assert product["title"] == product["section"]
         assert app.session_state["consent_choices"][("text", "text-v2")]
-        assert len(app.chat_input) == 1
+        assert len(app.chat_input) == (1 if product["id"] == "chat" else 0)
         rag.assert_not_called()
         editorial.assert_not_called()
         knowledge.assert_not_called()
@@ -60,7 +60,7 @@ def test_local_search_matches_only_real_editions_products_and_passages(archive):
 
 def test_header_search_and_profile_are_local_actions(archive):
     root, _, catalog = archive
-    code = script(root) + '\nfrom edicola.header_ui import render_header\nrender_header(root, context)\n'
+    code = script(root)
     with patch("edicola.editorial_selection.read_catalog", return_value=catalog), patch("edicola.rag.ask_question") as ask:
         app = AppTest.from_string(code, default_timeout=15).run()
         app.text_input(key="account_header_search").set_value("podcast").run()
@@ -96,6 +96,7 @@ def test_archive_filter_opens_selected_edition_not_unfiltered_index(archive):
             st.button("Apri edizione filtrata", key="filtered_test_open", on_click=select)
     with patch("edicola.archive_ui.gallery_component", side_effect=gallery_adapter):
         app = AppTest.from_string(script(root), default_timeout=15).run()
+        app.selectbox(key="nav_section").set_value("Archivio PDF").run()
         app.selectbox(key="archive_edition_date").set_value("23 ottobre 2026").run()
         app.button(key="filtered_test_open").click().run()
         assert not app.exception and app.session_state["archive_pdf"] == "b.pdf"

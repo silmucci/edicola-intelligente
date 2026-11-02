@@ -229,7 +229,7 @@ def generate_response(client, model: str, prompt: str, schema: dict, *, sleep=ti
 
 def ask_question(
     question: str, *, authorize_external=False, root: Path = ROOT, client=None, top_k: int | None = None, conversation=None,
-    selection=None
+    selection=None, embedder=None
 ) -> RagResult:
     """Cerca in tutto il corpus corrente; invia passaggi interi entro il budget.
 
@@ -268,7 +268,8 @@ def ask_question(
             search_options["allowed_ids"] = {c.id for c in catalog.chunks}
             search_options["filenames"] = {c.metadata["filename"] for c in catalog.chunks}
         hits = semantic_search(retrieval_query(question, context), authorize_external=True, root=root,
-                               top_k=top_k, request_id=request_id, corpus_wide=True, **search_options)
+                               top_k=top_k, request_id=request_id, corpus_wide=True,
+                               **({"embedder": embedder} if embedder is not None else {}), **search_options)
         sources = []
         references = {}
         seen = set()
@@ -312,7 +313,7 @@ def ask_question(
         result = replace(result, source_editions=editions, temporal_notice=temporal_notice(temporal), source_references=references)
         if len(sources) < len(candidates):
             result = replace(result, temporal_notice=(result.temporal_notice + " " if result.temporal_notice else "") +
-                             "La risposta usa una selezione delle fonti pertinenti entro lo spazio disponibile; alcune letture non sono incluse.")
+                             "La risposta è una selezione: puoi approfondire nelle edizioni originali.")
         logger.info("request_id=%s phase=rag event=complete sufficient=%s", request_id, result.sufficient)
         return result
     except RagError:

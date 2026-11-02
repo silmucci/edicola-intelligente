@@ -14,7 +14,7 @@ from edicola.consent_ui import authorize_action
 from edicola.consent import perform
 from edicola.api_guard import PermissionDenied
 from edicola.personal_store import PersonalStoreError
-from edicola.design import friendly_error, section_intro
+from edicola.design import friendly_error, section_intro, reading_title
 from edicola.chat_sources import citation_text, document_label, render_contributions
 
 
@@ -41,7 +41,7 @@ def render_podcast_ui(root: Path, archive=None):
     if st.session_state.get("podcast_product") not in available:
         st.session_state.pop("podcast_product", None)
     selected = st.selectbox("Lettura da ascoltare", list(available), key="podcast_product",
-        format_func=lambda key: citation_text(available[key].result.title, available[key].result.used_source_ids) + " · " + available[key].created_at)
+        format_func=lambda key: citation_text(reading_title(available[key].result), available[key].result.used_source_ids) + " · " + available[key].created_at)
     product = available[selected]
     from edicola.corpus_cache import render_history_notice
     render_history_notice(product.result.coverage, archive)
@@ -55,16 +55,16 @@ def render_podcast_ui(root: Path, archive=None):
         st.info("Scegli una voce per il tuo ascolto.")
     with st.expander("Voce e opzioni di ascolto"):
         voice = st.selectbox("Voce del podcast", VOICES, index=VOICES.index(default) if default in VOICES else 0, key="podcast_voice")
-    st.caption(f"{len(script.text.split())} parole · durata stimata {len(script.text.split()) / 130:.1f} minuti; la durata effettiva può variare.")
+    st.caption(f"Durata stimata: {len(script.text.split()) / 130:.1f} minuti.")
     if script.excerpt:
-        st.info(f"Estratto: {script.selected_sections} sezioni complete su {script.total_sections}; nessuna frase è stata tagliata.")
+        st.info("Questo ascolto riprende alcune sezioni della lettura. Il testo completo resta consultabile.")
     if script.coverage.get("partial"):
         st.warning("Copertura parziale: il podcast riprende solo i contenuti della lettura scelta.")
     from types import SimpleNamespace
     render_contributions([SimpleNamespace(**source) for source in script.sources],
                          [source["id"] for source in script.sources], root)
     with st.expander("Testo da leggere e fonti"):
-        st.caption("Copione d’ascolto estrattivo: sezioni complete, riferimenti bibliografici separati dalla lettura.")
+        st.caption("Il testo letto riprende la lettura scelta. Le fonti sono disponibili qui sotto.")
         st.text(script.text)
         for source in script.sources:
             st.text(document_label(archive, source["filename"], source["page"]))

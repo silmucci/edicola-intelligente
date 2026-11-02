@@ -172,7 +172,7 @@ def test_generation_cache_coverage_and_model_preserved(setup_knowledge, kind):
     assert client.models.generate_content.call_count == 1
     assert client.models.generate_content.call_args.kwargs["model"] == "configured-flash"
     assert search.call_count == 1
-    assert search.call_args.kwargs["diversify_by_pdf"] is (kind != "map")
+    assert search.call_args.kwargs["corpus_wide"] is True
     assert not list(root.rglob("*.sqlite3"))  # Cache esclusivamente JSON.
 
 

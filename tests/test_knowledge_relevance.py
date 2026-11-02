@@ -153,7 +153,7 @@ def test_full_map_flow_uses_one_search_one_generation_and_versioned_cache(setup_
     with caplog.at_level("INFO", logger="edicola.knowledge"):
         result = generate_knowledge("map", QUESTION, authorize_external=True, root=root, client=client)
     assert len(result.data["nodes"]) == 3 and result.sources[0].filename == "a.pdf"
-    assert not search.call_args.kwargs["diversify_by_pdf"]
+    assert search.call_args.kwargs["corpus_wide"] is True
     assert ROAD not in client.models.generate_content.call_args.kwargs["contents"]
     assert FISH not in caplog.text and QUESTION not in caplog.text
     assert generate_knowledge("map", QUESTION, authorize_external=True, root=root, client=client).from_cache
@@ -169,7 +169,7 @@ def test_old_ram_map_is_not_shown_or_regenerated_after_strategy_change(archive):
         raw, sources = example()
         data, counts = validate_map(raw, sources)
         app.session_state["knowledge_results"] = {"map": KnowledgeResult("map", QUESTION, data, sources, COVERAGE, counts)}
-        app.pills(key="nav_section").set_value("Mappe concettuali").run()
+        app.selectbox(key="nav_section").set_value("Mappe concettuali").run()
         assert not app.get("graphviz_chart") and not app.exception
-        assert any("precedente va aggiornata" in item.value for item in app.info)
+        assert any("non è disponibile nella vista attuale" in item.value for item in app.info)
         generate.assert_not_called()

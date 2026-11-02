@@ -33,10 +33,10 @@ def test_home_cards_and_top_navigation_share_the_nine_real_destinations(archive,
     _, context, _ = archive
     with platform(context) as app, patch("edicola.rag.ask_question") as rag, patch(
         "edicola.editorial.generate_product") as editorial, patch("edicola.knowledge.generate_knowledge") as knowledge:
-        assert app.pills(key="nav_section").options == SECTIONS
+        assert app.selectbox(key="nav_section").options == SECTIONS
         app.button(key=f"home_products_test_{index}").click().run()
         assert not app.exception
-        assert app.pills(key="nav_section").value == PRODUCTS[index]["title"]
+        assert app.selectbox(key="nav_section").value == PRODUCTS[index]["title"]
         assert app.session_state["nav_section"] == PRODUCTS[index]["section"]
         assert not any(w.key in {"editorial_kind", "knowledge_kind"} for w in app.segmented_control)
         assert len(app.chat_input) == (1 if index == 2 else 0)
@@ -53,20 +53,20 @@ def test_product_drafts_results_and_graph_mode_survive_navigation_without_api(ar
     mapping = KnowledgeResult("map", "Trasporti", data, SOURCES, COVERAGE, counts)
     with platform(context) as app, patch("edicola.knowledge.generate_knowledge", side_effect=[timeline, mapping]) as generate:
         app.session_state["consent_choices"] = {("text", "text-v2"): True}
-        app.pills(key="nav_section").set_value("Timeline").run()
+        app.selectbox(key="nav_section").set_value("Timeline").run()
         app.text_input(key="knowledge_topic_timeline").set_value("Sostegno")
         app.button(key="timeline_submit").click().run()
         assert any(h.value == "Senza data" for h in app.subheader)
-        app.pills(key="nav_section").set_value("Mappe concettuali").run()
+        app.selectbox(key="nav_section").set_value("Mappe concettuali").run()
         assert not app.get("graphviz_chart")
         app.text_input(key="knowledge_topic_map").set_value("Trasporti")
         app.button(key="map_submit").click().run()
         assert not app.exception and app.get("graphviz_chart")
         app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        app.pills(key="nav_section").set_value("Timeline").run()
+        app.selectbox(key="nav_section").set_value("Timeline").run()
         assert app.text_input(key="knowledge_topic_timeline").value == "Sostegno"
         assert not app.get("graphviz_chart") and not app.segmented_control
-        app.pills(key="nav_section").set_value("Mappe concettuali").run()
+        app.selectbox(key="nav_section").set_value("Mappe concettuali").run()
         assert app.text_input(key="knowledge_topic_map").value == "Trasporti"
         assert app.segmented_control(key="knowledge_map_view").value == "Elenco"
         assert not app.dataframe and not app.get("graphviz_chart")
@@ -76,15 +76,15 @@ def test_product_drafts_results_and_graph_mode_survive_navigation_without_api(ar
 def test_navigation_cancels_old_pending_generation_and_keeps_consent(archive):
     _, context, _ = archive
     with platform(context) as app, patch("edicola.knowledge.generate_knowledge") as generate:
-        app.pills(key="nav_section").set_value("Timeline").run()
+        app.selectbox(key="nav_section").set_value("Timeline").run()
         app.text_input(key="knowledge_topic_timeline").set_value("Tema").run()
         app.button(key="timeline_submit").click().run()
         generate.assert_not_called()
         assert app.session_state["consent_pending"]
-        app.pills(key="nav_section").set_value("Mappe concettuali").run()
+        app.selectbox(key="nav_section").set_value("Mappe concettuali").run()
         assert "consent_pending" not in app.session_state
         app.session_state["consent_choices"] = {("text", "text-v2"): True}
-        app.pills(key="nav_section").set_value("Timeline").run()
+        app.selectbox(key="nav_section").set_value("Timeline").run()
         generate.assert_not_called()
         assert app.session_state["consent_choices"][("text", "text-v2")]
 
@@ -131,7 +131,7 @@ def test_briefing_keeps_legacy_result_readable_without_generating_dossier(archiv
     with platform(context) as app, patch("edicola.editorial.generate_product", return_value=briefing) as generate:
         app.session_state["editorial_results"] = {"dossier": dossier}
         app.session_state["consent_choices"] = {("text", "text-v2"): True}
-        app.pills(key="nav_section").set_value("Briefing").run()
+        app.selectbox(key="nav_section").set_value("Briefing").run()
         app.selectbox(key="editorial_saved_product").set_value("session:dossier").run()
         assert any(h.value == dossier.title for h in app.subheader)
         generate.assert_not_called()

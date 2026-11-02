@@ -15,7 +15,7 @@ from edicola.consent_ui import authorize_action
 from edicola.consent import perform
 from edicola.api_guard import PermissionDenied
 from edicola.personal_store import PersonalStoreError
-from edicola.design import section_intro, friendly_error
+from edicola.design import section_intro, friendly_error, reading_title
 from edicola import consent
 from edicola.identity import synchronize_identity
 from edicola.rag_context import source_editions
@@ -197,7 +197,7 @@ def render_editorial(root, context):
         if st.session_state.get("editorial_saved_product") not in available:
             st.session_state.pop("editorial_saved_product", None)
         selected = st.selectbox("Letture già disponibili", [None] + list(available), key="editorial_saved_product",
-            format_func=lambda key: (citation_text(available[key][0].title, available[key][0].used_source_ids)
+            format_func=lambda key: (citation_text(reading_title(available[key][0]), available[key][0].used_source_ids)
                                      + " · " + available[key][1]) if key else "Briefing corrente",
             on_change=cancel_navigation_action)
     product = available[selected][0] if selected else results.get("briefing")
@@ -222,7 +222,7 @@ def render_editorial_product(product, root, context):
     if coverage.get("partial"):
         st.caption("Copertura parziale: questa lettura usa solo una parte dell’archivio.")
     render_context_limit(coverage)
-    st.subheader(readable(citation_text(product.title, product.used_source_ids)))
+    st.subheader(readable(citation_text(reading_title(product), product.used_source_ids)))
     if product.message:
         st.info(product_notice(product))
     for section in product.sections:

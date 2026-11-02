@@ -11,9 +11,9 @@ from types import SimpleNamespace
 
 from edicola.map_context import joined_proofs
 
-VERSION = "knowledge-relevance-v1"
+VERSION = "knowledge-relevance-v2"
 STOP = set("a ad al alla alle allo ai agli all di del della delle dello dei degli da dal dalla dalle dei in nel nella nelle negli sul sulla sulle su per con contro tra fra e ed o il lo la le gli i un una uno l d che quali quale qual come cosa quando dove quanto sono è stato stata stati state si non più questo questa questi queste ci se attraverso usando entro fino".split())
-INTENT = set("misur intervent economic propost sostener aiut tutelar novit aggiornament notizi tem event svilupp finanziament".split())
+INTENT = set("misur intervent economic propost sostener aiut tutelar novit aggiornament notizi tem event svilupp finanziament dibattit relativ principal criticità".split())
 GENERIC_TARGET = set("impres aziend attivit person cittadin settor".split())
 
 
@@ -30,6 +30,8 @@ for group in (
     "scuola scuole scolastico scolastica istruzione",
     "sanità sanita sanitario sanitaria salute",
     "trasporto trasporti autotrasporto autotrasportatori",
+    "protesta proteste manifestazione manifestazioni mobilitazione mobilitazioni corteo cortei sciopero scioperi contestazione contestazioni",
+    "Abruzzo abruzzese abruzzesi",
 ):
     words = group.split()
     for word in words:
@@ -47,32 +49,53 @@ class Topic:
         # Beneficiari e luoghi dichiarati sono vincoli, non parole comuni del problema.
         target = re.search(r"\b(?:sostenere|tutelare|aiutare|proteggere|favorire)\s+(.+?)(?:\s+(?:contro|attraverso|mediante|con)\b|[?!.]|$)", question, re.I)
         place = re.search(r"\b(?:comune|città|provincia|regione)\s+di\s+(.+?)(?:\s+(?:contro|attraverso|mediante|per|con|sul|sulla)\b|[?!.]|$)", question, re.I)
+        city = re.search(r"\ba\s+([A-ZÀ-ÖØ-Þ][\w’'-]+)\b", question)
         # Anche formulazioni nominali: "aiuti per le scuole contro ...".
         nominal = re.search(r"\bper\s+(.+?)\s+(?:contro|attraverso|mediante)\b", question, re.I)
         beneficiary = target or nominal
         target_text = re.split(r"\b(?:nel|nella|nei|nelle|del|della)\s+(?:comune|città|provincia|regione)\b",
                                beneficiary.group(1), flags=re.I)[0] if beneficiary else ""
-        self.location = terms(place.group(1)) if place else set()
+        self.location = terms(place.group(1)) if place else terms(city.group(1)) if city else set()
         explicit = terms(target_text) if beneficiary else self.location
         specific = explicit - GENERIC_TARGET - INTENT
         self.strict = bool(specific)
         self.focus = specific or (self.words - INTENT - GENERIC_TARGET)
+        # La città delimita l'argomento, non può sostituirlo nel matching.
+        if city and not beneficiary:
+            self.focus = self.words - self.location - INTENT - GENERIC_TARGET
+        subject = re.search(r"\b(?:chiusura|salvaguardia|riforma|criticità|problemi)\s+(?:dei|degli|delle|della|del)\s+([^\W\d_]+)", question, re.I)
+        if subject and not beneficiary:
+            self.focus = terms(subject.group(1))
+        self.region = terms("Abruzzo") if re.search(r"\babruzz(?:o|es[ei])\b", question, re.I) else set()
+        self.context_pattern = None
+        if "tribunal" in self.focus and re.search(r"chiusura|salvaguardia|ripristino", question, re.I):
+            self.context_pattern = re.compile(r"chiusur|salvaguard|ripristin|circoscrizion|geografi|subprovincial", re.I)
+        elif terms("sanità") & self.focus and re.search(r"criticità|problemi|carenze", question, re.I):
+            self.context_pattern = re.compile(r"criticit|problem|deficit|disavanz|carenz|attesa|attese|posti letto|debiti|tagli", re.I)
         # Se non esistono termini discriminanti, il solo ranking semantico rimane
         # utilizzabile; non si finge di aver verificato una pertinenza lessicale.
         documents = [terms(c.text) for c in chunks]
         counts = Counter(w for words in documents for w in words)
         self.weights = {w: 1 + math.log((len(documents) + 1) / (counts[w] + 1)) for w in self.words}
 
-    def score(self, text):
+    def score(self, text, *, context_required=True):
         words = terms(text)
         if self.location and not self.location <= words:
             return 0.0
         if self.focus and not (words & self.focus):
             return 0.0
+        if context_required and self.context_pattern is not None and not self.context_pattern.search(text):
+            return 0.0
         if not self.focus:
             return 1.0
         matched = words & self.words
-        return sum(self.weights.get(w, 1) for w in matched) + 2 * len(words & self.focus)
+        return sum(self.weights.get(w, 1) for w in matched) + 2 * len(words & self.focus) + 3 * len(words & self.region)
+
+    def semantic_allowed(self, text, *, strong=False):
+        """Vincoli espliciti anche sui candidati semantici; nessuna validazione di fatti."""
+        words = terms(text)
+        return ((not self.location or self.location <= words) and
+                (strong or not self.location or not self.focus or bool(words & self.focus)))
 
     def evidence_score(self, evidence, sources, *, anchor=None):
         """Contesto locale della citazione, non l'intero chunk multicollonna.
@@ -103,7 +126,7 @@ class Topic:
                 after = original[end:end + 180]
                 before = re.split(r"[.!?]", before)[-1]
                 after = re.split(r"[.!?]", after)[0]
-                best = max(best, self.score(before + original[start:end] + after))
+                best = max(best, self.score(before + original[start:end] + after, context_required=False))
         return best
 
 
@@ -112,6 +135,8 @@ def select_topic_chunks(topic, chunks, hits, limit, *, preserve_editions=False):
     positions = {h["id"]: i for i, h in enumerate(hits)}
     scored = [(topic.score(c.text), positions.get(c.id, len(hits) + 1), c) for c in chunks]
     ranked = sorted((row for row in scored if row[0] > 0), key=lambda row: (-row[0], row[1], row[2].id))
+    if ranked and (topic.location or topic.context_pattern):
+        ranked = [row for row in ranked if row[0] >= ranked[0][0] * .55 or row[2].id in positions]
     # Con domanda non discriminante non espandere alla cieca sull'intero archivio.
     if not topic.focus:
         ranked = [row for row in ranked if row[2].id in positions]

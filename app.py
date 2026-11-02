@@ -32,9 +32,6 @@ logging.getLogger("edicola").setLevel(logging.INFO)
 st.set_page_config(page_title="Edicola Digitale Intelligente", layout="wide", page_icon="📰")
 synchronize_identity()
 if setting("EDICOLA_CLOUD_DEMO", "0") == "1":
-    with st.expander("Informazioni su questa edicola dimostrativa"):
-        st.caption("Archivio pubblico · spazio personale con accesso Google. "
-                   "Gli audio e i prodotti generali possono non essere disponibili dopo un riavvio; preferenze e briefing personali restano nel tuo account.")
     try:
         with st.spinner("Apro l’Edicola…"):
             ROOT = prepare_cloud(ROOT)
@@ -43,7 +40,7 @@ if setting("EDICOLA_CLOUD_DEMO", "0") == "1":
         st.stop()
 
 try:
-    with st.spinner("Controllo dell'archivio locale…"):
+    with st.spinner("Apro le edizioni disponibili…"):
         documents = ingest_directory(ROOT / "data/incoming", ROOT / "data/archive.sqlite3")
         prepared = prepare_documents(documents, ROOT / "data/archive.sqlite3")
 except (OSError, RuntimeError):

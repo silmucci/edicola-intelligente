@@ -47,27 +47,9 @@ def archive(tmp_path, monkeypatch):
 
 
 def script(root):
-    return f'''
-from pathlib import Path
-import streamlit as st
-from edicola.ingestion import ingest_directory
-from edicola.chunking import prepare_documents
-from edicola.pdf_viewer import archive_context, render_archive
-from edicola.experience_ui import SECTIONS, render_home
-from edicola.reading_ui import render_chat
-from edicola.personalization_ui import render_personalization_ui
-root = Path({str(root)!r})
-docs = ingest_directory(root / "data/incoming", root / "data/archive.sqlite3")
-prepared = prepare_documents(docs, root / "data/archive.sqlite3")
-context = archive_context(root, docs, prepared)
-if "nav_section" not in st.session_state:
-    st.session_state["nav_section"] = SECTIONS[0]
-tabs = st.tabs(SECTIONS, key="nav_section", on_change="rerun")
-with tabs[0]: render_home(root, context)
-with tabs[1]: render_archive(context, prepared)
-with tabs[2]: render_chat(root, context)
-with tabs[8]: render_personalization_ui(root, archive=context)
-'''
+    # Monta l'app reale con il solo archivio sintetico della fixture.
+    return (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8").replace(
+        "ROOT = Path(__file__).resolve().parent", f"ROOT = Path({str(root)!r})")
 
 
 @pytest.mark.parametrize("logged_in", [False, True])
@@ -77,17 +59,19 @@ def test_identity_home_and_logout_are_not_fake_authentication(archive, logged_in
     with patch("streamlit.user", SimpleNamespace(is_logged_in=logged_in)), patch("streamlit.logout") as logout:
         app = AppTest.from_string(script(root), default_timeout=15).run()
         assert not app.exception
+        assert ("Consigliati per te" in [h.value for h in app.subheader]) is logged_in
+        app.selectbox(key="nav_section").set_value("Il mio profilo").run()
         assert app.button(key="account_logout").disabled is (not logged_in)
         # La homepage personalizzata usa SOLO la sessione nativa verificata.
-        home_headers = [h.value for h in app.tabs[0].subheader]
-        assert ("Consigliati per te" in home_headers) is logged_in
+        home_headers = [h.value for h in app.subheader]
+        assert home_headers
         assert any("condiviso" in caption.value for caption in app.caption)
         assert load_profile(root).user_id == "demo"  # Identità/storage del prototipo invariati.
         if logged_in:
             app.session_state["rag_history"] = [{"question": "Domanda", "result": RagResult("Risposta", [], [], False)}]
             app.button(key="account_logout").click().run()
             logout.assert_called_once()
-            assert app.session_state["rag_history"] == []
+            assert "rag_history" not in app.session_state or app.session_state["rag_history"] == []
             assert load_profile(root).interests == ["trasporti"]  # Logout non cancella dati persistenti.
         else:
             logout.assert_not_called()
@@ -106,15 +90,16 @@ def test_shortcuts_keep_consents_and_do_not_generate(archive, button, destinatio
         app.button(key=button).click().run()
         assert not app.exception
         assert app.session_state["nav_section"] == destination
-        assert len(app.chat_input) == 1
+        assert len(app.chat_input) == (1 if destination == "Chat AI" else 0)
         assert app.session_state["consent_choices"][("text", "text-v2")]
-        assert [tab.label for tab in app.tabs] == SECTIONS
+        assert app.selectbox(key="nav_section").options == SECTIONS
 
 
 def test_cards_save_remove_and_preferences_feedback(archive):
     root, _, catalog = archive
     save_profile(root, Profile(interests=["trasporti"]))
     app = AppTest.from_string(script(root), default_timeout=15).run()
+    app.selectbox(key="nav_section").set_value("Il mio profilo").run()
     save = next(button for button in app.button if button.label == "Salva lettura")
     app.button(key=save.key).click().run()
     assert not app.exception
@@ -168,18 +153,21 @@ def test_conversational_history_does_not_repeat_requests_and_handles_failure(arc
     result = RagResult("Risposta documentata. [S1]", [Source("S1", chunk.id, chunk.metadata["filename"], chunk.metadata["page"], chunk.text, .2)], ["S1"], True)
     with patch("edicola.rag.ask_question", return_value=result) as ask:
         app = AppTest.from_string(script(root), default_timeout=15).run()
+        app.selectbox(key="nav_section").set_value("Chat AI").run()
         app.chat_input(key="rag_input").set_value("Prima domanda")
         app.session_state["consent_choices"] = {("text", "text-v2"): True}
         app.run()
         assert not app.exception and len(app.chat_message) == 2
         assert app.chat_message[0].name == "user" and app.chat_message[1].name == "assistant"
-        app.button(key="home_products_test_6").click().run()
+        app.selectbox(key="nav_section").set_value("Podcast").run()
+        app.selectbox(key="nav_section").set_value("Chat AI").run()
         assert ask.call_count == 1
         app.chat_input(key="rag_input").set_value("Seconda domanda")
         app.run()
         assert not app.exception and len(app.chat_message) == 4 and ask.call_count == 2
         app.button(key="rag_pdf_S1").click().run()
         assert ask.call_count == 2
+        app.selectbox(key="nav_section").set_value("Chat AI").run()
         ask.side_effect = RagError("Servizio momentaneamente non disponibile.")
         app.chat_input(key="rag_input").set_value("Terza domanda").run()
         assert not app.exception and app.error and len(app.chat_message) == 6
@@ -194,7 +182,7 @@ def test_empty_home_and_guest_have_clear_states_and_no_fake_content(archive):
     with patch("streamlit.user", SimpleNamespace(is_logged_in=False)):
         app = AppTest.from_string(script(root), default_timeout=15).run()
     assert not app.exception
-    assert any("Non ci sono passaggi indicizzati" in message.value for message in app.caption)
+    assert any("Non ci sono letture disponibili" in message.value for message in app.caption)
     assert not any("account personale" in item.value and "non" not in item.value for item in app.caption)
     assert not app.get("file_uploader")
 
@@ -228,6 +216,9 @@ def test_untrusted_session_flags_do_not_authenticate(archive):
         app.session_state["authenticated"] = True
         app.session_state["user_id"] = "another-user"
         app.run()
-        assert not app.exception and app.button(key="account_logout").disabled
-        assert not any(h.value == "Consigliati per te" for h in app.tabs[0].subheader)
+        assert not app.exception
+        assert not any(h.value == "Consigliati per te" for h in app.subheader)
+        app.selectbox(key="nav_section").set_value("Il mio profilo").run()
+        assert app.button(key="account_logout").disabled
+        assert any("condivis" in c.value for c in app.caption)
         logout.assert_not_called()

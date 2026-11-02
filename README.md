@@ -2,6 +2,19 @@
 
 Leggi i quotidiani disponibili, esplora le notizie e ritrova le pagine originali.
 
+La navigazione usa un selettore compatto delle sezioni editoriali. Logo, menu
+**Profilo** e ricerca sono in alto a sinistra. Il profilo e l’accesso Google
+sono disponibili soltanto dal menu Profilo; la Home apre direttamente sulle
+edizioni e sulle letture. I filtri per intervallo di date non sono presenti:
+puoi scegliere le singole edizioni e limitarti alle più recenti della selezione.
+[Resoconto della semplificazione dell’interfaccia](UI_SIMPLIFICATION.md).
+Nelle mappe, **Esplora un concetto** mostra i
+collegamenti del concetto scelto senza generare nuovi contenuti. Le fonti
+riportano quotidiano, data dell’edizione e pagina. Le date relative nella
+Timeline vengono completate soltanto con riferimenti non ambigui e metadati
+verificati; gli altri sviluppi rimangono in **Senza data**.
+[Correzioni funzionali e stato delle verifiche](FUNCTIONAL_FIXES.md).
+
 ## Le sezioni
 
 - **Rassegna stampa**: copertine, estratti e letture. Filtra per parole chiave,

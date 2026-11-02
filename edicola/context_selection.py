@@ -1,6 +1,8 @@
 """Selezione comune in RAM: edizioni pertinenti, passaggi interi, budget globale."""
 
-from collections import defaultdict, deque
+from collections import defaultdict, deque, Counter
+import logging
+logger = logging.getLogger(__name__)
 
 VERSION = "corpus-context-v1"
 MAX_DISTANCE = 0.65
@@ -30,19 +32,26 @@ def edition_order(items, *, filename=lambda item: item.filename):
 
 def fit_context(items, render, budget, *, text_budget=None, max_source_chars=None):
     """Non tagliare i passaggi; saltare quelli grandi e provare anche i successivi."""
-    kept, identities, chars = [], set(), 0
+    items = list(items)
+    kept, identities, chars, reasons = [], set(), 0, Counter()
     for item in edition_order(items):
         identity = (item.filename, item.chunk_id)
         if identity in identities or not item.text.strip():
+            reasons["duplicate_or_empty"] += 1
             continue
         identities.add(identity)
         if max_source_chars is not None and len(item.text) > max_source_chars:
+            reasons["source_size"] += 1
             continue
         if text_budget is not None and chars + len(item.text) > text_budget:
+            reasons["source_budget"] += 1
             continue
         if len(render(kept + [item])) <= budget:
             kept.append(item)
             chars += len(item.text)
+        else:
+            reasons["prompt_budget"] += 1
+    logger.info("phase=context_selection candidates=%d used=%d discarded=%d reasons=%s", len(items), len(kept), len(items)-len(kept), dict(reasons))
     return kept, render(kept)
 
 

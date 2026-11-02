@@ -8,7 +8,7 @@ import streamlit as st
 from edicola.archive_ui import edition_metadata
 from edicola.editorial_selection import read_catalog
 from edicola.embeddings import api_key
-from edicola.identity import current_identity, login_controls, synchronize_identity
+from edicola.identity import current_identity, synchronize_identity
 from edicola.personal_audio import audio_scope, prepare_audio, remove_audio
 from edicola.personal_store import PersonalStoreError, PostgresPersonalStore
 from edicola.personalization import generate_personal_briefing, recommend
@@ -54,11 +54,10 @@ def render_account_profile(root, archive=None):
     from edicola.personalization_ui import cached_audio, show_product
     synchronize_identity()
     section_intro("Il mio profilo", "Il tuo tempo, i tuoi interessi, le tue letture. Preferenze e privacy in un unico spazio.", "La tua edicola")
-    login_controls()
     if current_identity() is None:
         privacy_controls()
         privacy_notice()
-        st.info("Accedi per salvare preferenze, letture e briefing sul tuo account. Puoi consultare l’Archivio senza registrarti.")
+        st.info("Accedi con Google dal menu Profilo in alto per salvare preferenze, letture e briefing. Puoi consultare l’Archivio senza registrarti.")
         return
     try:
         store, profile = personal_context()

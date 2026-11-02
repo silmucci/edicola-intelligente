@@ -39,9 +39,9 @@ def test_concept_only_map_is_visual_but_has_no_factual_or_decorative_edges():
     with installed_fixture(module), patch("google.genai.Client") as api:
         app = AppTest.from_string(code).run()
         assert not app.exception and len(app.get("graphviz_chart")) == 1
-        assert any("senza relazioni documentate" in c.value for c in app.caption)
+        assert any("non indicano relazioni" in c.value for c in app.caption)
         app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert not app.exception and not app.get("graphviz_chart") and app.dataframe
+        assert not app.exception and not app.get("graphviz_chart") and not app.dataframe
         api.assert_not_called()
 
 

@@ -33,18 +33,12 @@ def review_controls(root, catalog=None):
     scope = st.selectbox("Ambito delle edizioni", options, key="editorial_review_scope",
                          format_func=lambda value: value.capitalize() if value else "Tutti gli ambiti")
     st.caption("L’ambito riguarda l’edizione, non i singoli articoli. Alcune edizioni non hanno un ambito indicato.")
-    dates = [""] + sorted({item.get("date") for item in files.values() if item.get("date")})
+    # Vecchie bozze non devono mantenere filtri che non sono più visibili.
     for key in ("editorial_review_from", "editorial_review_to"):
-        if st.session_state.get(key, "") not in dates:
-            st.session_state[key] = ""
-    start = st.selectbox("Edizioni dal", dates, key="editorial_review_from", format_func=lambda value: value or "Senza limite iniziale")
-    end = st.selectbox("Edizioni fino al", dates, key="editorial_review_to", format_func=lambda value: value or "Senza limite finale")
+        st.session_state.pop(key, None)
     latest = st.selectbox("Copertura delle edizioni", [False, True], key="editorial_review_latest",
-                          format_func=lambda value: "Solo l’ultima data disponibile nella selezione" if value else "Tutto l’intervallo selezionato")
-    st.caption("Le date si riferiscono alle edizioni, non agli eventi. Lascia i filtri vuoti per consultare tutte le fonti disponibili.")
-    if start and end and start > end:
-        st.warning("L’intervallo scelto non contiene edizioni: la data iniziale viene dopo quella finale.")
-    selection = ReviewSelection(keyword.strip(), tuple(sorted(selected)), scope, start, end, latest)
+                          format_func=lambda value: "Solo le più recenti della selezione" if value else "Tutte le edizioni selezionate")
+    selection = ReviewSelection(keyword=keyword.strip(), filenames=tuple(sorted(selected)), scope=scope, latest=latest)
     filtered = filter_catalog(catalog, selection)
     st.caption("La ricerca include i testi che contengono tutte le parole chiave indicate.")
     return filtered, selection
@@ -68,7 +62,9 @@ def render_review_passages(catalog, context, metadata):
     limits = sorted({min(4, len(members)), min(12, len(members)), len(members)})
     if st.session_state.get("editorial_review_limit") not in limits:
         st.session_state["editorial_review_limit"] = limits[0]
-    limit = st.selectbox("Letture da mostrare", limits, key="editorial_review_limit")
+    limit = st.selectbox("Letture da mostrare", limits, key="editorial_review_limit",
+                         format_func=lambda value: "Tutte le letture" if value == len(members) else
+                         "Una selezione" if value == limits[0] else "Più letture")
     if limit < len(members):
         st.caption("Queste schede sono una selezione. Puoi aumentare le letture da mostrare per vedere gli altri contributi.")
     subset = type(catalog)(members, catalog.vectors, catalog.coverage)

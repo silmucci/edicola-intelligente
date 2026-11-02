@@ -16,6 +16,7 @@ PRODUCTS = [
 for product in PRODUCTS:
     product["section"] = product["title"]
 SECTIONS = [product["title"] for product in PRODUCTS]
+EDITORIAL_SECTIONS = [product["title"] for product in PRODUCTS if product["id"] != "profile"]
 
 
 def destination(identifier):
@@ -29,7 +30,7 @@ def active_product(section):
 # Interrompe il cleanup dei soli input persistenti delle viste non montate.
 # Mai pulsanti, consensi, conferme di cancellazione o richieste di generazione.
 VIEW_INPUTS = ("editorial_saved_product", "editorial_review_keyword", "editorial_review_files", "editorial_review_scope",
-               "editorial_review_from", "editorial_review_to", "editorial_review_latest",
+               "editorial_review_latest",
                "editorial_review_group", "editorial_review_limit",
                "podcast_topic", "knowledge_map_focus",
                "knowledge_topic_timeline", "knowledge_topic_map", "knowledge_map_view",
@@ -46,9 +47,19 @@ def render_navigation():
         st.session_state["nav_section"] = destination("briefing")
     if st.session_state.get("nav_section") not in SECTIONS:
         st.session_state["nav_section"] = SECTIONS[0]
-    # Pills native: testo leggibile e wrapping, senza nove tab compresse.
-    return st.pills("Sezioni dell’Edicola", SECTIONS, key="nav_section",
-                    selection_mode="single", label_visibility="collapsed", on_change=cancel_navigation_action) or SECTIONS[0]
+    # Il profilo ha un solo accesso nell'intestazione; la sua rotta resta valida.
+    current = st.session_state["nav_section"]
+    st.session_state["_editorial_navigation"] = current if current in EDITORIAL_SECTIONS else None
+    st.selectbox("Sezioni dell’Edicola", EDITORIAL_SECTIONS, key="_editorial_navigation",
+                 placeholder="Scegli una sezione", label_visibility="collapsed", on_change=select_editorial_section)
+    return st.session_state["nav_section"]
+
+
+def select_editorial_section():
+    selected = st.session_state.get("_editorial_navigation")
+    if selected in EDITORIAL_SECTIONS:
+        cancel_navigation_action()
+        st.session_state["nav_section"] = selected
 
 
 def cancel_navigation_action():

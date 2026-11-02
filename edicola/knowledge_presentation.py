@@ -47,7 +47,8 @@ def theme_title(topic):
 
 
 def deadline_reference(text):
-    return bool(re.search(r"\b(?:fino al|entro il|scadenza(?: del)?|scade il)\s+\d", text, re.I))
+    return bool(re.search(r"\b(?:fino al|entro il|scadenza(?: del)?|scade il)\s+\d|"
+                          r"\b(?:fino a|entro|scade|scadenza(?: è)?)\s+(?:oggi|domani|dopodomani)\b", text, re.I))
 
 
 def empty_knowledge_message(result):

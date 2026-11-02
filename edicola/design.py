@@ -1,6 +1,7 @@
 """Elementi editoriali nativi: tema locale, niente CDN o selettori DOM fragili."""
 
 import html
+import re
 import streamlit as st
 
 from edicola.design_tokens import page_css
@@ -17,6 +18,13 @@ def empty_state(title, description):
     with st.container(border=True):
         st.text(title)
         st.caption(description)
+
+
+def reading_title(product):
+    """Etichetta cliente dei risultati storici, senza riscrivere i dati salvati."""
+    if product.kind == "dossier":
+        return re.sub(r"^\s*dossier(?:\s+tematico)?\b\s*[:–—-]?\s*", "Approfondimento: ", product.title, count=1, flags=re.I)
+    return product.title
 
 
 def friendly_error(error):

@@ -126,7 +126,7 @@ def test_cloud_ui_stops_before_ingestion_when_seed_missing(monkeypatch):
     with patch("edicola.cloud.prepare_cloud", side_effect=FileNotFoundError), patch("edicola.ingestion.ingest_directory", side_effect=AssertionError("Acquisizione non autorizzata")):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py")).run()
     assert not app.exception
-    assert any("Snapshot cloud assente" in message.value for message in app.error)
+    assert any("L’archivio non è disponibile" in message.value for message in app.error)
     assert any("accesso Google" in message.value for message in app.caption)
 
 
@@ -170,9 +170,9 @@ def test_cloud_full_start_and_rerun_make_no_external_calls(source, tmp_path, mon
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15).run()
         assert not app.exception
         from edicola.product_navigation import SECTIONS
-        assert app.pills(key="nav_section").options == SECTIONS
+        assert app.selectbox(key="nav_section").options == SECTIONS
         assert not app.chat_input
-        app.pills(key="nav_section").set_value("Il mio profilo").run()
+        app.selectbox(key="nav_section").set_value("Il mio profilo").run()
         assert app.button(key="account_login").disabled
         assert not app.multiselect  # Nessun fallback al profilo condiviso quando mancano i Secrets.
         app.run()

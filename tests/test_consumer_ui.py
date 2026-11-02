@@ -141,9 +141,9 @@ def test_actual_app_mounts_only_eight_supported_destinations_with_mocked_archive
         api = stack.enter_context(patch("google.genai.Client"))
         app = AppTest.from_file(str(Path(__file__).parents[1] / "app.py")).run()
         assert not app.exception
-        assert app.pills(key="nav_section").options == [p["title"] for p in PRODUCTS]
+        assert app.selectbox(key="nav_section").options == [p["title"] for p in PRODUCTS]
         for product in PRODUCTS:
-            app.pills(key="nav_section").set_value(product["title"]).run()
+            app.selectbox(key="nav_section").set_value(product["title"]).run()
             assert not app.exception and not app.segmented_control
         editorial.assert_called_once()
         api.assert_not_called()

@@ -23,7 +23,7 @@ def test_ui_never_generates_on_start_or_rerun_and_reuses_wav(podcast_archive):
         assert not app.exception
         generate.assert_not_called()
         assert any("4,2 milioni" in text.value for text in app.text)
-        assert any("giornale.pdf — pagina 3" in text.value for text in app.text)
+        assert any("Documento dell’archivio · pagina 3" in text.value for text in app.text)
         app.button[0].click().run()
         generate.assert_not_called()
         assert app.button(key="consent_accept")

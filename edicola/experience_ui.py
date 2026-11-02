@@ -16,7 +16,7 @@ from edicola.personalization import recommend
 from edicola.profiles import load_profile, save_passage
 from edicola import identity
 from edicola.design import section_intro, empty_state
-from edicola.editorial_components import render_products, render_highlights
+from edicola.editorial_components import render_highlights
 
 from edicola.product_navigation import SECTIONS, cancel_navigation_action
 INTERESTS = ["Ambiente", "Cultura", "Economia", "Politica", "Salute", "Scuola", "Sport", "Tecnologia", "Trasporti"]
@@ -131,7 +131,6 @@ def recent_editions(context, limit=3):
 
 def render_home(root, context):
     identity.synchronize_identity()
-    render_products()
     metadata = edition_metadata(root, context.documents)
     if context.documents:
         ordered = recent_editions(context, limit=len(context.documents))
@@ -140,7 +139,6 @@ def render_home(root, context):
     else:
         empty_state("La tua edicola è ancora vuota", "Le copertine appariranno qui quando saranno disponibili edizioni nell’archivio.")
     section_intro("In evidenza", "Estratti dalle edizioni disponibili, senza aggiornamenti in tempo reale.", "Dalle fonti originali")
-    st.caption("Estratti originali, alternati tra le edizioni disponibili. Nessuna notizia aggiunta o riscritta.")
     try:
         catalog = read_catalog(root)
     except Exception:

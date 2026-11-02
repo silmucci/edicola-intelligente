@@ -19,17 +19,17 @@ from edicola.rag import RagError
 from edicola.pdf_viewer import source_button
 from edicola.settings import setting
 from edicola.archive_ui import edition_metadata
-from edicola.experience_ui import INTERESTS, account_controls, excerpt, passage_card, readable
+from edicola.experience_ui import INTERESTS, excerpt, passage_card, readable
 from edicola.identity import local_demo
 from edicola.consent_ui import authorize_action, privacy_controls
 from edicola.consent import perform
 from edicola.api_guard import PermissionDenied
-from edicola.design import friendly_error, product_notice
+from edicola.design import friendly_error, product_notice, reading_title
 from edicola.chat_sources import citation_text, render_sources, document_label, render_context_limit
 
 
 def show_product(result, archive=None):
-    st.subheader(readable(citation_text(result.title, result.used_source_ids)))
+    st.subheader(readable(citation_text(reading_title(result), result.used_source_ids)))
     if result.from_cache:
         st.caption("Lettura già disponibile.")
     if result.coverage.get("partial"):
@@ -89,7 +89,6 @@ def render_personalization_ui(root, archive=None):
                    "I dati locali possono andare persi al riavvio.")
     else:
         st.caption("Profilo condiviso: chi usa questa installazione può accedere a questi dati; non è un account riservato.")
-    account_controls()
     if st.session_state.pop("personal_reset", False):
         for key in list(st.session_state):
             if key.startswith("personal_"):
@@ -201,7 +200,7 @@ def render_personalization_ui(root, archive=None):
     if products:
         keys = [p.key for p in products]
         selected = st.selectbox("I miei briefing già disponibili", keys,
-                                format_func=lambda k: next(citation_text(p.result.title, p.result.used_source_ids) + " — " + p.created_at for p in products if p.key == k),
+                                format_func=lambda k: next(citation_text(reading_title(p.result), p.result.used_source_ids) + " — " + p.created_at for p in products if p.key == k),
                                 key="personal_product")
         product = next(p for p in products if p.key == selected)
         st.caption("Briefing salvato: riflette le preferenze e le fonti al momento della generazione. Per applicare le modifiche usa Genera il mio briefing.")

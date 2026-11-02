@@ -18,7 +18,7 @@ def local_matches(query, documents, metadata, chunks=()):
     def matches(text):
         words = re.findall(r"\w+", text.casefold())
         return all(any(word.startswith(term) for word in words) for term in terms)
-    products = [i for i, p in enumerate(PRODUCTS) if matches(p["title"] + " " + p["description"])]
+    products = [i for i, p in enumerate(PRODUCTS) if p["id"] != "profile" and matches(p["title"] + " " + p["description"])]
     editions = [d for d in documents if matches(metadata[d.filename]["title"] + " " + metadata[d.filename]["date"])]
     passages = [c for c in chunks if matches(c.text)][:5]
     return products[:5], editions[:5], passages
@@ -32,28 +32,27 @@ def _profile():
 
 def render_header(root, context):
     identity.synchronize_identity()
-    with st.container(horizontal=True, vertical_alignment="center", gap="large"):
-        with st.container(width=490):
-            st.html(f'<style>{page_css()}</style><header class="edi-brand">{LOGO}<div>'
-                    '<h1>Edicola Digitale <strong>Intelligente</strong></h1>'
-                    '<p>Quotidiani, analisi e fonti per capire il mondo.</p></div></header>')
-        with st.container(width=350):
-            query = st.text_input("Cerca nell'Edicola", max_chars=120, key="account_header_search",
-                                  placeholder="Cerca un argomento o una testata...", label_visibility="collapsed")
-            if query.strip():
-                with st.popover("Risultati della ricerca", icon=":material/search:", width="stretch"):
-                    st.caption("Cerca nelle sezioni e nelle edizioni disponibili.")
-                    render_search_results(root, context, query)
-        with st.container(horizontal=True, width="content", vertical_alignment="center"):
+    with st.container():
+        st.html(f'<style>{page_css()}</style><header class="edi-brand">{LOGO}<div>'
+                '<h1>Edicola Digitale <strong>Intelligente</strong></h1>'
+                '<p>Quotidiani, analisi e fonti per capire il mondo.</p></div></header>')
+        with st.container(horizontal=True, horizontal_alignment="left", vertical_alignment="center", gap="small"):
             person = identity.current_identity() if not identity.local_demo() else None
             name = st.user.get("name", "") if person else ""
             initials = "".join(part[0] for part in name.split()[:2]).upper() if isinstance(name, str) else ""
-            st.button((initials + " · " if initials else "") + "Il mio profilo", key="header_profile", on_click=_profile,
-                      icon=":material/person:")
-            if identity.local_demo():
-                st.caption("Profilo condiviso su questa installazione")
-            else:
-                identity.login_controls(key="header_auth")
+            with st.popover("Profilo" + (" · " + initials if initials else ""), icon=":material/person:"):
+                st.button((initials + " · " if initials else "") + "Il mio profilo", key="header_profile", on_click=_profile,
+                          icon=":material/person:")
+                if identity.local_demo():
+                    st.caption("Profilo condiviso su questa installazione")
+                else:
+                    identity.login_controls(key="header_auth")
+            with st.popover("Cerca", icon=":material/search:"):
+                query = st.text_input("Cerca nell'Edicola", max_chars=120, key="account_header_search",
+                                      placeholder="Un argomento o una testata")
+                if query.strip():
+                    st.caption("Cerca nelle sezioni e nelle edizioni disponibili.")
+                    render_search_results(root, context, query)
 
 
 def render_search_results(root, context, query):

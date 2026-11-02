@@ -1,7 +1,7 @@
 """Normalizzazione temporale conservativa, senza orologio, API o date dai nomi PDF."""
 
 import re
-from datetime import date
+from datetime import date, timedelta
 
 
 MONTHS = {name: number for number, name in enumerate(
@@ -19,8 +19,19 @@ ISO = re.compile(r"(?<![\d/-])" + WEEKDAY + r"(?P<year>\d{4})-(?P<month>\d{2})-(
 FUTURE = re.compile(r"\b(prossim[oa]|si terrà|si svolgerà|avrà luogo|è in programma|è previst[oa]|sarà|approverà)\b", re.I)
 PAST = re.compile(r"\b(scors[oa]|passat[oa]|si è svolt[oa]|si è tenut[oa]|ha avuto luogo|è avvenut[oa]|ha approvato|ha partecipato)\b", re.I)
 OCCURRED = re.compile(r"\b(si è svolt[oa]|si è tenut[oa]|ha avuto luogo|è avvenut[oa]|ha approvato|ha partecipato)\b", re.I)
-ANNOUNCED = re.compile(r"\b(annunciat[oa]|programmat[oa]|previst[oa])\b", re.I)
-VERSION = "timeline-dates-v1"
+ANNOUNCED = re.compile(r"\b(annunciat[oa]|programmat[oa]|previst[oa]|doveva essere|avrebbe dovuto)\b", re.I)
+VERSION = "timeline-dates-v2"
+RELATIVE = re.compile(r"\b(l['’]altro\s+ieri|dopodomani|oggi|domani|ieri)\b", re.I)
+
+
+def relative_days(text):
+    offsets = {"oggi": 0, "domani": 1, "ieri": -1, "dopodomani": 2, "l'altro ieri": -2}
+    return {offsets[" ".join(match[0].lower().replace("’", "'").split())] for match in RELATIVE.finditer(text)}
+
+
+def reported_relative(text):
+    spans = [match.span() for match in re.finditer(r'«[^»]*»|“[^”]*”|"[^"]*"', text)]
+    return any(start <= match.start() < end for match in RELATIVE.finditer(text) for start, end in spans)
 
 
 def mentions(text):
@@ -65,10 +76,37 @@ def resolve_date(quote, proposed, published):
               "date_reason": "insufficient_context", "date_rule": ""}
     def fail(reason, status="unverified"):
         return dict(result, date_reason=reason, date_status=status)
+    # L'intestazione ripetuta dell'estrazione non è una data dell'evento.
+    header = re.match(r"^\s*Edizione del\s+(\d{1,2})/(\d{1,2})/(\d{4})\s+", quote, re.I)
+    if header:
+        try:
+            header_day = date(int(header[3]), int(header[2]), int(header[1]))
+        except ValueError:
+            return fail("invalid_edition_header")
+        if publication_date(published) and header_day != publication_date(published):
+            return fail("edition_header_conflict", "ambiguous")
+        quote = quote[header.end():]
     if re.search(r"pubblicazion|edizione del|pubblicat[oa] il", quote, re.I):
         return fail("publication_reference", "publication_reference")
     values = set(mentions(quote))
     if not values:
+        relative = relative_days(quote)
+        pub = publication_date(published)
+        historical = re.search(r"\b\d{4}\b|all['’]epoca|anniversario|anni fa|anno scorso|scorso anno|nel passato", quote, re.I)
+        if len(relative) == 1 and pub and not reported_relative(quote) and not historical:
+            offset = next(iter(relative))
+            if FUTURE.search(quote) and offset < 0 or PAST.search(quote) and offset > 0:
+                return fail("calendar_or_context_conflict")
+            try:
+                resolved = (pub + timedelta(days=next(iter(relative)))).isoformat()
+            except OverflowError:
+                return fail("invalid_calendar_date")
+            if proposed is not None and proposed != resolved:
+                return fail("model_date_conflict")
+            return {"event_date": resolved, "date_status": "completed_context", "date_origin": "edition_metadata",
+                    "date_reason": "", "date_rule": "edition_relative_day"}
+        if len(relative) > 1:
+            return fail("conflicting_relative_context", "ambiguous")
         return fail("missing_calendar_date")
     if len(values) != 1:
         return fail("multiple_dates", "ambiguous")
@@ -91,8 +129,7 @@ def resolve_date(quote, proposed, published):
         offsets.add(-1)
     if len(offsets) > 1:
         return fail("conflicting_year_context", "ambiguous")
-    relative = {delta for word, delta in (("oggi", 0), ("domani", 1), ("ieri", -1))
-                if re.search(r"\b" + word + r"\b", text)}
+    relative = relative_days(text)
     if len(relative) > 1:
         return fail("conflicting_relative_context", "ambiguous")
     # Un altro anno citato può indicare un contesto storico: non attribuirgli il corrente.

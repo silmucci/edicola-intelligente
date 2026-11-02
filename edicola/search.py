@@ -11,6 +11,7 @@ from edicola.embeddings import MODEL, EmbeddingError, GeminiEmbedder, api_key, q
 from edicola.indexing import ROOT, plan_index
 from edicola.vectorstore import open_collection
 from edicola.context_selection import MAX_DISTANCE, DISTANCE_WINDOW, edition_order
+from edicola.knowledge_relevance import Topic
 
 
 logger = logging.getLogger(__name__)
@@ -78,7 +79,14 @@ def semantic_search(question: str, *, authorize_external=False, root: Path = ROO
                     hits.append({"id": identity, "text": text, **chunk.metadata, "distance": distance})
             hits.sort(key=lambda hit: (hit["distance"], hit["id"]))
             cutoff = min(MAX_DISTANCE, hits[0]["distance"] + DISTANCE_WINDOW) if hits else MAX_DISTANCE
-            relevant = [hit for hit in hits if hit["distance"] <= cutoff]
+            topic = Topic(question, eligible)
+            lexical = {hit["id"]: topic.score(hit["text"]) for hit in hits}
+            lexical_floor = max(lexical.values(), default=0) * .55
+            relevant = [hit for hit in hits if topic.semantic_allowed(hit["text"], strong=hit["distance"] <= min(cutoff, .35)) and
+                        (hit["distance"] <= cutoff or topic.focus and lexical[hit["id"]] > 0 and lexical[hit["id"]] >= lexical_floor)]
+            relevant.sort(key=lambda hit: (-topic.score(hit["text"]), hit["distance"], hit["id"]))
+            logger.info("request_id=%s phase=corpus_ranking candidates=%d accepted=%d discarded=%d reason=relevance",
+                        request_id, len(hits), len(relevant), len(hits) - len(relevant))
             return list(edition_order(relevant, filename=lambda hit: hit["filename"]))
         if diversify_by_pdf:
             # Opzione editoriale: una sola embedding della domanda, ricerca per edizione.

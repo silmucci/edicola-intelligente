@@ -40,7 +40,7 @@ def render_contributions(sources, used_source_ids, root, *, editions=None):
 
 def render_context_limit(coverage):
     if coverage.get("context_selection", {}).get("omitted_passages", 0):
-        st.caption("Questa lettura usa una selezione dei contenuti pertinenti entro lo spazio disponibile; altre letture non sono incluse.")
+        st.caption("Questa lettura è una selezione: puoi approfondire nelle edizioni originali.")
 
 
 def render_sources(result, *, index, last, root, context, formatter, namespace="rag"):
@@ -69,7 +69,8 @@ def render_sources(result, *, index, last, root, context, formatter, namespace="
                 name = info.get("publication")
                 numbers = {identity: str(i) for i, identity in enumerate(dict.fromkeys(result.used_source_ids), 1)}
                 ids = "/".join(numbers[s.id] for s in sources)
-                label = f"{ids} · {name or 'Documento dell’archivio'} · p. {page}"
+                published = info.get("publication_date") or "Data non disponibile"
+                label = f"{ids} · {name or 'Documento dell’archivio'} · {published} · pagina {page}"
                 description = name or "Documento dell’archivio"
                 if info.get("publication_date"):
                     description += " · " + info["publication_date"]
@@ -83,5 +84,6 @@ def render_sources(result, *, index, last, root, context, formatter, namespace="
                     continue
                 name = editions.get(source.id, {}).get("publication") or "Documento dell’archivio"
                 number = list(dict.fromkeys(result.used_source_ids)).index(source.id) + 1
-                st.caption(formatter(f"[{number}] {name} · p. {source.page}"))
+                published = editions.get(source.id, {}).get("publication_date") or "Data non disponibile"
+                st.caption(formatter(f"[{number}] {name} · {published} · pagina {source.page}"))
                 st.text(source.text)

@@ -93,7 +93,7 @@ def test_map_named_exploration_uses_generated_result_without_api():
     fixture, code = render_script(result)
     with installed_fixture(fixture), patch("google.genai.Client") as api:
         app = AppTest.from_string(code, default_timeout=15).run()
-        assert not app.selectbox
+        assert app.selectbox(key="knowledge_map_focus").options[0] == "Tutti i concetti"
         assert not app.exception and app.get("graphviz_chart")
         assert any(node["label"] in text.value for node in data["nodes"] for text in app.text)
         app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
@@ -131,7 +131,7 @@ def test_changing_review_filters_or_navigation_cancels_pending_send(archive):
     with patch("edicola.press_review_ui.read_catalog", return_value=make_catalog()), patch(
         "edicola.editorial.generate_product") as generate:
         with platform(context) as app:
-            app.pills(key="nav_section").set_value("Briefing").run()
+            app.selectbox(key="nav_section").set_value("Briefing").run()
             app.text_input(key="editorial_review_keyword").set_value("trasporti")
             app.button(key="briefing_submit").click().run()
             assert app.session_state["consent_pending"]
@@ -139,9 +139,9 @@ def test_changing_review_filters_or_navigation_cancels_pending_send(archive):
             assert "consent_pending" not in app.session_state
             app.button(key="briefing_submit").click().run()
             assert app.session_state["consent_pending"]
-            app.pills(key="nav_section").set_value("Timeline").run()
+            app.selectbox(key="nav_section").set_value("Timeline").run()
             assert "consent_pending" not in app.session_state
             app.session_state["consent_choices"] = {("text", "text-v2"): True}
-            app.pills(key="nav_section").set_value("Briefing").run()
+            app.selectbox(key="nav_section").set_value("Briefing").run()
             assert not app.exception
             generate.assert_not_called()

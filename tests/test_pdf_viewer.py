@@ -164,7 +164,7 @@ def test_bad_source_is_not_an_active_button(archive):
     app = AppTest.from_string(source, default_timeout=10).run()
     assert not app.exception
     assert not any(b.key == "invalid_source" for b in app.button)
-    assert any("pagina richiesta non esiste" in c.value for c in app.caption)
+    assert any("pagina non è disponibile" in c.value for c in app.caption)
 
 
 def test_chat_citation_navigates_without_regenerating_answer(archive):

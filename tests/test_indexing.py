@@ -311,7 +311,7 @@ def test_rag_reuses_real_retrieval_without_vector_writes(archive_root):
         "edicola.ingestion.extract_pdf", side_effect=AssertionError("Estrazione vietata")
     ), patch("edicola.chunking.build_chunks", side_effect=AssertionError("Preprocessing vietato")):
         result = ask_question("Quali notizie?", root=archive_root, authorize_external=True, client=client)
-    assert len(result.sources) == min(3, len(chunks))
+    assert len(result.sources) == len(chunks)
     embedder.embed.assert_called_once_with(question_prompt("Quali notizie?"))
     client.models.generate_content.assert_called_once()
     after = collection.get(include=["documents", "metadatas", "embeddings"])

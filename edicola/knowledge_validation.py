@@ -8,7 +8,8 @@ from collections import Counter
 from edicola.map_relations import documented_relation, relation_failure, thematic_support
 from edicola.map_context import joined_proofs
 from edicola.rag import Source, validate_response
-from edicola.timeline_dates import documented_dates, event_status, resolve_date
+from edicola.timeline_dates import documented_dates, event_status, resolve_date, relative_days
+from edicola.timeline_events import compact_events
 from edicola.knowledge_presentation import development_kind, short_text, deadline_reference
 from edicola.design_tokens import COLORS
 from edicola.map_presentation import GROUPS, node_captions, node_groups
@@ -39,19 +40,16 @@ def validate_timeline(data: dict, sources: list[Source], coverage: dict) -> tupl
         editions.setdefault(item["pdf"], set()).add(item.get("date", ""))
     publications = {pdf: next(iter(dates)) if len(dates) == 1 else "" for pdf, dates in editions.items()}
     events, rejected, unverified = [], 0, 0
+    reasons = Counter()
     for item in data["events"]:
         if not isinstance(item, dict) or set(item) != {"title", "description", "event_date", "date_evidence"}:
             rejected += 1
+            reasons["structure"] += 1
             continue
         title, description = checked_claim(item["title"], sources), checked_claim(item["description"], sources)
         if not title.sufficient or not description.sufficient:
             rejected += 1
-            continue
-        # Non mostrare neanche nel testo una data completa assente dalle evidenze.
-        if any(not documented_dates(item[key]["text"]).issubset(
-            set().union(*(documented_dates(evidence["quote"]) for evidence in item[key]["evidence"])))
-               for key in ("title", "description")):
-            rejected += 1
+            reasons["citation"] += 1
             continue
         used = list(dict.fromkeys(title.used_source_ids + description.used_source_ids))
         temporal_quote, anchor = "", None
@@ -77,6 +75,20 @@ def validate_timeline(data: dict, sources: list[Source], coverage: dict) -> tupl
                                   "rule": temporal["date_rule"]}
             if temporal["event_date"] is None:
                 unverified += 1
+        # Una data derivata è ammessa solo se verificata dal riferimento relativo
+        # della stessa fonte, mai dalla proposta del modello o da altre citazioni.
+        derived = {temporal["event_date"]} if temporal.get("date_rule") == "edition_relative_day" else set()
+        unsupported_date = any(not documented_dates(item[key]["text"]).issubset(
+            set().union(*(documented_dates(e["quote"]) for e in item[key]["evidence"])) |
+            (derived if isinstance(evidence, dict) and any(e["source_id"] == evidence["source_id"] for e in item[key]["evidence"]) else set()))
+               for key in ("title", "description"))
+        preserve_original = unsupported_date and bool(relative_days(temporal_quote))
+        if unsupported_date and not preserve_original:
+            rejected += 1
+            reasons["unsupported_claim_date"] += 1
+            continue
+        if temporal["event_date"] is None:
+            reasons[temporal["date_reason"] or "undated"] += 1
         temporal_source = evidence.get("source_id") if isinstance(evidence, dict) else None
         published = publications.get(source_map[temporal_source].filename, "") if temporal_source in source_map else ""
         proof_quotes = list(dict.fromkeys(e["quote"] for key in ("title", "description") for e in item[key]["evidence"]))
@@ -87,7 +99,7 @@ def validate_timeline(data: dict, sources: list[Source], coverage: dict) -> tupl
         lifecycle = states.pop() if len(states) == 1 else "conflicting"
         category = development_kind(status_quotes, lifecycle)
         # Per annunci e futuro mostrare il passo letterale, non una parafrasi al passato.
-        if lifecycle in {"announced", "future", "conflicting"} or category == "proposal":
+        if preserve_original or lifecycle in {"announced", "future", "conflicting"} or category == "proposal":
             title_text = short_text(temporal_quote or proof_quotes[0], 90)
             description_text = temporal_quote or "\n".join(proof_quotes)
             if category == "proposal" and NOMINAL_PROPOSAL.match(item["title"]["text"]) and all(
@@ -102,11 +114,13 @@ def validate_timeline(data: dict, sources: list[Source], coverage: dict) -> tupl
                        "source_ids": used, "publication_dates": [
                            {"source_id": identity, "date": publications.get(source_map[identity].filename, "")}
                            for identity in used]})
+    events, merged = compact_events(events)
     dated = sorted((event for event in events if event["event_date"]), key=lambda event: event["event_date"])
     undated = [event for event in events if event["event_date"] is None]
     return {"events": dated, "undated_events": undated}, {
         "candidate_events": len(data["events"]),
         "rejected_events": rejected, "unverified_dates": unverified,
+        "merged_events": merged, "temporal_reasons": dict(reasons),
         "dated_events": len(dated), "undated_events": len(undated),
     }
 
@@ -250,10 +264,10 @@ def map_dot(data: dict, *, topic="", grouping=False, focused_node=None) -> str:
     focus = None if grouping else map_focus(data, topic)
     if focused_node in {node["id"] for node in data["nodes"]}:
         focus = focused_node
-    def wrapped(value, width=24):
+    def wrapped(value, width=18):
         return textwrap.fill(" ".join(value.split()), width=width, break_long_words=False, break_on_hyphens=False)
     captions = node_captions(data["nodes"])
-    direction = "TB" if grouping or len(data["nodes"]) > 5 else "LR"
+    direction = "TB"
     lines = ['digraph Knowledge {',
              f'graph [rankdir={direction}, pack=true, packmode="array_3", nodesep=0.22, ranksep=0.32, pad=0.08, margin=0];',
              f'node [fontname="Arial", fontsize=12, width=0, height=0, margin="0.10,0.07", style=filled, color="{COLORS["border"]}", fontcolor="{COLORS["ink"]}"];',

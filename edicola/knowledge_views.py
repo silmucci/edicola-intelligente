@@ -9,6 +9,8 @@ from edicola.knowledge_presentation import undated_order, empty_knowledge_messag
 from edicola.knowledge_validation import compact_map, map_dot
 from edicola.map_presentation import GROUPS, node_captions, node_groups
 from edicola.chat_sources import render_contributions, render_context_limit
+from edicola.map_relations import relation_category
+from edicola.map_exploration import focused_map
 
 NODE_TYPES = {kind: values[0] for kind, values in GROUPS.items()}
 
@@ -26,8 +28,9 @@ def compact_sources(ids, sources, archive, key):
                     continue
                 seen.add((source.filename, source.page))
                 name = editions.get(source.id, {}).get("publication") or "Documento dell’archivio"
+                published = editions.get(source.id, {}).get("publication_date") or "Data non disponibile"
                 source_button(source.filename, source.page, context=archive, chunk_id=source.chunk_id,
-                              key=f"{key}_pdf_{source.id}", label=readable(name + f" · p. {source.page}"), help_text="Apri la pagina originale")
+                              key=f"{key}_pdf_{source.id}", label=readable(name + f" · {published} · pagina {source.page}"), help_text="Apri la pagina originale")
         with st.popover("Passaggi originali", key=key + "_passages"):
             for source in selected:
                 st.text(source.text)
@@ -58,7 +61,7 @@ def render_knowledge(result, archive=None):
                 render_event(event, result.sources, archive, f"timeline_{index}")
         if data["undated_events"]:
             st.subheader("Senza data")
-            st.caption("Data dell’evento non verificabile. Ordine dei passaggi recuperati, non cronologico.")
+            st.caption("Sviluppi senza una data certa, nell’ordine delle letture e non cronologico.")
             for index, event in enumerate(undated_order(data["undated_events"], result.sources)):
                 render_event(event, result.sources, archive, f"undated_{index}")
     else:
@@ -80,6 +83,14 @@ def render_map(result, archive, technical):
     captions = node_captions(data["nodes"])
     view = compact_map(data)
     mode = st.segmented_control("Vista della mappa", ["Grafo", "Elenco"], default="Grafo", key="knowledge_map_view") or "Grafo"
+    focus = ""
+    if mode == "Grafo":
+        options = [""] + [node["id"] for node in data["nodes"]]
+        if st.session_state.get("knowledge_map_focus", "") not in options:
+            st.session_state["knowledge_map_focus"] = ""
+        focus = st.selectbox("Esplora un concetto", options, key="knowledge_map_focus",
+                             format_func=lambda value: captions[value] if value else "Tutti i concetti")
+        view = compact_map(focused_map(data, focus))
     isolated = {n["id"] for n in view["nodes"]} - {identity for e in view["edges"] for identity in (e["from_id"], e["to_id"])}
     if view["edges"]:
         legend = "→ Relazione documentata · ┄ Tema comune, senza legame fattuale"
@@ -93,15 +104,14 @@ def render_map(result, archive, technical):
         # larghezza/altezza della pagina, causando uno zoom iniziale enorme.
         with st.container(horizontal=True, horizontal_alignment="center"):
             with st.container(width=760):
-                st.graphviz_chart(map_dot(view, topic=result.topic, grouping=not view["edges"]),
+                st.graphviz_chart(map_dot(view, topic=result.topic, grouping=not view["edges"], focused_node=focus),
                                   width="content", height="content", alt="Concetti e collegamenti sul tema richiesto")
     if mode == "Grafo" and len(view["nodes"]) < len(data["nodes"]):
         st.caption("Altri concetti consultabili nei dettagli.")
     nodes = {n["id"]: n["label"] for n in data["nodes"]}
-    st.caption("Esplora un concetto")
-    st.caption("Apri un nome qui sotto per leggere dettagli, collegamenti e fonti.")
+    st.caption("Apri un nome per leggere dettagli, collegamenti e fonti.")
     from edicola.experience_ui import readable
-    for kind, members in node_groups(data["nodes"]):
+    for kind, members in node_groups(view["nodes"] if focus else data["nodes"]):
         st.caption(GROUPS[kind][1])
         with st.container(horizontal=mode == "Grafo", gap="small"):
             for node in members:
@@ -139,7 +149,8 @@ def render_node_connections(node, data, labels, sources, archive):
     if not connected:
         st.caption("Nessun collegamento documentato per questo concetto.")
     for index, edge in connected:
-        st.caption("Relazione documentata" if edge["kind"] == "documented" else "Tema comune · non indica un legame fattuale")
+        st.caption(("Posizione attribuita" if relation_category(edge["label"]) == "attributed" else "Relazione documentata")
+                   if edge["kind"] == "documented" else "Tema comune · non indica un legame fattuale")
         connector = " → " if edge["kind"] == "documented" else " — "
         label = edge["label"] + (": " + edge["topic"] if edge.get("topic") else "")
         st.text(connector.join((labels[edge["from_id"]], label, labels[edge["to_id"]])))

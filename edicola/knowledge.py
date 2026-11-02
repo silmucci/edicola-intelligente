@@ -24,6 +24,7 @@ from edicola.map_relations import VERSION as MAP_VERSION
 from edicola.map_context import contiguous, select_map_chunks
 from edicola.knowledge_presentation import TIMELINE_CONTENT_VERSION
 from edicola.proposal_extraction import proposal_items
+from edicola.map_literal import literal_candidates
 from edicola.knowledge_relevance import Topic, select_topic_chunks, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION
 from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
                                        selection_coverage, COMPARISON_INSTRUCTION)
@@ -60,6 +61,10 @@ esclusivamente l'edizione della fonte. La quote includa il giorno della settiman
 gli indizi temporali disponibili nello stesso contesto dell'evento, senza unire articoli.
 Non completare anni nelle descrizioni. Distingui annunci/programmi da fatti avvenuti:
 mantieni futuro e condizionale originali, non trasformare un evento previsto in compiuto.
+Conserva date_evidence anche con 'ieri', 'oggi', 'domani' o altri riferimenti indiretti:
+la data può restare null senza eliminare lo sviluppo. Non accorpare eventi distinti
+per la sola città. Unisci notizie sullo stesso evento solo con protagonisti, azione,
+luogo e riferimento temporale coerenti, citando tutte le prove corrispondenti.
 """
 MAP_INSTRUCTIONS = """
 Gli elenchi introdotti da 'Tra le proposte' non autorizzano a inventare un agente
@@ -95,6 +100,11 @@ Per thematic, label.text è il TEMA COMUNE letterale e le evidenze devono colleg
 ciascun nodo a quel tema (es. 'il piano riguarda i trasporti', 'la commissione si occupa di trasporti').
 La sola presenza di due concetti nello stesso articolo non basta. Non aggiungere archi per
 completare la figura: conserva le liste vuote quando non ci sono prove sufficienti.
+Estrai anche gli autori di emendamenti, gli organi che decidono e le posizioni attribuite.
+Una qualifica fra participio e nome non elimina l'autore: 'proposta, presentata dal
+deputato Mario Rossi' consente proposta -> Mario Rossi con predicate='presentata dal'.
+Mantieni l'orientamento passivo della prova. Una dichiarazione attribuita prova
+che il parlante l'ha espressa, non che il suo contenuto sia un fatto accertato.
 """
 
 
@@ -219,7 +229,8 @@ def generate_data(client, model, prompt, schema, *, sleep=time.sleep, system_ins
     raise KnowledgeError("Tentativi Gemini esauriti.")
 
 
-def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root: Path = ROOT, client=None, selection=None) -> KnowledgeResult:
+def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root: Path = ROOT, client=None, selection=None,
+                       embedder=None, cache_enabled=True) -> KnowledgeResult:
     if kind not in {"timeline", "map"} or not topic.strip() or len(topic) > 500:
         raise KnowledgeError("Scegliere timeline o mappa e inserire un argomento da 1 a 500 caratteri.")
     if not authorize_external:
@@ -255,7 +266,7 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
         cache_identity["relevance_version"] = RELEVANCE_VERSION
         identity = hashlib.sha256(json.dumps(cache_identity, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         cache = root / "data/knowledge_cache" / f"{identity}.json"
-        if cache.exists():
+        if cache_enabled and cache.exists():
             saved = json.loads(cache.read_text(encoding="utf-8"))
             if saved.get("kind") != kind or saved.get("topic") != topic:
                 raise KnowledgeError("Cache non coerente con il prodotto o l’argomento richiesto; nessuna rigenerazione automatica.")
@@ -266,7 +277,8 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
         matcher = Topic(topic, catalog.chunks)
         hits = semantic_search(topic, authorize_external=True, root=root, top_k=top_k, corpus_wide=True,
                                allowed_ids={c.id for c in catalog.chunks},
-                               filenames={c.metadata["filename"] for c in catalog.chunks}) if catalog.chunks else []
+                               filenames={c.metadata["filename"] for c in catalog.chunks},
+                               **({"embedder": embedder} if embedder is not None else {})) if catalog.chunks else []
         current = {chunk.id: chunk for chunk in catalog.chunks}
         seen = set()
         seeds, distances = [], {}
@@ -327,6 +339,21 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                         diagnostics["extracted_developments"] = len(data["undated_events"])
                         diagnostics["undated_events"] = local_counts["undated_events"]
             if kind == "map":
+                extra = literal_candidates(data["nodes"], sources, {s.id: current[s.chunk_id].metadata for s in sources})
+                if extra:
+                    additions, extra_diagnostics = validate_map({"nodes": raw_data["nodes"], "edges": extra}, sources,
+                        contexts={s.id: current[s.chunk_id].metadata for s in sources})
+                    signatures = {(e["from_id"], e["to_id"], e["label"].casefold()) for e in data["edges"]}
+                    available_edges = [e for e in additions["edges"] if (e["from_id"], e["to_id"], e["label"].casefold()) not in signatures]
+                    added = available_edges[:max(0, 24-len(data["edges"]))]
+                    data["edges"].extend(added)
+                    diagnostics["literal_candidates"] = len(extra)
+                    diagnostics["literal_accepted"] = len(added)
+                    diagnostics["literal_rejected"] = extra_diagnostics["rejected_edges"]
+                    diagnostics["literal_discarded"] = {"already_present": len(additions["edges"])-len(available_edges),
+                        "edge_limit": len(available_edges)-len(added), "invalid_proof": extra_diagnostics["rejected_edges"]}
+                    if added:
+                        diagnostics["relations_status"] = "literal_completed"
                 data, relevance = relevant_map(data, raw_data, sources, matcher,
                                               contexts={s.id: current[s.chunk_id].metadata for s in sources})
                 diagnostics.update(relevance)
@@ -342,9 +369,9 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
         result = KnowledgeResult(kind, topic, data, sources, selection_coverage(catalog.coverage, candidates, sources), diagnostics)
         logger.info("phase=knowledge_validation kind=%s diagnostics=%s", kind,
                     {key: value for key, value in diagnostics.items() if isinstance(value, (int, str))}
-                    | {key: diagnostics[key] for key in ("edge_rejections", "edge_rejection_details") if key in diagnostics})
+                    | {key: diagnostics[key] for key in ("edge_rejections", "edge_rejection_details", "temporal_reasons", "literal_discarded") if key in diagnostics})
         useful = data.get("events") or data.get("undated_events") or data.get("nodes")
-        if useful:
+        if useful and cache_enabled:
             cache.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=cache.parent, suffix=".tmp", delete=False) as stream:
                 temporary = Path(stream.name)
