@@ -25,6 +25,8 @@ from edicola.map_context import contiguous, select_map_chunks
 from edicola.knowledge_presentation import TIMELINE_CONTENT_VERSION
 from edicola.proposal_extraction import proposal_items
 from edicola.knowledge_relevance import Topic, select_topic_chunks, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION
+from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
+                                       selection_coverage, COMPARISON_INSTRUCTION)
 
 
 VERSION = "knowledge-v2"
@@ -217,7 +219,7 @@ def generate_data(client, model, prompt, schema, *, sleep=time.sleep, system_ins
     raise KnowledgeError("Tentativi Gemini esauriti.")
 
 
-def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root: Path = ROOT, client=None) -> KnowledgeResult:
+def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root: Path = ROOT, client=None, selection=None) -> KnowledgeResult:
     if kind not in {"timeline", "map"} or not topic.strip() or len(topic) > 500:
         raise KnowledgeError("Scegliere timeline o mappa e inserire un argomento da 1 a 500 caratteri.")
     if not authorize_external:
@@ -227,7 +229,7 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
     try:
         key = api_key(root)
         model = os.getenv("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
-        top_k = int(os.getenv("KNOWLEDGE_CHUNKS", "5"))
+        top_k = int(os.getenv("KNOWLEDGE_CHUNKS", "5"))  # Compatibilità; non limita il recupero corpus_wide.
         budget = int(os.getenv("KNOWLEDGE_MAX_PROMPT_CHARS", "12000"))
         neighbors = int(os.getenv("MAP_ADJACENT_CHUNKS", "2")) if kind == "map" else 0
         if not 0 <= neighbors <= 4:
@@ -236,7 +238,11 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
             raise KnowledgeError("KNOWLEDGE_CHUNKS: da 1 a 5; KNOWLEDGE_MAX_PROMPT_CHARS: da 4000 a 24000.")
         topic = " ".join(topic.split())
         catalog = read_catalog(root)
+        if selection is not None:
+            from edicola.press_review import filter_catalog
+            catalog = filter_catalog(catalog, selection)
         cache_identity = {
+            "context_version": CONTEXT_VERSION,
             "version": VERSION, "kind": kind, "topic": topic, "model": model, "top_k": top_k, "budget": budget,
             "coverage": catalog.coverage, "chunks": sorted((c.id, c.fingerprint, c.metadata) for c in catalog.chunks),
         }
@@ -258,7 +264,9 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
             logger.info("phase=knowledge_cache kind=%s event=hit", kind)
             return KnowledgeResult(**saved)
         matcher = Topic(topic, catalog.chunks)
-        hits = semantic_search(topic, authorize_external=True, root=root, top_k=top_k, diversify_by_pdf=kind != "map") if catalog.chunks else []
+        hits = semantic_search(topic, authorize_external=True, root=root, top_k=top_k, corpus_wide=True,
+                               allowed_ids={c.id for c in catalog.chunks},
+                               filenames={c.metadata["filename"] for c in catalog.chunks}) if catalog.chunks else []
         current = {chunk.id: chunk for chunk in catalog.chunks}
         seen = set()
         seeds, distances = [], {}
@@ -269,33 +277,26 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                 distances[chunk.id] = float(hit["distance"])
                 seen.add(chunk.id)
         if kind == "map":
-            seeds = select_topic_chunks(matcher, catalog.chunks, hits, top_k)
+            seeds = select_topic_chunks(matcher, catalog.chunks, hits, len(catalog.chunks), preserve_editions=True)
         selected_chunks = select_map_chunks(seeds, catalog.chunks, neighbors, topic=topic) if kind == "map" else seeds
         sources = [Source(f"S{i}", chunk.id, chunk.metadata["filename"], chunk.metadata["page"], chunk.text,
                           distances.get(chunk.id, 0.0)) for i, chunk in enumerate(selected_chunks, 1)]
         if not sources:
             return KnowledgeResult(kind, topic, {}, [], catalog.coverage, {"status": "no_sources"})
-        instruction = SYSTEM + (TIMELINE_INSTRUCTIONS if kind == "timeline" else MAP_INSTRUCTIONS)
-        def prompt_for():
-            selected = list(sources)
-            payload = {"task": kind, "topic": topic, "editions": catalog.coverage["files"],
+        instruction = SYSTEM + (TIMELINE_INSTRUCTIONS if kind == "timeline" else MAP_INSTRUCTIONS) + COMPARISON_INSTRUCTION
+        def prompt_for(selected):
+            payload = {"task": kind, "topic": topic, "editions": included_coverage(catalog.coverage, selected)["files"],
                                         "sources": [{"source_id": s.id, "chunk_id": s.chunk_id, "pdf": s.filename,
                                                      "page": s.page, "text": s.text} for s in selected]}
             if kind == "map":
                 payload["adjacent_sources"] = [[a.id, b.id] for a in selected for b in selected
                     if contiguous(current[a.chunk_id], current[b.chunk_id])]
-            return selected, json.dumps(payload, ensure_ascii=False)
+            return json.dumps(payload, ensure_ascii=False)
         candidates = list(sources)
-        kept = []
-        for source in candidates:
-            sources = kept + [source]
-            _, prompt = prompt_for()
-            if len(instruction) + len(prompt) <= budget:
-                kept.append(source)
-        sources = kept
+        sources, _ = fit_context(candidates, lambda selected: instruction + prompt_for(selected), budget)
         if not sources:
             raise KnowledgeError("Budget insufficiente per un passaggio originale completo; verificare KNOWLEDGE_MAX_PROMPT_CHARS.")
-        sources, prompt = prompt_for()
+        prompt = prompt_for(sources)
         seed_ids = {c.id for c in seeds}
         selection_diagnostics = {"retrieved_chunks": len(seeds), "used_chunks": len(sources),
             "adjacent_chunks_used": sum(s.chunk_id not in seed_ids for s in sources),
@@ -338,7 +339,7 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
             raise KnowledgeError("Dati strutturati non validi: risultato non visualizzato e non salvato in cache.") from None
         diagnostics["status"] = "partial_validation" if any(value for name, value in diagnostics.items() if name.startswith("rejected")) else "ok"
         diagnostics["relevance_version"] = RELEVANCE_VERSION
-        result = KnowledgeResult(kind, topic, data, sources, catalog.coverage, diagnostics)
+        result = KnowledgeResult(kind, topic, data, sources, selection_coverage(catalog.coverage, candidates, sources), diagnostics)
         logger.info("phase=knowledge_validation kind=%s diagnostics=%s", kind,
                     {key: value for key, value in diagnostics.items() if isinstance(value, (int, str))}
                     | {key: diagnostics[key] for key in ("edge_rejections", "edge_rejection_details") if key in diagnostics})

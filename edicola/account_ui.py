@@ -21,7 +21,8 @@ from edicola.private_media import private_download
 from edicola.consent_ui import authorize_action, privacy_controls
 from edicola.consent import perform
 from edicola.api_guard import PermissionDenied
-from edicola.design import friendly_error, section_intro
+from edicola.design import friendly_error, section_intro, product_notice
+from edicola.chat_sources import document_label, citation_text
 
 
 def personal_context():
@@ -43,9 +44,9 @@ def privacy_notice():
         st.caption("Gemini riceve contenuti soltanto dopo il consenso e l’invio espliciti. "
                    "Gli audio sono file temporanei sul server, non uno storage persistente. "
                    "L’accesso Google non richiede il consenso alle funzionalità AI. "
-                   "Il gestore deve pubblicare la propria informativa completa con contatti, finalità e fornitori.")
-        st.caption("Contatti del gestore: " + setting("EDICOLA_PRIVACY_CONTACT", "da configurare prima della pubblicazione"))
-        st.caption("Il tuo spazio personale conserva preferenze e prodotti riservati al tuo account. Approfondimenti e Podcast generali restano condivisi.")
+                   "Per informazioni sul trattamento dei dati puoi contattare il gestore.")
+        st.caption("Contatti del gestore: " + setting("EDICOLA_PRIVACY_CONTACT", "non disponibili"))
+        st.caption("Il tuo spazio personale conserva preferenze e prodotti riservati al tuo account. Briefing e Podcast generali restano condivisi.")
 
 
 def render_account_profile(root, archive=None):
@@ -123,7 +124,7 @@ def render_account_profile(root, archive=None):
                         from edicola.identity import clear_private_state
                         clear_private_state()
                         if cleanup_failed:
-                            st.session_state["account_warning"] = "Dati PostgreSQL cancellati; alcuni audio temporanei non sono stati rimossi. Contatta il gestore."
+                            st.session_state["account_warning"] = "Dati personali cancellati; alcuni audio temporanei non sono stati rimossi. Contatta il gestore."
                         else:
                             st.session_state["account_notice"] = "I tuoi dati personali sono stati cancellati."
                         st.rerun()
@@ -155,7 +156,7 @@ def render_account_profile(root, archive=None):
                 for key, item in profile.saved.items():
                     ref = item["metadata"]
                     with st.container(border=True):
-                        st.text(f"{ref['filename']} — pagina {ref['page']}")
+                        st.text(document_label(archive, ref["filename"], ref["page"]))
                         chunk = current.get(key)
                         if chunk and chunk.metadata.get("pdf_sha256") == ref.get("pdf_sha256"):
                             st.markdown(readable("«" + excerpt(chunk.text, 230) + "»"))
@@ -179,7 +180,7 @@ def render_account_profile(root, archive=None):
                     st.session_state["personal_product"] = key
                     st.success("Briefing disponibile nel tuo account.")
                 else:
-                    st.info(result.message or "Fonti insufficienti per un briefing verificabile.")
+                    st.info(product_notice(result))
             products = store.list_products()
             if not products:
                 st.info("Non hai ancora briefing salvati. La generazione richiede il tuo consenso esplicito.")
@@ -188,7 +189,7 @@ def render_account_profile(root, archive=None):
             if st.session_state.get("personal_product") not in available:
                 st.session_state.pop("personal_product", None)
             selected = st.selectbox("I miei briefing già disponibili", list(available), key="personal_product",
-                                    format_func=lambda key: available[key].result.title + " — " + available[key].created_at)
+                                    format_func=lambda key: citation_text(available[key].result.title, available[key].result.used_source_ids) + " — " + available[key].created_at)
             product = available[selected]
             if profile.format == "audio":
                 with st.expander("Leggi il briefing personale (preferenza audio)"):
@@ -213,11 +214,11 @@ def render_account_profile(root, archive=None):
                 with st.expander("Testo letto e fonti del podcast personale"):
                     st.text(manifest["script"]["text"])
                     for source in manifest["script"]["sources"]:
-                        st.text(f"{source['filename']} — pagina {source['page']}")
+                        st.text(document_label(archive, source["filename"], source["page"]))
                         source_button(source["filename"], source["page"], context=archive, chunk_id=source["chunk_id"], key=f"personal_audio_pdf_{source['id']}")
     except PersonalStoreError:
         st.error("Il tuo spazio personale non è disponibile in questo momento. Riprova più tardi: nessun nuovo salvataggio è stato confermato.")
     except (PermissionDenied, RagError, PodcastError) as exc:
         st.error(friendly_error(exc))
     except ValueError as exc:
-        st.error(str(exc))
+        st.error(friendly_error(exc))

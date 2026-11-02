@@ -1,5 +1,25 @@
 # Regole del progetto
 
+- Regola comune del contesto: per nuovi invii tutti i prodotti cercano nei soli
+  passaggi indicizzati correnti dell’intero corpus, entro i filtri espliciti.
+  I vecchi tetti globali di 3/5/8 passaggi non si applicano ai prodotti: ranking
+  pertinente sull’intero insieme, alternanza per PDF e budget complessivo di
+  passaggi interi. Una sola embedding della richiesta, nessuna AI per PDF.
+  Duplicati fra edizioni conservati come prove distinte; nessun accorpamento
+  che perda differenze o negazioni. Segnalare omissioni per budget e distinguere
+  edizioni incluse da citate. Podcast derivati solo dalle sezioni del prodotto
+  originario. Versione del contesto separata, niente cancellazioni o generazioni
+  automatiche sulle cache precedenti. Questa regola supera i limiti di recupero
+  delle iterazioni storiche sotto riportate, senza allentare i validatori.
+
+- Esperienza cliente: otto destinazioni; Briefing è l’unico prodotto editoriale
+  generale. Dossier resta solo come compatibilità interna e lettura dei risultati
+  preesistenti, senza generatore o percorso cliente dedicato. Infografiche rimosse.
+  Non ripristinare vecchi controlli tramite stato di sessione o passaggi dalla chat.
+  La Rassegna apre il Briefing con i filtri correnti senza generare. Diagnostica
+  solo nella modalità di sviluppo già configurata; citazioni numerate nella UI,
+  riferimenti persistenti e controlli PDF invariati. Non cancellare vecchie cache.
+
 - Mappe Task 14.4: rifiniture di sola presentazione, senza nuova selezione o AI.
   Etichette nominali compresse conservativamente, mai troncamenti con ellissi:
   preservare date, importi, beneficiari, negazioni e modalità; nomi propri e
@@ -43,7 +63,7 @@
 - Design Task 13: token condivisi in `design_tokens.py`, tema bianco/blu con
   accento rosso, font di sistema senza CDN. Header unico con ricerca testuale
   locale su funzioni/edizioni/chunk indicizzati; nessun embedding. Ricerca nel
-  namespace privato della sessione, cancellata al cambio identità. Nove destinazioni
+  namespace privato della sessione, cancellata al cambio identità. Otto destinazioni
   in `product_navigation.py`, nomi/ordine condivisi fra card e navigazione nativa
   con wrapping. Montare solo il prodotto attivo; conservare risultati e input
   esplicitamente elencati, mai pulsanti, conferme distruttive o vecchi invii pendenti.
@@ -104,7 +124,7 @@
 - Non versionare PDF, testo estratto, database, credenziali o ambienti virtuali.
 - Valutazione sperimentale separata dall'app: snapshot indicizzato e annotazioni manuali collegate da hash, nessuna etichetta o risposta di riferimento inventata. Distinguere misure reali, simulate e mancanti; non equiparare controllo tecnico delle citazioni ad accuratezza fattuale. Benchmark API solo con comando, limite e autorizzazione espliciti, contando anche i retry; nessuna modifica a indice o pipeline. Schede umane con criteri, prove e punteggi vuoti; risultati e cataloghi privati esclusi dal versionamento.
 - Eseguire `python -m pytest -q` dopo modifiche all'acquisizione e aggiornare il README se cambia il comportamento.
-- UI con nove destinazioni autonome, mantenendo consensi, bozze e risultati durante la navigazione. Lettore locale PDFium delle pagine originali, cache RAM limitata e accesso al motore serializzato; nessun OCR, CDN o servizio esterno. Aprire soltanto PDF acquisiti dentro `data/incoming/`, verificando percorso, SHA, pagina e chunk della versione corrente; rifiutare fonti obsolete e percorsi arbitrari/symlink. Download dei byte originali. Nessuna chiamata Gemini associata a navigazione, fonti o zoom.
+- UI con otto destinazioni autonome, mantenendo consensi, bozze e risultati durante la navigazione. Lettore locale PDFium delle pagine originali, cache RAM limitata e accesso al motore serializzato; nessun OCR, CDN o servizio esterno. Aprire soltanto PDF acquisiti dentro `data/incoming/`, verificando percorso, SHA, pagina e chunk della versione corrente; rifiutare fonti obsolete e percorsi arbitrari/symlink. Download dei byte originali. Nessuna chiamata Gemini associata a navigazione, fonti o zoom.
 - Archivio cliente: galleria di copertine reali e soli metadati verificati in `data/editions.json`, con etichette neutre quando mancanti. Lettore centrato, pagina intera adattata a 70vh e massimo iniziale 520px, zoom locale e scorrimento interno, ritorno alla galleria. CSS isolato nei componenti v2, mai selettori globali delle altre schede. Hash, nomi tecnici, chunk, testo completo, stati e tabelle solo in diagnostica attivata da configurazione `EDICOLA_ARCHIVE_DIAGNOSTICS=1`, disattivata di default e senza interruttore cliente.
 - Home e consigli: selezione esclusivamente locale di fonti indicizzate, schede con estratti letterali esplicitamente distinti da titoli di articoli, niente metadati o immagini inventati. Controlli nativi con wrapping, tema locale e CSS della sola introduzione limitato alla sua classe. Chat multiple con contesto limitato e cronologia account opt-in, nessuna chiamata su bozza o navigazione. Login/logout nativi Streamlit; al cambio identità svuotare dati privati della sessione prima di montare i controlli. Nessuna cache globale di profili, export o briefing personali. Export/audio personali via payload della sessione e Blob URL del browser, senza URL media pubblici condivisi. Nascondere ID di chunk e diagnostica nella vista cliente, conservando le citazioni PDF/pagina e i passaggi verificabili.
 # Deployment dimostrativo

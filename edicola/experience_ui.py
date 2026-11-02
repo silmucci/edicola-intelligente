@@ -10,7 +10,7 @@ from datetime import date
 import streamlit as st
 
 from edicola.archive_ui import edition_metadata, edition_filter, render_gallery
-from edicola.editorial_selection import headline_priority, near_duplicate, read_catalog
+from edicola.editorial_selection import headline_priority, read_catalog
 from edicola.pdf_viewer import source_button
 from edicola.personalization import recommend
 from edicola.profiles import load_profile, save_passage
@@ -91,7 +91,7 @@ def passage_card(chunk, *, context, editions, key, reason=None, root=None, profi
                 except (OSError, ValueError, RuntimeError, sqlite3.Error):
                     st.error("Non è stato possibile salvare la lettura. Riprova tra poco.")
         with st.expander("Leggi il passaggio originale"):
-            st.text(chunk.metadata["filename"] + f" — pagina {chunk.metadata['page']}")
+            st.text(info.get("title", "Documento dell’archivio") + f" · pagina {chunk.metadata['page']}")
             st.text(chunk.text)
             st.caption("Il passaggio può comprendere parti di più notizie, secondo l’impaginazione del quotidiano.")
 
@@ -105,7 +105,8 @@ def home_selection(catalog, limit=4):
         for name in list(pools):
             while pools[name]:
                 candidate = pools[name].popleft()
-                if not any(near_duplicate(candidate.text, previous.text) for previous in selected):
+                if not any(candidate.metadata["filename"] == previous.metadata["filename"]
+                           and " ".join(candidate.text.split()) == " ".join(previous.text.split()) for previous in selected):
                     selected.append(candidate)
                     break
             if not pools[name]:
@@ -149,22 +150,23 @@ def render_home(root, context):
         st.caption("La selezione copre soltanto la parte dell’archivio attualmente disponibile alla ricerca.")
     selected = home_selection(catalog)
     if not selected:
-        empty_state("Le letture arriveranno qui", "Non ci sono passaggi indicizzati per questa selezione. Puoi intanto sfogliare le edizioni originali.")
+        empty_state("Le letture arriveranno qui", "Non ci sono letture disponibili per questa selezione. Puoi intanto sfogliare le edizioni originali.")
     if selected:
         render_highlights(selected, metadata=metadata, context=context, shorten=excerpt)
     st.subheader("Consulta la rassegna")
     from edicola.press_review_ui import review_controls, render_review_passages
-    from edicola.reading_ui import render_editorial
     review_catalog, selection = review_controls(root, catalog)
     if review_catalog is not None:
         render_review_passages(review_catalog, context, metadata)
-        render_editorial(root, context, kind="Briefing", review=selection)
+        def prepare_briefing():
+            navigate("Briefing")
+        st.button("Prepara il briefing della selezione", key="home_prepare_briefing", on_click=prepare_briefing)
     if authenticated():
         st.subheader("Consigliati per te")
         try:
             store = None
             if identity.local_demo():
-                st.caption("Sviluppo locale · preferenze del profilo demo condiviso, senza tracciamento.")
+                st.caption("Preferenze condivise su questa installazione, senza tracciamento.")
                 profile = load_profile(root)
             else:
                 from edicola.account_ui import personal_context
@@ -182,4 +184,4 @@ def render_home(root, context):
                              reason=item.reason, root=root, profile=profile, store=store)
     else:
         st.caption("Stai esplorando l’edizione per tutti. Accedi con Google per salvare le tue preferenze personali." if not identity.local_demo() else
-                   "Sviluppo locale: puoi provare le preferenze demo condivise; non è un account personale.")
+                   "Le preferenze di questa installazione sono condivise; non è un account personale.")

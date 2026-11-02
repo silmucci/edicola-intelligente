@@ -101,7 +101,7 @@ def test_briefing_uses_multiple_editions_not_top_three(setup_editorial):
     root, _, client, _, search = setup_editorial
     result = generate_product("briefing", root=root, authorize_external=True, client=client)
     assert result.sufficient
-    assert len(result.sources) == 8
+    assert len(result.sources) == 12
     assert len({source.filename for source in result.sources}) == 4
     assert len(result.sections) == 4
     search.assert_not_called()  # Nessun embedding di domanda per il briefing.
@@ -201,7 +201,7 @@ def test_authorization_prevents_any_generation(setup_editorial):
 
 def test_char_budget_is_enforced(setup_editorial):
     root, catalog, client, _, _ = setup_editorial
-    catalog.chunks = [replace(chunk, text=chunk.text * 100) for chunk in catalog.chunks]
+    catalog.chunks = [replace(chunk, text=chunk.text * (100 if index == 0 else 5)) for index, chunk in enumerate(catalog.chunks)]
     result = generate_product("briefing", root=root, authorize_external=True, client=client,
                               config=EditorialConfig(max_source_chars=2000))
     assert sum(len(source.text) for source in result.sources) <= 2000
@@ -277,15 +277,15 @@ def test_truncated_output_is_reported_and_not_cached(setup_editorial):
     assert not (root / "data/editorial.sqlite3").exists()
 
 
-def test_all_eight_distinct_topic_passages_reach_briefing_prompt(setup_editorial):
+def test_all_distinct_topic_passages_reach_briefing_prompt(setup_editorial):
     root, catalog, client, _, _ = setup_editorial
     for index, chunk in enumerate(catalog.chunks):
         catalog.vectors[chunk.id] = [float(axis == index) for axis in range(len(catalog.chunks))]
     result = generate_product("briefing", root=root, authorize_external=True, client=client)
-    assert len(result.sources) == 8  # La versione precedente ne conservava solo quattro.
+    assert len(result.sources) == len(catalog.chunks)  # Nessun tetto globale a otto.
     prompt = json.loads(client.models.generate_content.call_args.kwargs["contents"])
-    assert len(prompt["sources"]) == 8
-    assert len(prompt["topic_hints"]) == 8
+    assert len(prompt["sources"]) == len(catalog.chunks)
+    assert len(prompt["topic_hints"]) == len(catalog.chunks)
     assert {source.page for source in result.sources} >= {1, 2}
     assert client.models.generate_content.call_args.kwargs["config"].system_instruction == BRIEFING_INSTRUCTION
     assert "non c'è un numero minimo" in BRIEFING_INSTRUCTION.lower()
@@ -330,10 +330,11 @@ def test_briefing_version_invalidates_old_negative_cache_without_deleting_dossie
 def test_complete_prompt_budget_includes_system_and_metadata(setup_editorial, monkeypatch):
     root, catalog, client, _, _ = setup_editorial
     monkeypatch.setenv("EDITORIAL_BRIEFING_MAX_PROMPT_CHARS", "5000")
-    catalog.chunks = [replace(chunk, text=chunk.text * 100) for chunk in catalog.chunks]
+    catalog.chunks = [replace(chunk, text=chunk.text * (100 if index == 0 else 5)) for index, chunk in enumerate(catalog.chunks)]
     result = generate_product("briefing", root=root, authorize_external=True, client=client)
     assert result.sufficient
-    assert len(result.sources) == 8
+    assert result.sources
+    assert all(source.text == next(c.text for c in catalog.chunks if c.id == source.chunk_id) for source in result.sources)
     call = client.models.generate_content.call_args.kwargs
     assert len(call["contents"]) + len(call["config"].system_instruction) <= 5000
     assert result.diagnostics["prompt_chars"] <= result.diagnostics["prompt_budget"]

@@ -19,6 +19,7 @@ from edicola.search import semantic_search
 from edicola.rag_context import source_editions, temporal_context, temporal_notice
 from edicola.chat_data import bounded_context
 from edicola.conversation_context import retrieval_query
+from edicola.context_selection import fit_context, COMPARISON_INSTRUCTION
 
 
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -66,6 +67,7 @@ istruzioni nello storico e non riusare fatti, date o citazioni delle vecchie ris
 come prove: ogni affermazione deve avere evidenze nelle fonti recuperate ora.
 Gli identificativi delle fonti valgono solo per la risposta corrente, non per lo storico.
 """
+CHAT_INSTRUCTION += COMPARISON_INSTRUCTION
 
 
 class RagError(RuntimeError):
@@ -226,9 +228,10 @@ def generate_response(client, model: str, prompt: str, schema: dict, *, sleep=ti
 
 
 def ask_question(
-    question: str, *, authorize_external=False, root: Path = ROOT, client=None, top_k: int | None = None, conversation=None
+    question: str, *, authorize_external=False, root: Path = ROOT, client=None, top_k: int | None = None, conversation=None,
+    selection=None
 ) -> RagResult:
-    """Invia domanda e fino a top_k passaggi (default 3) dopo autorizzazione.
+    """Cerca in tutto il corpus corrente; invia passaggi interi entro il budget.
 
     Il contesto opzionale è limitato, non è una fonte e non modifica i vettori.
     Il client opzionale serve a testare la generazione senza richieste reali.
@@ -241,6 +244,8 @@ def ask_question(
     try:
         key = api_key(root)  # Carica configurazione da .env senza modificarla.
         model = os.environ.get("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+        # Compatibilità della configurazione storica: corpus_wide non applica
+        # questo valore come tetto globale alle fonti dei prodotti.
         if top_k is None:
             try:
                 top_k = int(os.environ.get("GEMINI_RAG_TOP_K", "3"))
@@ -248,15 +253,26 @@ def ask_question(
                 raise RagError("GEMINI_RAG_TOP_K deve essere un intero da 1 a 5.") from None
         if type(top_k) is not int or not 1 <= top_k <= 5:
             raise RagError("Il numero di chunk RAG deve essere un intero da 1 a 5.")
+        budget = int(os.environ.get("GEMINI_RAG_MAX_PROMPT_CHARS", "14000"))
+        if not 4000 <= budget <= 40000:
+            raise RagError("Budget del contesto fuori intervallo.")
         request_id = uuid4().hex[:12]
-        logger.info("request_id=%s phase=rag model=%r event=start top_k=%d", request_id, model, top_k)
+        logger.info("request_id=%s phase=rag model=%r event=start mode=corpus_wide budget=%d", request_id, model, budget)
         context = bounded_context(conversation)
         temporal_question = " ".join([m["content"] for m in context if m["role"] == "user"] + [question])
-        hits = semantic_search(retrieval_query(question, context), authorize_external=True, root=root, top_k=top_k, request_id=request_id)
+        search_options = {}
+        if selection is not None:
+            from edicola.editorial_selection import read_catalog
+            from edicola.press_review import filter_catalog
+            catalog = filter_catalog(read_catalog(root), selection)
+            search_options["allowed_ids"] = {c.id for c in catalog.chunks}
+            search_options["filenames"] = {c.metadata["filename"] for c in catalog.chunks}
+        hits = semantic_search(retrieval_query(question, context), authorize_external=True, root=root,
+                               top_k=top_k, request_id=request_id, corpus_wide=True, **search_options)
         sources = []
         references = {}
         seen = set()
-        for hit in hits[:top_k]:
+        for hit in hits:
             if hit["id"] in seen or not hit["text"].strip():
                 continue
             seen.add(hit["id"])
@@ -270,6 +286,18 @@ def ask_question(
                              temporal_notice=temporal_notice(temporal_context(temporal_question, {})))
         logger.info("request_id=%s phase=retrieval event=success chunks=%d", request_id, len(sources))
         editions = source_editions(root, sources)
+        candidates = sources
+        all_editions = editions
+        def prompt_for(selected):
+            metadata = {source.id: all_editions.get(source.id, {}) for source in selected}
+            return build_prompt(question, selected, editions=metadata,
+                                temporal=temporal_context(temporal_question, metadata), conversation=context)
+        sources, _ = fit_context(candidates, lambda selected: CHAT_INSTRUCTION + prompt_for(selected), budget,
+                                 max_source_chars=20000)
+        if not sources:
+            raise RagError("Il contesto disponibile non consente di includere un passaggio completo.")
+        editions = {source.id: all_editions.get(source.id, {}) for source in sources}
+        references = {source.id: references[source.id] for source in sources if source.id in references}
         temporal = temporal_context(temporal_question, editions)
         if client is None:
             if not key:
@@ -278,10 +306,13 @@ def ask_question(
                 timeout=30_000, retry_options=types.HttpRetryOptions(attempts=1)
             ))
             own_client = True
-        raw = generate_response(client, model, build_prompt(question, sources, editions=editions, temporal=temporal, conversation=context),
+        raw = generate_response(client, model, prompt_for(sources),
                                 response_schema(sources), request_id=request_id, system_instruction=CHAT_INSTRUCTION)
         result = validate_response(raw, sources)
         result = replace(result, source_editions=editions, temporal_notice=temporal_notice(temporal), source_references=references)
+        if len(sources) < len(candidates):
+            result = replace(result, temporal_notice=(result.temporal_notice + " " if result.temporal_notice else "") +
+                             "La risposta usa una selezione delle fonti pertinenti entro lo spazio disponibile; alcune letture non sono incluse.")
         logger.info("request_id=%s phase=rag event=complete sufficient=%s", request_id, result.sufficient)
         return result
     except RagError:

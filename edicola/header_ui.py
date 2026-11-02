@@ -42,7 +42,7 @@ def render_header(root, context):
                                   placeholder="Cerca un argomento o una testata...", label_visibility="collapsed")
             if query.strip():
                 with st.popover("Risultati della ricerca", icon=":material/search:", width="stretch"):
-                    st.caption("Ricerca testuale locale, senza chiamate AI o verifica web.")
+                    st.caption("Cerca nelle sezioni e nelle edizioni disponibili.")
                     render_search_results(root, context, query)
         with st.container(horizontal=True, width="content", vertical_alignment="center"):
             person = identity.current_identity() if not identity.local_demo() else None
@@ -51,7 +51,7 @@ def render_header(root, context):
             st.button((initials + " · " if initials else "") + "Il mio profilo", key="header_profile", on_click=_profile,
                       icon=":material/person:")
             if identity.local_demo():
-                st.caption("Sviluppo locale · profilo demo condiviso")
+                st.caption("Profilo condiviso su questa installazione")
             else:
                 identity.login_controls(key="header_auth")
 
@@ -63,7 +63,7 @@ def render_search_results(root, context, query):
         chunks = read_catalog(root).chunks
     except Exception:
         chunks = []
-        st.caption("Testi indicizzati momentaneamente non disponibili; puoi cercare funzioni ed edizioni.")
+        st.caption("La ricerca nei testi non è disponibile in questo momento; puoi cercare sezioni ed edizioni.")
     products, editions, passages = local_matches(query, context.documents, metadata, chunks)
     for index in products:
         st.button(PRODUCTS[index]["title"], key=f"header_product_{index}", on_click=open_product, args=(index,))

@@ -124,7 +124,7 @@ def test_editorial_ui_only_generates_on_authorized_submit(tmp_path):
     incoming.mkdir(parents=True)
     (incoming / "quotidiano.pdf").write_bytes(make_pdf())
     registry = tmp_path / "registry.sqlite3"
-    result = EditorialResult("dossier", "Dossier sui trasporti [S1]", [
+    result = EditorialResult("briefing", "Briefing sui trasporti [S1]", [
         {"heading": "Introduzione", "text": "Testo documentato. [S1]"}
     ], [Source("S1", "id", "quotidiano.pdf", 1, "Un passaggio del quotidiano realmente recuperato.", 0.1)],
         ["S1"], {"indexed": 1, "total": 2, "partial": True, "warnings": ["Data non disponibile."],
@@ -136,18 +136,18 @@ def test_editorial_ui_only_generates_on_authorized_submit(tmp_path):
     ):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=10).run()
         generate.assert_not_called()
-        app.pills(key="nav_section").set_value("Dossier").run()
-        app.button(key="dossier_submit").click().run()
+        app.pills(key="nav_section").set_value("Briefing").run()
+        app.button(key="briefing_submit").click().run()
         generate.assert_not_called()
-        app.text_input(key="editorial_topic").set_value("Trasporti")
+        app.text_input(key="editorial_review_keyword").set_value("Trasporti")
         app.session_state["consent_choices"] = {("text", "text-v2"): True}
-        app.button(key="dossier_submit").click().run()
+        app.button(key="briefing_submit").click().run()
         assert not app.exception
         generate.assert_called_once()
-        assert generate.call_args.args[:2] == ("dossier", "Trasporti")
+        assert generate.call_args.args[:2] == ("briefing", "")
         assert generate.call_args.kwargs["authorize_external"] is True
-        assert any("parzialmente indicizzato" in item.value for item in app.warning)
-        assert any("quotidiano.pdf" in item.value for item in app.text)
+        assert any("Copertura parziale" in item.value for item in app.caption)
+        assert app.json  # Diagnostica esplicitamente abilitata dalla fixture di sviluppo.
         app.pills(key="nav_section").set_value("Archivio PDF").run()
         app.selectbox(key="archive_extracted_page").select_index(1).run()
         assert generate.call_count == 1
@@ -181,7 +181,7 @@ render_event(data["events"][0])
     assert "Data completata tramite metadati verificati" in captions
     assert "Annunciato / programmato" in captions
     assert "edizione 2026-10-17" in captions
-    assert "Data di pubblicazione delle fonti: [S1] 2026-10-17" in captions
+    assert "Pubblicazione della fonte: 2026-10-17" in captions
     assert any("Mercoledì 21 ottobre" in item.value for item in app.text)
 
 
@@ -223,7 +223,7 @@ render_knowledge(result)
         assert any("Predicato non presente" in str(frame.value) for frame in app.dataframe)
     else:
         assert app.json and not app.info
-        assert any("senza relazioni documentate" in caption.value for caption in app.caption)
+        assert any("non indicano relazioni" in caption.value for caption in app.caption)
 
 
 @pytest.mark.parametrize("kind,submit_key", [("timeline", "timeline_submit"), ("map", "map_submit")])

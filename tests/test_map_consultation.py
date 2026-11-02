@@ -132,10 +132,35 @@ def test_display_uses_existing_cache_and_switches_views_without_regeneration(set
         app = AppTest.from_string(code).run()
         assert not app.exception and app.get("graphviz_chart") and not app.dataframe
         app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert app.dataframe and not app.get("graphviz_chart")
+        assert not app.dataframe and not app.get("graphviz_chart")
         app.segmented_control(key="knowledge_map_view").set_value("Grafo").run()
         assert app.get("graphviz_chart") and not app.dataframe
     assert generate_knowledge("map", "Trasporti", authorize_external=True, root=root, client=client).from_cache
     assert cache.read_bytes() == saved
     search.assert_called_once()
     client.models.generate_content.assert_called_once()
+
+
+def test_each_concept_contains_only_its_connections_and_preserves_all_proofs():
+    from edicola.knowledge_views import render_node_connections
+    sources = [Source("S1", "synthetic", "a.pdf", 1, "Prova originale.", .1)]
+    data = {"nodes": [{"id": f"N{i}", "label": f"Concetto {i}"} for i in range(1, 5)],
+            "edges": [{"from_id": "N1", "to_id": "N2", "kind": "documented", "label": "propone",
+                       "source_ids": ["S1"], "evidence": [{"quote": "Prova originale."}]}],
+            "context_edges": [{"from_id": "N2", "to_id": "N3", "kind": "thematic", "label": "associazione tematica",
+                               "topic": "Scuola", "source_ids": ["S1"], "evidence": [{"quote": "Tema originale."}]}]}
+    labels = {node["id"]: node["label"] for node in data["nodes"]}
+    original = deepcopy(data)
+    with patch("streamlit.text") as text, patch("streamlit.caption") as caption, patch(
+            "edicola.knowledge_views.compact_sources") as source_controls:
+        render_node_connections(data["nodes"][0], data, labels, sources, None)
+        assert [call.args[0] for call in text.call_args_list] == ["Concetto 1 → propone → Concetto 2", "Prova originale."]
+        assert source_controls.call_count == 1
+        text.reset_mock()
+        render_node_connections(data["nodes"][1], data, labels, sources, None)
+        assert any("Tema originale." == call.args[0] for call in text.call_args_list)
+        assert any("non indica un legame fattuale" in call.args[0] for call in caption.call_args_list)
+        text.reset_mock()
+        render_node_connections(data["nodes"][3], data, labels, sources, None)
+        assert not text.called and "Nessun collegamento" in caption.call_args.args[0]
+    assert data == original

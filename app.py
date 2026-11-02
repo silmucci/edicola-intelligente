@@ -8,7 +8,7 @@ import streamlit as st
 
 # Chroma richiede SQLite recente anche quando non vengono generate risposte.
 if sqlite3.sqlite_version_info < (3, 35, 0):
-    st.error("SQLite >= 3.35 richiesto da ChromaDB. Verificare il runtime Python del deployment.")
+    st.error("L’Edicola non è disponibile in questo momento. Riprova più tardi.")
     st.stop()
 
 from edicola.ingestion import ingest_directory
@@ -23,7 +23,7 @@ from edicola.settings import setting
 from edicola.experience_ui import render_home
 from edicola.identity import synchronize_identity
 from edicola.header_ui import render_header
-from edicola.product_navigation import render_navigation, active_product, cancel_navigation_action
+from edicola.product_navigation import render_navigation, active_product
 
 ROOT = Path(__file__).resolve().parent
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -36,11 +36,10 @@ if setting("EDICOLA_CLOUD_DEMO", "0") == "1":
         st.caption("Archivio pubblico · spazio personale con accesso Google. "
                    "Gli audio e i prodotti generali possono non essere disponibili dopo un riavvio; preferenze e briefing personali restano nel tuo account.")
     try:
-        with st.spinner("Verifica dello snapshot dimostrativo…"):
+        with st.spinner("Apro l’Edicola…"):
             ROOT = prepare_cloud(ROOT)
     except (OSError, ValueError, RuntimeError, sqlite3.Error, KeyError, TypeError):
-        st.error("Snapshot cloud assente o incompatibile. Il gestore deve verificare DEPLOYMENT.md. "
-                 "Nessuna estrazione o indicizzazione avviata.")
+        st.error("L’archivio non è disponibile in questo momento. Riprova più tardi.")
         st.stop()
 
 try:
@@ -48,7 +47,7 @@ try:
         documents = ingest_directory(ROOT / "data/incoming", ROOT / "data/archive.sqlite3")
         prepared = prepare_documents(documents, ROOT / "data/archive.sqlite3")
 except (OSError, RuntimeError):
-    st.error("Archivio locale non disponibile. Verifica la cartella dei quotidiani e riprova.")
+    st.error("L’archivio non è disponibile in questo momento. Riprova più tardi.")
     st.stop()
 
 if diagnostics_enabled(ROOT):
@@ -70,17 +69,9 @@ elif product["id"] == "archive":
 elif product["id"] == "chat":
     with st.container(width=960):
         render_chat(ROOT, context)
-elif product["id"] in {"briefing", "dossier"}:
+elif product["id"] == "briefing":
     with st.container(width=900):
-        if product["id"] == "briefing":
-            mode = st.segmented_control("Prodotto editoriale", ["Briefing", "Infografica"], default="Briefing", key="editorial_workspace", on_change=cancel_navigation_action) or "Briefing"
-            if mode == "Infografica":
-                from edicola.infographic_ui import render_infographic
-                render_infographic(ROOT, context)
-            else:
-                render_editorial(ROOT, context, kind="Briefing")
-        else:
-            render_editorial(ROOT, context, kind=product["kind"])
+        render_editorial(ROOT, context)
 elif product["id"] in {"timeline", "map"}:
     render_visuals(ROOT, context, kind=product["kind"])
 elif product["id"] == "podcast":

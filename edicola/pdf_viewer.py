@@ -127,7 +127,7 @@ def source_button(filename, page, *, context=None, key, chunk_id=None, label=Non
     try:
         resolve_reference(context, filename, page, chunk_id, pdf_sha256=pdf_sha256)
     except PdfViewError as exc:
-        st.caption(str(exc))
+        st.caption("Questa pagina non è disponibile nell’archivio attuale.")
         return
     def navigate():
         try:
@@ -137,7 +137,7 @@ def source_button(filename, page, *, context=None, key, chunk_id=None, label=Non
             from edicola.product_navigation import destination, cancel_navigation_action
             cancel_navigation_action()
             st.session_state["nav_section"] = destination("archive")
-    st.button(label or f"Apri PDF · pagina {page}", key=key, help=help_text if help_text is not None else filename,
+    st.button(label or f"Apri PDF · pagina {page}", key=key, help=help_text if help_text is not None else "Apri la pagina originale",
               on_click=navigate, type="tertiary" if label else "secondary", width="content")
 
 

@@ -8,7 +8,6 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from edicola.editorial import generate_product
-from edicola.infographic import build_infographic
 from edicola.press_review import ReviewSelection, filter_catalog, review_groups
 from edicola.map_exploration import focused_map
 from edicola.podcast_text import CachedProduct, prepare_script
@@ -51,53 +50,16 @@ def test_filtered_briefing_separate_cache_and_no_unselected_sources(setup_editor
     search.assert_not_called()
 
 
-def test_infographic_preserves_numbers_negation_modalities_and_deduplicates():
-    catalog = make_catalog()
-    text = "Il piano trasporti non stanzia 2.500.000,50 euro: potrebbe essere approvato il 12 ottobre 2026."
-    catalog.chunks = [replace(chunk, text=text) for chunk in catalog.chunks]
-    result = build_infographic(catalog, "piano trasporti")
-    assert len(result.blocks) == 1
-    assert result.blocks[0]["quote"] == text
-    assert result.blocks[0]["chunk_id"] == catalog.chunks[0].id
-    assert result.coverage["partial"]
 
 
-def test_infographic_does_not_complete_chunk_edges_or_use_nonindexed_text():
-    catalog = make_catalog()
-    original = catalog.chunks[0]
-    chunk = replace(original, text="trasporti con testo iniziale tagliato. Il piano trasporti non è ancora approvato. Il piano trasporti costa",
-                    metadata={**original.metadata, "start": 150})
-    catalog.chunks = [chunk]
-    result = build_infographic(catalog, "trasporti")
-    assert [b["quote"] for b in result.blocks] == ["Il piano trasporti non è ancora approvato."]
-    assert not build_infographic(catalog, "pesca").blocks
-    with pytest.raises(ValueError):
-        build_infographic(catalog, "!!!")
 
 
-def test_infographic_ui_is_explicit_safe_and_links_pages(tmp_path):
-    code = f"from pathlib import Path\nfrom edicola.infographic_ui import render_infographic\nrender_infographic(Path({str(tmp_path)!r}), None)"
-    with patch("edicola.infographic_ui.read_catalog", return_value=make_catalog()) as read, patch(
-        "edicola.infographic_ui.source_button") as pdf, patch("google.genai.Client") as api:
-        app = AppTest.from_string(code, default_timeout=15).run()
-        read.assert_not_called()
-        app.text_input(key="editorial_infographic_topic").set_value("trasporti")
-        app.button(key="editorial_infographic_submit").click().run()
-        assert not app.exception and pdf.called
-        assert all("chunk_id" in call.kwargs for call in pdf.call_args_list)
-        assert any("Copertura parziale" in warning.value for warning in app.warning)
-        assert all(not item.proto.allow_html for item in app.markdown)
-        app.run()
-        read.assert_called_once()
-        api.assert_not_called()
 
 
 @pytest.mark.parametrize("label,key,destination", [
-    ("Dossier", "editorial_topic", "Dossier"),
-    ("Rassegna", "editorial_review_keyword", "Briefing"),
+    ("Briefing", "editorial_review_keyword", "Briefing"),
     ("Timeline", "knowledge_topic_timeline", "Timeline"),
     ("Mappa", "knowledge_topic_map", "Mappe concettuali"),
-    ("Infografica", "editorial_infographic_topic", "Briefing"),
     ("Podcast", "podcast_topic", "Podcast"),
 ])
 def test_chat_handoff_only_prepares_draft(tmp_path, label, key, destination):
@@ -125,18 +87,18 @@ def test_focus_map_preserves_only_existing_edges_and_keeps_isolated_node():
     assert data == original
 
 
-def test_map_focus_and_reset_use_generated_result_without_api():
+def test_map_named_exploration_uses_generated_result_without_api():
     data, counts = validate_map(map_data(), SOURCES)
     result = KnowledgeResult("map", "Trasporti", data, SOURCES, COVERAGE, counts)
     fixture, code = render_script(result)
     with installed_fixture(fixture), patch("google.genai.Client") as api:
         app = AppTest.from_string(code, default_timeout=15).run()
-        app.selectbox(key="knowledge_map_focus").set_value(data["nodes"][0]["id"]).run()
+        assert not app.selectbox
         assert not app.exception and app.get("graphviz_chart")
-        assert any("Focus locale" in caption.value for caption in app.caption)
+        assert any(node["label"] in text.value for node in data["nodes"] for text in app.text)
         app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert app.dataframe and not app.get("graphviz_chart")
-        app.selectbox(key="knowledge_map_focus").set_value("").run()
+        assert not app.dataframe and not app.get("graphviz_chart")
+        app.segmented_control(key="knowledge_map_view").set_value("Grafo").run()
         assert not app.exception
         api.assert_not_called()
 
@@ -162,31 +124,9 @@ def test_audio_ui_cache_rejects_previous_script_or_model(podcast_archive, monkey
     assert cached_audio(podcast_archive, "product-1", "Kore", script=result.script) is None
 
 
-def test_platform_infographic_is_separate_and_survives_navigation(archive):
-    _, context, _ = archive
-    with patch("edicola.press_review_ui.read_catalog", return_value=make_catalog()), patch(
-        "edicola.infographic_ui.read_catalog", return_value=make_catalog()) as read, patch(
-        "edicola.infographic_ui.source_button"), patch("edicola.editorial.generate_product") as generate:
-        with platform(context) as app:
-            app.pills(key="nav_section").set_value("Briefing").run()
-            app.segmented_control(key="editorial_workspace").set_value("Infografica").run()
-            read.assert_not_called()
-            app.text_input(key="editorial_infographic_topic").set_value("trasporti")
-            app.button(key="editorial_infographic_submit").click().run()
-            assert not app.exception and app.session_state["editorial_infographic_result"].blocks
-            app.pills(key="nav_section").set_value("Dossier").run()
-            assert not any(header.value == "Infografica editoriale" for header in app.subheader)
-            app.pills(key="nav_section").set_value("Briefing").run()
-            assert app.segmented_control(key="editorial_workspace").value == "Infografica"
-            assert app.text_input(key="editorial_infographic_topic").value == "trasporti"
-            app.segmented_control(key="editorial_workspace").set_value("Briefing").run()
-            assert app.button(key="briefing_submit")
-            assert not app.exception
-            read.assert_called_once()
-            generate.assert_not_called()
 
 
-def test_changing_review_filters_or_workspace_cancels_pending_send(archive):
+def test_changing_review_filters_or_navigation_cancels_pending_send(archive):
     _, context, _ = archive
     with patch("edicola.press_review_ui.read_catalog", return_value=make_catalog()), patch(
         "edicola.editorial.generate_product") as generate:
@@ -199,9 +139,9 @@ def test_changing_review_filters_or_workspace_cancels_pending_send(archive):
             assert "consent_pending" not in app.session_state
             app.button(key="briefing_submit").click().run()
             assert app.session_state["consent_pending"]
-            app.segmented_control(key="editorial_workspace").set_value("Infografica").run()
+            app.pills(key="nav_section").set_value("Timeline").run()
             assert "consent_pending" not in app.session_state
             app.session_state["consent_choices"] = {("text", "text-v2"): True}
-            app.segmented_control(key="editorial_workspace").set_value("Briefing").run()
+            app.pills(key="nav_section").set_value("Briefing").run()
             assert not app.exception
             generate.assert_not_called()

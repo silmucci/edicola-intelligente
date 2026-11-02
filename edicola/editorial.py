@@ -22,6 +22,7 @@ from edicola.rag import (DEFAULT_MODEL, INSUFFICIENT, RagError, Source, build_pr
                          generate_response, response_schema, validate_response)
 from edicola.search import semantic_search
 from edicola.press_review import ReviewSelection, filter_catalog
+from edicola.context_selection import VERSION as CONTEXT_VERSION, fit_context, included_coverage, selection_coverage
 
 
 PROMPT_VERSION = 1
@@ -96,6 +97,7 @@ def cache_write(path: Path, key: str, result: EditorialResult):
 
 def cache_key(kind: str, topic: str, model: str, config: EditorialConfig, catalog: Catalog, *, briefing_prompt_chars=14000) -> str:
     payload = {"version": STRATEGY_VERSION if kind == "briefing" else PROMPT_VERSION,
+               "context_version": CONTEXT_VERSION,
                "kind": kind, "topic": topic, "model": model,
                "config": asdict(config), "coverage": catalog.coverage,
                "chunks": sorted((chunk.id, chunk.fingerprint, chunk.metadata) for chunk in catalog.chunks)}
@@ -186,12 +188,14 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
         distances = {}
         if kind == "dossier" and catalog.chunks:
             hits = semantic_search(topic, authorize_external=True, root=root,
-                                   top_k=config.dossier_chunks, diversify_by_pdf=True)
+                                   top_k=config.dossier_chunks, diversify_by_pdf=True, corpus_wide=True,
+                                   allowed_ids={c.id for c in catalog.chunks},
+                                   filenames={c.metadata["filename"] for c in catalog.chunks})
             available = {chunk.id: chunk for chunk in catalog.chunks}
             selected = [available[hit["id"]] for hit in hits if hit["id"] in available]
             distances = {hit["id"]: float(hit["distance"]) for hit in hits}
         elif kind == "briefing":
-            selected = balanced_briefing(catalog, config.briefing_chunks, config.topic_similarity)
+            selected = balanced_briefing(catalog, len(catalog.chunks), config.topic_similarity, preserve_editions=True)
             assignments = topic_clusters(selected, catalog.vectors, config.topic_similarity)
             grouped = {}
             for chunk in selected:
@@ -200,9 +204,8 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
             groups = [[chunk.id for chunk in group] for group in grouped.values()]
         else:
             selected = []
-        char_limit = config.max_source_chars // max(1, len(selected))
         sources = [Source(f"S{index + 1}", chunk.id, chunk.metadata["filename"], chunk.metadata["page"],
-                          chunk.text[:char_limit], distances.get(chunk.id, 0.0))
+                          chunk.text, distances.get(chunk.id, 0.0))
                    for index, chunk in enumerate(selected)]
         if kind == "briefing":
             logger.info("request_id=%s phase=briefing_selection indexed=%d total=%d selected=%d pdfs=%d pages=%d chars=%d groups=%d",
@@ -232,7 +235,10 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
             groups = [[ids[identity] for identity in group] for group in groups]
             task = ""  # Il briefing ha istruzioni autonome, senza una domanda RAG fittizia.
         # Metadati di edizione forniti solo se esplicitamente disponibili.
-        task += " Edizioni disponibili: " + json.dumps(catalog.coverage["files"], ensure_ascii=False)
+        # Le edizioni nel prompt devono corrispondere ai passaggi inclusi.
+        def dossier_prompt(selected_sources):
+            editions = included_coverage(catalog.coverage, selected_sources)["files"]
+            return build_prompt(task + " Edizioni disponibili: " + json.dumps(editions, ensure_ascii=False), selected_sources)
         if client is None:
             if not key:
                 raise EditorialError("Configurare GEMINI_API_KEY nell'ambiente o in .env.")
@@ -240,15 +246,18 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
                 timeout=30_000, retry_options=types.HttpRetryOptions(attempts=1)))
             own_client = True
         if kind == "briefing":
+            candidates = sources
             try:
-                sources, prompt = fit_briefing_prompt(sources, catalog.coverage, groups, prompt_budget)
+                sources, prompt = fit_briefing_prompt(sources, catalog.coverage, groups, prompt_budget,
+                                                      source_budget=config.max_source_chars)
             except ValueError:
                 logger.warning("request_id=%s phase=briefing_context status=prompt_budget_exceeded budget=%d", request_id, prompt_budget)
-                return briefing_result(BriefingDraft(status="prompt_budget_exceeded"), sources, catalog.coverage)
+                return briefing_result(BriefingDraft(status="prompt_budget_exceeded"), [],
+                                       selection_coverage(catalog.coverage, candidates, []))
             prompt_chars = len(BRIEFING_INSTRUCTION) + len(prompt)
             logger.info("request_id=%s phase=briefing_context prompt_chars=%d budget=%d", request_id, prompt_chars, prompt_budget)
             draft = generate_briefing_response(client, model, prompt, sources, request_id=request_id)
-            result = briefing_result(draft, sources, catalog.coverage)
+            result = briefing_result(draft, sources, selection_coverage(catalog.coverage, candidates, sources))
             result.diagnostics.update({"selected_passages": len(sources), "selected_pdfs": len({s.filename for s in sources}),
                                        "source_chars": sum(len(s.text) for s in sources), "prompt_chars": prompt_chars,
                                        "prompt_budget": prompt_budget})
@@ -257,9 +266,13 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
             logger.info("request_id=%s phase=editorial_cache kind=briefing event=%s status=%s",
                         request_id, "stored" if result.sufficient else "not_stored", draft.status)
             return result
-        raw = generate_response(client, model, build_prompt(task, sources), response_schema(sources),
+        candidates = sources
+        sources, prompt = fit_context(candidates, dossier_prompt, 14000, text_budget=config.max_source_chars)
+        if not sources:
+            raise EditorialError("Contesto insufficiente per un passaggio originale completo.")
+        raw = generate_response(client, model, prompt, response_schema(sources),
                                 request_id=request_id)
-        result = render_product(kind, raw, sources, catalog.coverage, groups)
+        result = render_product(kind, raw, sources, selection_coverage(catalog.coverage, candidates, sources), groups)
         try:
             explicit_abstention = json.loads(raw) == {"sufficient": False, "claims": []}
         except (ValueError, TypeError):

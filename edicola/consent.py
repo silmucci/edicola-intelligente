@@ -10,7 +10,7 @@ from edicola.personal_store import PostgresPersonalStore
 PURPOSES = {
     "text": ("text-v2", "Lettura e approfondimenti AI",
              "Gemini riceve la domanda o il tema, i passaggi selezionati dei quotidiani e i riferimenti PDF/pagina. "
-             "Li usa per cercare e preparare risposte, dossier, briefing, timeline e mappe. "
+             "Li usa per cercare e preparare risposte, briefing, timeline e mappe. "
              "La ricerca può inviare la domanda per crearne l’embedding. Nella chat inviamo anche un breve contesto dei messaggi precedenti della stessa conversazione, per comprendere le domande successive; le risposte si basano sempre su nuove fonti recuperate. "
              "I prodotti generali sono condivisi nell’app. Il salvataggio delle chat nel tuo account è una scelta distinta, disattivata inizialmente."),
     "personal_text": ("personal-text-v1", "Il mio briefing AI",

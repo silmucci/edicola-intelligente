@@ -104,7 +104,7 @@ def test_sources_include_verified_metadata_original_text_and_pdf_route(tmp_path)
         app = AppTest.from_string(script(tmp_path)).run()
         grant(app)
         app.chat_input[0].set_value("Progetto?").run()
-        assert not app.exception and not app.main.expander
+        assert not app.exception and [e.label for e in app.main.expander] == ["Edizioni incluse nella lettura"]
         assert len(app.get("popover")) == 1
         assert any(x.value == RESULT.sources[0].text for x in app.text)
         assert all("a.pdf" not in x.value for x in app.text)

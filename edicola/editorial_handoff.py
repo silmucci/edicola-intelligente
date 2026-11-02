@@ -3,11 +3,9 @@
 import streamlit as st
 from edicola.product_navigation import cancel_navigation_action, destination
 
-TARGETS = {"Dossier": ("dossier", "editorial_topic"),
-           "Rassegna": ("briefing", "editorial_review_keyword"),
+TARGETS = {"Briefing": ("briefing", "editorial_review_keyword"),
            "Timeline": ("timeline", "knowledge_topic_timeline"),
            "Mappa": ("map", "knowledge_topic_map"),
-           "Infografica": ("briefing", "editorial_infographic_topic"),
            "Podcast": ("podcast", "podcast_topic")}
 
 
@@ -17,8 +15,6 @@ def open_draft(label, topic):
     identifier, key = TARGETS[label]
     cancel_navigation_action()
     st.session_state[key] = " ".join(topic.split())[:500]
-    if identifier == "briefing":
-        st.session_state["editorial_workspace"] = "Infografica" if label == "Infografica" else "Briefing"
     st.session_state["nav_section"] = destination(identifier)
 
 

@@ -28,3 +28,15 @@ def friendly_error(error):
     if "autorizza" in text or "revocata" in text:
         return "Questa operazione richiede la tua autorizzazione. Puoi gestirla nel profilo."
     return "Non siamo riusciti a completare l’operazione. Riprova tra poco; le letture già disponibili restano consultabili."
+
+
+def product_notice(product):
+    """Messaggi per la lettura; cause tecniche conservate nei risultati originali."""
+    status = product.diagnostics.get("status", "")
+    if status in {"empty_index", "selection_empty", "model_abstention"} or not product.sources and not status:
+        return "Non ci sono contenuti sufficienti per questa lettura tra le fonti disponibili."
+    if status == "partial_validation":
+        return "Il briefing è parziale: alcune notizie non sono disponibili."
+    if not product.sufficient:
+        return "Non è stato possibile preparare questa lettura. Le edizioni originali restano consultabili."
+    return "Questa lettura è disponibile solo in parte. Puoi approfondire nelle fonti originali."

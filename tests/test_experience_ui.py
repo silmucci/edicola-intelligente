@@ -94,7 +94,7 @@ def test_identity_home_and_logout_are_not_fake_authentication(archive, logged_in
 
 
 @pytest.mark.parametrize("button,destination", [("home_products_test_2", "Chat AI"), ("home_products_test_3", "Briefing"),
-                                                ("home_products_test_7", "Podcast"), ("home_products_test_8", "Il mio profilo")])
+                                                ("home_products_test_6", "Podcast"), ("home_products_test_7", "Il mio profilo")])
 def test_shortcuts_keep_consents_and_do_not_generate(archive, button, destination):
     root, _, _ = archive
     with patch("edicola.rag.ask_question", side_effect=AssertionError("RAG automatico")), patch(

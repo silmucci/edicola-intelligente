@@ -34,7 +34,7 @@ def response(data=None, reason=types.FinishReason.STOP):
 
 @pytest.fixture(autouse=True)
 def no_real_client():
-    with patch("google.genai.Client", side_effect=AssertionError("Chiamate reali vietate")):
+    with patch("google.genai.Client", side_effect=AssertionError("Chiamate reali vietate")), patch("edicola.rag.api_key", return_value="test-key"), patch("edicola.rag.source_editions", return_value={}):
         yield
 
 
@@ -218,7 +218,7 @@ def test_generation_503_logs_phase_model_attempt_and_no_contents(caplog):
 
 
 @pytest.mark.parametrize("configured,expected", [(None, 3), ("1", 1), ("5", 5)])
-def test_rag_chunk_limit_configurable_and_forwarded(monkeypatch, configured, expected, caplog):
+def test_legacy_rag_topk_does_not_limit_corpus_context(monkeypatch, configured, expected, caplog):
     if configured is None:
         monkeypatch.delenv("GEMINI_RAG_TOP_K", raising=False)
     else:
@@ -229,7 +229,8 @@ def test_rag_chunk_limit_configurable_and_forwarded(monkeypatch, configured, exp
     client.models.generate_content.return_value = response({"sufficient": False, "claims": []})
     with patch("edicola.rag.semantic_search", return_value=hits) as search, patch("edicola.rag.api_key", return_value="test-key"), caplog.at_level("INFO", logger="edicola"):
         result = ask_question("Domanda privata", authorize_external=True, client=client)
-    assert len(result.sources) == expected
+    assert len(result.sources) == len(hits)
+    assert search.call_args.kwargs["corpus_wide"] is True
     assert search.call_args.kwargs["top_k"] == expected
     assert search.call_count == 1
     assert client.models.generate_content.call_count == 1

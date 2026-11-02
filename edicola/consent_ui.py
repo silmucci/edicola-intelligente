@@ -92,4 +92,4 @@ def privacy_controls(key="profile_privacy"):
                 if pending.get("review") and pending.get("purpose") == purpose and pending.get("owner") == consent.actor():
                     consent_dialog(purpose)
             except PersonalStoreError:
-                st.info("Impostazioni AI non disponibili. Il gestore deve completare la configurazione; gli invii restano bloccati.")
+                st.info("Le impostazioni AI non sono disponibili in questo momento. Nessun contenuto verrà inviato.")

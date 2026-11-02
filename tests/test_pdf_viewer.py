@@ -197,7 +197,7 @@ coverage={{"indexed":1,"total":2,"partial":True,"warnings":[],"files":[]}}
 result=EditorialResult({kind!r}, "Titolo", [{{"heading":"Notizia [S1]","text":"Seconda pagina. [S1]"}}], [source], ["S1"], coverage, True)
 '''
     if kind in ("dossier", "briefing"):
-        action = '\nfrom edicola.reading_ui import render_editorial\nst.session_state["editorial_result"]=result\nrender_editorial(root, context, kind=result.kind.title())'
+        action = '\nfrom edicola.reading_ui import render_editorial_product\nrender_editorial_product(result, root, context)'
         button = "editorial_pdf_S1"
     elif kind == "personal":
         action = '\nfrom edicola.personalization_ui import show_product\nshow_product(result, context)'

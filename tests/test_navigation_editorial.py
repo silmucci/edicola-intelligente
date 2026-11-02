@@ -28,7 +28,7 @@ def platform(context):
         yield AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15).run()
 
 
-@pytest.mark.parametrize("index", range(9))
+@pytest.mark.parametrize("index", range(len(PRODUCTS)))
 def test_home_cards_and_top_navigation_share_the_nine_real_destinations(archive, index):
     _, context, _ = archive
     with platform(context) as app, patch("edicola.rag.ask_question") as rag, patch(
@@ -56,7 +56,7 @@ def test_product_drafts_results_and_graph_mode_survive_navigation_without_api(ar
         app.pills(key="nav_section").set_value("Timeline").run()
         app.text_input(key="knowledge_topic_timeline").set_value("Sostegno")
         app.button(key="timeline_submit").click().run()
-        assert any(h.value == "Eventi e sviluppi documentati" for h in app.subheader)
+        assert any(h.value == "Senza data" for h in app.subheader)
         app.pills(key="nav_section").set_value("Mappe concettuali").run()
         assert not app.get("graphviz_chart")
         app.text_input(key="knowledge_topic_map").set_value("Trasporti")
@@ -69,7 +69,7 @@ def test_product_drafts_results_and_graph_mode_survive_navigation_without_api(ar
         app.pills(key="nav_section").set_value("Mappe concettuali").run()
         assert app.text_input(key="knowledge_topic_map").value == "Trasporti"
         assert app.segmented_control(key="knowledge_map_view").value == "Elenco"
-        assert app.dataframe and not app.get("graphviz_chart")
+        assert not app.dataframe and not app.get("graphviz_chart")
         assert generate.call_count == 2
 
 
@@ -103,7 +103,7 @@ def test_graph_and_list_are_alternatives_with_editorial_sources_only(archive):
         assert all("S1" not in b.label for b in app.button)
         assert len(theme_title(result.topic)) <= 63
         app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert app.dataframe and not app.get("graphviz_chart")
+        assert not app.dataframe and not app.get("graphviz_chart")
 
 
 def test_responsive_cards_have_no_fixed_width_or_false_undated_axis():
@@ -123,23 +123,20 @@ def test_responsive_cards_have_no_fixed_width_or_false_undated_axis():
     assert not app.info
 
 
-def test_briefing_and_dossier_results_stay_separate(archive):
+def test_briefing_keeps_legacy_result_readable_without_generating_dossier(archive):
     from edicola.editorial import EditorialResult
     _, context, _ = archive
     briefing = EditorialResult("briefing", "Sintesi disponibile", [], [], [], COVERAGE, True)
     dossier = EditorialResult("dossier", "Approfondimento disponibile", [], [], [], COVERAGE, True)
-    with platform(context) as app, patch("edicola.editorial.generate_product", side_effect=[briefing, dossier]) as generate:
+    with platform(context) as app, patch("edicola.editorial.generate_product", return_value=briefing) as generate:
+        app.session_state["editorial_results"] = {"dossier": dossier}
         app.session_state["consent_choices"] = {("text", "text-v2"): True}
         app.pills(key="nav_section").set_value("Briefing").run()
-        app.button(key="briefing_submit").click().run()
-        app.pills(key="nav_section").set_value("Dossier").run()
-        assert not any(h.value == briefing.title for h in app.subheader)
-        app.text_input(key="editorial_topic").set_value("Trasporti")
-        app.button(key="dossier_submit").click().run()
+        app.selectbox(key="editorial_saved_product").set_value("session:dossier").run()
         assert any(h.value == dossier.title for h in app.subheader)
-        app.pills(key="nav_section").set_value("Briefing").run()
+        generate.assert_not_called()
+        app.button(key="briefing_submit").click().run()
         assert any(h.value == briefing.title for h in app.subheader)
-        assert not any(h.value == dossier.title for h in app.subheader)
-        app.pills(key="nav_section").set_value("Dossier").run()
-        assert app.text_input(key="editorial_topic").value == "Trasporti"
-        assert generate.call_count == 2 and not app.exception
+        assert app.session_state["editorial_results"]["dossier"] == dossier
+        assert generate.call_args.args[0] == "briefing"
+        assert generate.call_count == 1 and not app.exception

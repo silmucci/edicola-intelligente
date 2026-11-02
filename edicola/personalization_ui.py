@@ -24,26 +24,28 @@ from edicola.identity import local_demo
 from edicola.consent_ui import authorize_action, privacy_controls
 from edicola.consent import perform
 from edicola.api_guard import PermissionDenied
+from edicola.design import friendly_error, product_notice
+from edicola.chat_sources import citation_text, render_sources, document_label, render_context_limit
 
 
 def show_product(result, archive=None):
-    st.subheader(result.title)
+    st.subheader(readable(citation_text(result.title, result.used_source_ids)))
     if result.from_cache:
-        st.caption("Risultato già disponibile in cache: nessuna nuova generazione.")
+        st.caption("Lettura già disponibile.")
     if result.coverage.get("partial"):
-        st.warning("Archivio parzialmente indicizzato: questo briefing copre soltanto i contenuti disponibili.")
+        st.warning("Copertura parziale: questo briefing usa solo una parte dell’archivio.")
+    render_context_limit(result.coverage)
     if result.message:
-        st.info(result.message)
+        st.info(product_notice(result))
     for section in result.sections:
         with st.container(border=True):
-            st.subheader(section["heading"])
-            st.markdown(readable(section["text"]))
-    with st.expander("Fonti del briefing personale"):
-        for source in result.sources:
-            if source.id in result.used_source_ids:
-                st.text(f"[{source.id}] {source.filename} — pagina {source.page}")
-                st.text(source.text)
-                source_button(source.filename, source.page, context=archive, chunk_id=source.chunk_id, key=f"personal_brief_pdf_{source.id}")
+            st.subheader(readable(citation_text(section["heading"], result.used_source_ids)))
+            st.markdown(readable(citation_text(section["text"], result.used_source_ids)))
+    from pathlib import Path
+    from edicola.reading_ui import chat_markdown
+    root = archive.root if archive else Path(__file__).resolve().parents[1]
+    render_sources(result, index=0, last=True, root=root, context=archive,
+                   formatter=chat_markdown, namespace="personal_brief")
 
 
 def cached_audio(scope, product_key, voice=None, *, script=None):
@@ -79,14 +81,14 @@ def render_personalization_ui(root, archive=None):
         render_account_profile(root, archive)
         return
     from edicola.design import section_intro
-    section_intro("Il mio profilo", "Interessi, letture e preferenze della demo locale.", "La tua edicola")
+    section_intro("Il mio profilo", "Interessi, letture e preferenze.", "La tua edicola")
     privacy_controls(key="demo_privacy")
     if setting("EDICOLA_CLOUD_DEMO", "0") == "1":
         st.warning("Profilo demo pubblico e condiviso: tutti i visitatori possono leggere, modificare o cancellare "
                    "le preferenze e lo storico. Nessuno spazio personale riservato; non inserire dati personali. "
                    "I dati locali possono andare persi al riavvio.")
     else:
-        st.caption("Sviluppo locale: profilo demo condiviso. Chi usa questa installazione può accedere a questi dati; non è un account riservato.")
+        st.caption("Profilo condiviso: chi usa questa installazione può accedere a questi dati; non è un account riservato.")
     account_controls()
     if st.session_state.pop("personal_reset", False):
         for key in list(st.session_state):
@@ -118,7 +120,7 @@ def render_personalization_ui(root, archive=None):
                 st.session_state["personal_notice"] = "Preferenze salvate. I consigli riflettono le tue scelte."
                 st.rerun()
             except ValueError as exc:
-                st.error(str(exc))
+                st.error(friendly_error(exc))
                 return
         if profile.interests:
             with st.form("personal_feedback"):
@@ -169,11 +171,11 @@ def render_personalization_ui(root, archive=None):
             st.info("Ritrova qui le letture che vuoi conservare. Usa Salva lettura nelle schede consigliate.")
         for identity, item in profile.saved.items():
             with st.container(border=True):
-                st.text(f"{item['metadata']['filename']} — pagina {item['metadata']['page']}")
+                st.text(document_label(archive, item["metadata"]["filename"], item["metadata"]["page"]))
                 st.markdown(readable("«" + excerpt(item["text"], 230) + "»"))
                 with st.expander("Leggi il passaggio salvato"):
                     st.text(item["text"])
-                    st.caption("Copia locale salvata; potrebbe non appartenere più all'indice corrente. Può comprendere più notizie.")
+                    st.caption("Copia salvata; questa lettura potrebbe non essere più disponibile nell’archivio attuale. Può comprendere più notizie.")
                 source_button(item["metadata"]["filename"], item["metadata"]["page"], context=archive, chunk_id=identity, key=f"personal_saved_pdf_{identity}")
                 if st.button("Rimuovi dai salvati", key=f"personal_remove_{identity}"):
                     remove_passage(root, profile.user_id, identity)
@@ -183,23 +185,23 @@ def render_personalization_ui(root, archive=None):
     submitted = st.button("Genera il mio briefing", key="personal_briefing_submit", type="primary")
     if authorize_action("personal_text", "personal_briefing", submitted, [profile.interests, profile.minutes, profile.feedback]):
         try:
-            with st.spinner("Generazione del briefing personale con fonti validate…"):
+            with st.spinner("Preparo il tuo briefing…"):
                 identity, result = perform("personal_text", generate_personal_briefing, root, profile, authorize_external=True, catalog=catalog)
             if not result.sufficient:
-                st.warning(result.message or "Informazioni insufficienti per un briefing verificabile.")
+                st.warning(product_notice(result))
             else:
                 st.session_state["personal_product"] = identity
         except RagError as exc:
-            st.error(str(exc))
+            st.error(friendly_error(exc))
         except Exception:
-            st.error("Briefing personale non disponibile: verificare configurazione, connessione e cache locale.")
+            st.error("Il tuo briefing non è disponibile in questo momento. Le letture salvate restano consultabili.")
 
     scope = personal_root(root, profile.user_id)
     products = list_products(scope)
     if products:
         keys = [p.key for p in products]
         selected = st.selectbox("I miei briefing già disponibili", keys,
-                                format_func=lambda k: next(p.result.title + " — " + p.created_at for p in products if p.key == k),
+                                format_func=lambda k: next(citation_text(p.result.title, p.result.used_source_ids) + " — " + p.created_at for p in products if p.key == k),
                                 key="personal_product")
         product = next(p for p in products if p.key == selected)
         st.caption("Briefing salvato: riflette le preferenze e le fonti al momento della generazione. Per applicare le modifiche usa Genera il mio briefing.")
@@ -208,7 +210,7 @@ def render_personalization_ui(root, archive=None):
                 show_product(product.result, archive)
         else:
             show_product(product.result, archive)
-        st.caption("Per il formato audio puoi ascoltare un podcast già salvato o generarlo esplicitamente. Il TTS esistente legge un estratto di circa 1–2 minuti anche per briefing lunghi.")
+        st.caption("Puoi ascoltare un podcast già salvato o crearne uno. L’audio legge un estratto di circa 1–2 minuti anche per briefing lunghi.")
         with st.expander("Ascolta questo briefing"):
             voice = st.selectbox("Voce del podcast personale", VOICES, key="personal_voice")
             audio_submit = st.button("Genera podcast del mio briefing", key="personal_audio_submit")
@@ -218,7 +220,7 @@ def render_personalization_ui(root, archive=None):
                 with st.spinner("Generazione podcast personale…"):
                     perform("audio", generate_podcast, selected, voice=voice, authorize_external=True, root=scope)
             except (PodcastError, PermissionDenied) as exc:
-                st.error(str(exc))
+                st.error(friendly_error(exc))
         existing = cached_audio(scope, selected, voice)
         if existing:
             data, manifest = existing
@@ -230,7 +232,7 @@ def render_personalization_ui(root, archive=None):
             with st.expander("Testo letto e fonti del podcast personale"):
                 st.text(manifest["script"]["text"])
                 for source in manifest["script"]["sources"]:
-                    st.text(f"{source['filename']} — pagina {source['page']}")
+                    st.text(document_label(archive, source["filename"], source["page"]))
                     source_button(source["filename"], source["page"], context=archive, chunk_id=source["chunk_id"], key=f"personal_audio_pdf_{source['id']}")
     else:
-        st.info("Il tuo primo briefing ti aspetta: scegli gli interessi e autorizza la generazione. Puoi esplorare anche Briefing, Dossier e Podcast.")
+        st.info("Il tuo primo briefing ti aspetta: scegli gli interessi e autorizza la generazione. Puoi esplorare anche Briefing e Podcast.")

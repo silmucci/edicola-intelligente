@@ -16,10 +16,11 @@ from google.genai import types
 from edicola.archive import IndexChunk
 from edicola.briefing import STRATEGY_VERSION, fit_briefing_prompt, generate_briefing_response
 from edicola.editorial import EditorialResult, briefing_result
-from edicola.editorial_selection import near_duplicate, read_catalog
+from edicola.editorial_selection import read_catalog
 from edicola.embeddings import api_key
 from edicola.profiles import Profile, personal_root, validate
 from edicola.rag import DEFAULT_MODEL, RagError, Source
+from edicola.context_selection import VERSION as CONTEXT_VERSION, selection_coverage
 
 
 VERSION = "personal-briefing-v1"
@@ -90,7 +91,7 @@ def recommend(catalog, profile: Profile, limit=None):
     groups = defaultdict(deque)
     for item in ranked:
         name = item.chunk.metadata["filename"]
-        groups[editions.get(name, (name, ""))].append(item)
+        groups[editions.get(name, (name, "")) + (name,)].append(item)
     result = []
     while any(groups.values()) and len(result) < limit:
         # Primo candidato migliore di ciascuna edizione, poi giro successivo.
@@ -98,7 +99,8 @@ def recommend(catalog, profile: Profile, limit=None):
         for edition in order:
             while groups[edition]:
                 item = groups[edition].popleft()
-                if not any(near_duplicate(item.chunk.text, previous.chunk.text) for previous in result):
+                if not any(item.chunk.metadata["filename"] == previous.chunk.metadata["filename"]
+                           and " ".join(item.chunk.text.split()) == " ".join(previous.chunk.text.split()) for previous in result):
                     result.append(item)
                     break
             if len(result) >= limit:
@@ -113,7 +115,7 @@ def generate_personal_briefing(root, profile, *, authorize_external=False, clien
     if store is not None:
         store.assert_owner(profile.user_id)
     catalog = catalog if catalog is not None else read_catalog(root)
-    selected = recommend(catalog, profile, limit={2: 6, 5: 10, 10: 12}[profile.minutes])
+    selected = recommend(catalog, profile, limit=len(catalog.chunks))
     if not selected:
         raise RagError("Nessun passaggio indicizzato pertinente agli interessi attivi. Modifica le preferenze.")
     key = api_key(root)  # Carica soltanto la configurazione locale; nessuna rete.
@@ -123,11 +125,12 @@ def generate_personal_briefing(root, profile, *, authorize_external=False, clien
     extra = json.dumps(delivery, ensure_ascii=False)
     sources = [Source(f"S{i}", item.chunk.id, item.chunk.metadata["filename"],
                       item.chunk.metadata["page"], item.chunk.text, 0.0) for i, item in enumerate(selected, 1)]
+    candidates = sources
     sources, prompt = fit_briefing_prompt(sources, catalog.coverage, [], 14000 - len(extra) - 40)
     data = json.loads(prompt)
     data["delivery"] = delivery
     prompt = json.dumps(data, ensure_ascii=False)
-    identity = hashlib.sha256(json.dumps({"version": [VERSION, STRATEGY_VERSION], "model": model, "prompt": prompt,
+    identity = hashlib.sha256(json.dumps({"version": [VERSION, STRATEGY_VERSION, CONTEXT_VERSION], "model": model, "prompt": prompt,
         "chunks": [(r.chunk.id, r.chunk.fingerprint) for r in selected]}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     path = personal_root(root, profile.user_id) / "data/editorial.sqlite3" if store is None else None
     cached = read_personal_cache(path, identity) if store is None else store.get_briefing(identity)
@@ -144,7 +147,7 @@ def generate_personal_briefing(root, profile, *, authorize_external=False, clien
     finally:
         if own_client:
             client.close()
-    result = briefing_result(draft, sources, catalog.coverage)
+    result = briefing_result(draft, sources, selection_coverage(catalog.coverage, candidates, sources))
     # Limite locale su sezioni intere: non tagliare fatti o riferimenti validati.
     kept, words = [], 0
     for section in result.sections:

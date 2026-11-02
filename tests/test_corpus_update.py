@@ -17,7 +17,6 @@ from edicola.editorial_selection import read_catalog
 from edicola.indexing import apply_plan, plan_index
 from edicola.ingestion import ingest_directory
 from edicola.knowledge import generate_knowledge
-from edicola.infographic import build_infographic
 from edicola.press_review import ReviewSelection, filter_catalog, review_groups
 from edicola.podcast import generate_podcast
 from edicola.podcast_text import list_products
@@ -160,8 +159,6 @@ def test_old_and_new_enter_all_seven_products_only_after_incremental_index(corpu
             assert {s.filename for s in result.sources} == {"old.pdf", "new.pdf"}
         result = ask_question("trasporti", root=root, authorize_external=True, client=client)
         assert result.sufficient and len(result.used_source_ids) == 2
-    infographic = build_infographic(catalog, "trasporti")
-    assert {block["filename"] for block in infographic.blocks} == {"old.pdf", "new.pdf"}
     briefing = next(p for p in list_products(root) if p.result.kind == "briefing")
     podcast = generate_podcast(briefing.key, root=root, authorize_external=True, client=fake_client())
     assert {s["filename"] for s in podcast.script.sources} == {"old.pdf", "new.pdf"}

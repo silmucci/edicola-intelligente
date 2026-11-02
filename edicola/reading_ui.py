@@ -21,7 +21,7 @@ from edicola.identity import synchronize_identity
 from edicola.rag_context import source_editions
 from edicola import chat_sessions
 from edicola.chat_navigation import render_navigation
-from edicola.chat_sources import render_sources
+from edicola.chat_sources import render_sources, citation_text, render_context_limit
 from edicola.chat_data import turn_context
 
 
@@ -87,7 +87,7 @@ def _render_chat_turn(turn, index, last, root, context):
     with st.chat_message("assistant", avatar=":material/auto_awesome:"):
         if getattr(result, "temporal_notice", ""):
             st.info(result.temporal_notice)
-        st.markdown(chat_markdown(result.answer), unsafe_allow_html=False)
+        st.markdown(chat_markdown(citation_text(result.answer, result.used_source_ids)), unsafe_allow_html=False)
         render_sources(result, index=index, last=last, root=root, context=context, formatter=chat_markdown)
         _render_save_status(turn)
         if last and result.sufficient:
@@ -109,13 +109,13 @@ def render_chat(root, context):
     try:
         from edicola.editorial_selection import read_catalog
         if read_catalog(root).coverage.get("partial"):
-            st.caption("Archivio parzialmente indicizzato: le risposte possono usare soltanto i passaggi già disponibili alla ricerca, non tutte le edizioni acquisite.")
+            st.caption("Le risposte coprono solo una parte dell’archivio. Puoi consultare tutte le edizioni nell’Archivio PDF.")
     except (OSError, ValueError, RuntimeError):
         pass
     try:
         chat = render_navigation()
     except PersonalStoreError:
-        st.error("Le conversazioni del tuo account non sono disponibili. Riprova più tardi; il gestore deve verificare la configurazione della cronologia.")
+        st.error("Le conversazioni del tuo account non sono disponibili in questo momento. Riprova più tardi.")
         st.chat_input("Chat momentaneamente non disponibile", key="rag_input", disabled=True)
         return
     pending = st.session_state.get("rag_pending")
@@ -157,98 +157,83 @@ def render_chat(root, context):
         st.rerun()
 
 
-def render_editorial(root, context, *, kind=None, review=None):
-    if kind is None:  # Compatibilità delle viste richiamate separatamente.
-        kind = st.segmented_control("Cosa vuoi leggere?", ["Briefing", "Dossier"], default="Briefing", key="editorial_kind") or "Briefing"
-    section_intro(kind, "Una sintesi delle edizioni disponibili." if kind == "Briefing" else "Un percorso tra le fonti su un tema a tua scelta.", "Oltre il titolo")
+def render_editorial(root, context):
+    """Un solo flusso di generazione; lettura compatibile dei prodotti precedenti."""
+    from dataclasses import asdict
+    from edicola.press_review_ui import review_controls
+    from edicola.product_navigation import cancel_navigation_action
+    from edicola.podcast_text import list_products, PodcastError
+    section_intro("Briefing", "Scegli un tema e le edizioni: ritrova le notizie con le loro fonti.")
     results = st.session_state.setdefault("editorial_results", {})
     previous = st.session_state.get("editorial_result")
     if previous is not None:
         results[previous.kind] = previous
-    if kind == "Dossier":
-        topic = st.text_input("Argomento del dossier", max_chars=500, key="editorial_topic", placeholder="Un argomento, un luogo, una questione")
-        st.caption("Un percorso ragionato tra le fonti, con introduzione, sezioni e conclusioni.")
-    else:
-        topic = ""
-        st.caption("Una sintesi delle notizie disponibili, bilanciata tra le edizioni dell’archivio.")
-        if review is None:
-            from edicola.press_review_ui import review_controls
-            _, review = review_controls(root)
-    submitted = st.button("Genera dossier tematico" if kind == "Dossier" else "Genera briefing",
-                          key="dossier_submit" if kind == "Dossier" else "briefing_submit", type="primary")
-    valid = kind != "Dossier" or bool(topic.strip())
-    if submitted and not valid:
-        st.warning("Scegli un argomento per il dossier.")
-    from dataclasses import asdict
-    payload = [topic, asdict(review)] if kind == "Briefing" and review else topic
-    if valid and authorize_action("text", kind.lower(), submitted, payload):
+    _, review = review_controls(root)
+    submitted = st.button("Genera briefing", key="briefing_submit", type="primary")
+    payload = ["", asdict(review)]
+    if authorize_action("text", "briefing", submitted, payload):
         st.session_state.pop("editorial_result", None)
-        results.pop(kind.lower(), None)
+        st.session_state.pop("editorial_saved_product", None)
+        results.pop("briefing", None)
         try:
-            with st.spinner("Seleziono le fonti e preparo la lettura…"):
-                st.session_state["editorial_result"] = perform("text", editorial.generate_product,
-                    kind.lower(), topic, authorize_external=True, root=root,
-                    **({"selection": review} if kind == "Briefing" else {}))
-                results[kind.lower()] = st.session_state["editorial_result"]
+            with st.spinner("Leggo le fonti e preparo il briefing…"):
+                product = perform("text", editorial.generate_product, "briefing", "",
+                                  authorize_external=True, root=root, selection=review)
+                st.session_state["editorial_result"] = product
+                results["briefing"] = product
         except (editorial.EditorialError, PermissionDenied, PersonalStoreError) as exc:
             st.error(friendly_error(exc))
-    if kind.lower() not in results:
-        st.info("Scegli un argomento per iniziare." if kind == "Dossier" else "Il tuo briefing raccoglierà le notizie disponibili. Premi Genera briefing per iniziare.")
+    # Lettura soltanto: nessuna copia, migrazione o riscrittura della cache.
+    available = {}
+    try:
+        for saved in list_products(root):
+            available[saved.key] = (saved.result, saved.created_at)
+    except PodcastError:
+        st.caption("Le letture salvate non sono disponibili in questo momento.")
+    if "dossier" in results:
+        available["session:dossier"] = (results["dossier"], "Questa sessione")
+    selected = None
+    if available:
+        if st.session_state.get("editorial_saved_product") not in available:
+            st.session_state.pop("editorial_saved_product", None)
+        selected = st.selectbox("Letture già disponibili", [None] + list(available), key="editorial_saved_product",
+            format_func=lambda key: (citation_text(available[key][0].title, available[key][0].used_source_ids)
+                                     + " · " + available[key][1]) if key else "Briefing corrente",
+            on_change=cancel_navigation_action)
+    product = available[selected][0] if selected else results.get("briefing")
+    if product is None:
+        st.info("Scegli le fonti e premi Genera briefing per iniziare.")
         return
-    product = results[kind.lower()]
-    coverage = product.coverage
-    from edicola.corpus_cache import render_history_notice
-    render_history_notice(coverage, context)
-    if kind == "Briefing":
-        from dataclasses import asdict
-        expected = asdict(review) if review else {}
-        actual = coverage.get("selection", {})
+    if not selected:
+        expected, actual = asdict(review), product.coverage.get("selection", {})
         if (expected.get("keyword", "") != actual.get("keyword", "")
                 or list(expected.get("filenames", ())) != actual.get("files", [])
-                or expected.get("scope", "") != actual.get("scope", "")
-                or any(expected.get(key, "") != actual.get(key, "") for key in ("date_from", "date_to"))
+                or any(expected.get(key, "") != actual.get(key, "") for key in ("scope", "date_from", "date_to"))
                 or expected.get("latest", False) != actual.get("latest", False)):
-            st.caption("Sintesi della selezione precedente: premi Genera briefing per applicare i filtri attuali.")
-    if kind == "Dossier" and product.sufficient:
-        cited_editions = {s.filename for s in product.sources if s.id in product.used_source_ids}
-        st.caption(f"Approfondimento basato su {len(cited_editions)} edizioni citate; non implica fonti indipendenti.")
-        if len(cited_editions) < 2:
-            st.info("Una sola edizione citata: non è disponibile un confronto tra più fonti.")
-    if coverage["partial"]:
-        st.warning("Archivio parzialmente indicizzato: il prodotto copre soltanto i contenuti disponibili, non tutti i quotidiani.")
-    st.subheader(readable(product.title))
+            st.caption("Questo briefing si riferisce alla selezione precedente. Generane uno nuovo per applicare i filtri attuali.")
+    render_editorial_product(product, root, context)
+
+
+def render_editorial_product(product, root, context):
+    from edicola.corpus_cache import render_history_notice
+    from edicola.design import product_notice
+    coverage = product.coverage
+    render_history_notice(coverage, context)
+    if coverage.get("partial"):
+        st.caption("Copertura parziale: questa lettura usa solo una parte dell’archivio.")
+    render_context_limit(coverage)
+    st.subheader(readable(citation_text(product.title, product.used_source_ids)))
     if product.message:
-        st.info(product.message)
+        st.info(product_notice(product))
     for section in product.sections:
         with st.container(border=True):
-            st.markdown("### " + readable(section["heading"]))
-            st.markdown(readable(section["text"]))
+            st.markdown("### " + readable(citation_text(section["heading"], product.used_source_ids)))
+            st.markdown(readable(citation_text(section["text"], product.used_source_ids)))
     render_sources(product, index=0, last=True, root=root, context=context, formatter=chat_markdown, namespace="editorial")
-    with st.expander("Edizioni considerate e copertura"):
-        st.caption(f"Fonti selezionate da {len({s.filename for s in product.sources})} edizioni.")
-        selected_files = {source.filename for source in product.sources}
-        for item in coverage.get("files", []):
-            if item["pdf"] in selected_files:
-                st.text((item.get("publication") or "Edizione senza testata verificata") + " · " +
-                        (item.get("date") or "Data non disponibile"))
-        if coverage.get("selection"):
-            chosen = coverage["selection"]
-            st.text("Parole chiave della sintesi: " + (chosen.get("keyword") or "nessun filtro"))
-            st.text("Ambito dell’edizione: " + (chosen.get("scope") or "tutti gli ambiti, incluse edizioni non classificate"))
-            st.text("Date delle edizioni: " + (chosen.get("date_from") or "inizio archivio") + " — " + (chosen.get("date_to") or "fine archivio"))
-            if chosen.get("latest"):
-                st.caption("Solo l’ultima data disponibile nella selezione.")
-        if diagnostics_enabled(root):
-            st.caption(f"Copertura: {coverage['indexed']} chunk indicizzati su {coverage['total']}.")
-            for warning in coverage["warnings"]:
-                st.info(warning)
-            st.dataframe(coverage["files"], hide_index=True)
-            if product.diagnostics:
-                st.caption(f"Strategia: {product.diagnostics.get('strategy', '')} · Stato: {product.diagnostics.get('status', '')}")
-        if diagnostics_enabled(root):
-            for source in product.sources:
-                st.text(f"[{source.id}] {source.filename} — pagina {source.page}")
-                st.text(source.text)
+    if diagnostics_enabled(root):
+        with st.expander("Diagnostica editoriale · sviluppo"):
+            st.json(product.diagnostics)
+            st.json(coverage)
 
 
 def render_visuals(root, context, *, kind=None):
@@ -293,4 +278,4 @@ def render_visuals(root, context, *, kind=None):
             st.caption("Risultato dell’argomento precedente: modifica la richiesta e avvia la generazione per aggiornarlo.")
         render_knowledge(result, archive=context)
     else:
-        st.info("La mappa o timeline precedente va aggiornata: premi Genera per usare i nuovi criteri." if outdated else "Scegli un tema per iniziare.")
+        st.info("Questo risultato non è disponibile nella vista attuale. Puoi generarne uno nuovo." if outdated else "Scegli un tema per iniziare.")

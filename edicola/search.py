@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import numpy as np
 from pathlib import Path
 from uuid import uuid4
 
@@ -9,14 +10,16 @@ from edicola.archive import read_active_chunks
 from edicola.embeddings import MODEL, EmbeddingError, GeminiEmbedder, api_key, question_prompt
 from edicola.indexing import ROOT, plan_index
 from edicola.vectorstore import open_collection
+from edicola.context_selection import MAX_DISTANCE, DISTANCE_WINDOW, edition_order
 
 
 logger = logging.getLogger(__name__)
 
 
 def semantic_search(question: str, *, authorize_external=False, root: Path = ROOT, embedder=None,
-                    top_k: int = 5, request_id: str | None = None, diversify_by_pdf=False) -> list[dict]:
-    """Invia solo la domanda a Gemini e restituisce fino a 5 chunk indicizzati attuali."""
+                    top_k: int = 5, request_id: str | None = None, diversify_by_pdf=False,
+                    corpus_wide=False, filenames=None, allowed_ids=None) -> list[dict]:
+    """Una embedding; i prodotti usano corpus_wide, il top-k resta per CLI/eval."""
     if not question.strip():
         raise ValueError("Inserire una domanda non vuota.")
     if not authorize_external:
@@ -34,6 +37,10 @@ def semantic_search(question: str, *, authorize_external=False, root: Path = ROO
     excluded = set(plan.stale_ids) | {chunk.id for chunk in plan.pending}
     # Esclude anche vettori diventati obsoleti dopo modifiche non ancora sincronizzate.
     eligible = [chunk for chunk in chunks if chunk.id not in excluded]
+    if filenames is not None:
+        eligible = [chunk for chunk in eligible if chunk.metadata["filename"] in filenames]
+    if allowed_ids is not None:
+        eligible = [chunk for chunk in eligible if chunk.id in allowed_ids]
     if not eligible:
         return []
     own_client = embedder is None
@@ -47,6 +54,32 @@ def semantic_search(question: str, *, authorize_external=False, root: Path = ROO
                          request_id, MODEL, exc.http_status if exc.http_status is not None else "-")
             raise
         logger.info("request_id=%s phase=query_embedding model=%r event=success", request_id, MODEL)
+        if corpus_wide:
+            # Scansione locale esatta dei vettori correnti: nessun top-k HNSW che
+            # possa perdere un'edizione, nessuna richiesta remota per singolo PDF.
+            query = np.asarray(vector, dtype=float)
+            query_norm = np.linalg.norm(query)
+            if not query_norm or not np.isfinite(query).all():
+                raise ValueError("Embedding della domanda non valido.")
+            current = {chunk.id: chunk for chunk in eligible}
+            hits = []
+            for offset in range(0, len(eligible), 500):
+                batch = collection.get(ids=[c.id for c in eligible[offset:offset + 500]],
+                                       include=["embeddings", "documents", "metadatas"])
+                for identity, text, metadata, embedding in zip(batch["ids"], batch["documents"], batch["metadatas"], batch["embeddings"]):
+                    chunk = current.get(identity)
+                    if chunk is None or text != chunk.text or (metadata or {}).get("input_sha256") != chunk.fingerprint:
+                        continue
+                    stored = np.asarray(embedding, dtype=float)
+                    norm = np.linalg.norm(stored)
+                    if stored.shape != query.shape or not norm or not np.isfinite(stored).all():
+                        raise ValueError("Vettore del corpus non valido.")
+                    distance = 1 - float(np.clip(stored @ query / (norm * query_norm), -1, 1))
+                    hits.append({"id": identity, "text": text, **chunk.metadata, "distance": distance})
+            hits.sort(key=lambda hit: (hit["distance"], hit["id"]))
+            cutoff = min(MAX_DISTANCE, hits[0]["distance"] + DISTANCE_WINDOW) if hits else MAX_DISTANCE
+            relevant = [hit for hit in hits if hit["distance"] <= cutoff]
+            return list(edition_order(relevant, filename=lambda hit: hit["filename"]))
         if diversify_by_pdf:
             # Opzione editoriale: una sola embedding della domanda, ricerca per edizione.
             # Il percorso del chatbot rimane invariato.

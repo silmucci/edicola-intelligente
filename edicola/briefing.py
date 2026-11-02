@@ -3,12 +3,13 @@
 import json
 import logging
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 import httpx
 from google.genai import errors, types
 
 from edicola.rag import RagError, Source, response_schema, validate_response
+from edicola.context_selection import fit_context, included_coverage, COMPARISON_INSTRUCTION
 
 
 STRATEGY_VERSION = "briefing-v2"
@@ -27,6 +28,7 @@ title e summary, ciascuno con text ed evidence contenenti source_id e quote lett
 di almeno 20 caratteri quando disponibili. Usa solo ID ricevuti. Non inserire rimandi o
 identificativi in text: li aggiungerà il programma. Mantieni sintesi brevi e autonome.
 Non inventare nomi di testate o date e non presentare l'archivio parziale come completo."""
+SYSTEM_INSTRUCTION += COMPARISON_INSTRUCTION
 
 
 MESSAGES = {
@@ -62,34 +64,21 @@ def briefing_schema(sources: list[Source]) -> dict:
 
 
 def build_briefing_prompt(sources: list[Source], coverage: dict, hints: list[list[str]]) -> str:
-    return json.dumps({"task": "briefing", "coverage": coverage, "topic_hints": hints,
+    included = {source.id for source in sources}
+    hints = [[identity for identity in group if identity in included] for group in hints]
+    return json.dumps({"task": "briefing", "coverage": included_coverage(coverage, sources), "topic_hints": [group for group in hints if group],
                        "sources": [{"source_id": item.id, "pdf": item.filename, "page": item.page,
                                     "text": item.text} for item in sources]}, ensure_ascii=False)
 
 
-def fit_briefing_prompt(sources: list[Source], coverage: dict, hints: list[list[str]], budget: int):
-    """Limita tutto il prompt testuale, preservando il numero e gli ID delle fonti."""
-    def candidate(cap):
-        subset = [replace(source, text=source.text[:cap]) for source in sources]
-        return subset, build_briefing_prompt(subset, coverage, hints)
-
-    low, high = 40, max(len(source.text) for source in sources)
-    fitted, prompt = candidate(high)
-    if len(SYSTEM_INSTRUCTION) + len(prompt) <= budget:
-        return fitted, prompt
-    minimum, smallest = candidate(low)
-    if len(SYSTEM_INSTRUCTION) + len(smallest) > budget:
+def fit_briefing_prompt(sources: list[Source], coverage: dict, hints: list[list[str]], budget: int, *, source_budget=None):
+    """Passaggi interi da ogni edizione pertinente, entro un budget complessivo."""
+    fitted, _ = fit_context(sources,
+        lambda selected: SYSTEM_INSTRUCTION + build_briefing_prompt(selected, coverage, hints),
+        budget, text_budget=source_budget)
+    if not fitted:
         raise ValueError("prompt_budget_exceeded")
-    fitted, prompt = minimum, smallest
-    while low <= high:
-        middle = (low + high) // 2
-        subset, text = candidate(middle)
-        if len(SYSTEM_INSTRUCTION) + len(text) <= budget:
-            fitted, prompt = subset, text
-            low = middle + 1
-        else:
-            high = middle - 1
-    return fitted, prompt
+    return fitted, build_briefing_prompt(fitted, coverage, hints)
 
 
 def validate_briefing(raw: str, sources: list[Source], *, request_id="-") -> BriefingDraft:

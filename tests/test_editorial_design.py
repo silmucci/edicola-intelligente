@@ -53,7 +53,7 @@ def test_local_search_matches_only_real_editions_products_and_passages(archive):
     assert chunks and all(c in catalog.chunks and "trasporti" in c.text for c in chunks)
     assert len(chunks) <= 5
     assert local_matches("Edizione B", context.documents, metadata)[1] == [context.documents[1]]
-    assert local_matches("podcast", context.documents, metadata)[0] == [7]
+    assert local_matches("podcast", context.documents, metadata)[0] == [6]
     assert local_matches("notizia inesistente xyz", context.documents, metadata, catalog.chunks) == ([], [], [])
     assert local_matches("  ", context.documents, metadata, catalog.chunks) == ([], [], [])
 
@@ -64,7 +64,7 @@ def test_header_search_and_profile_are_local_actions(archive):
     with patch("edicola.editorial_selection.read_catalog", return_value=catalog), patch("edicola.rag.ask_question") as ask:
         app = AppTest.from_string(code, default_timeout=15).run()
         app.text_input(key="account_header_search").set_value("podcast").run()
-        app.button(key="header_product_7").click().run()
+        app.button(key="header_product_6").click().run()
         assert not app.exception and app.session_state["nav_section"] == "Podcast"
         app.button(key="header_profile").click().run()
         assert not app.exception and app.session_state["nav_section"] == "Il mio profilo"

@@ -117,4 +117,4 @@ def login_controls(key="account"):
         ready = google_configured()
         st.button("Accedi con Google", key=f"{key}_login", on_click=login, disabled=not ready)
         if not ready:
-            st.caption("L’accesso personale non è ancora configurato. L’Archivio resta consultabile.")
+            st.caption("L’accesso personale non è disponibile in questo momento. L’Archivio resta consultabile.")

@@ -79,7 +79,7 @@ def decode_result(content, details):
     try:
         data = dict(data)
         sources = data.get("sources", [])
-        if not isinstance(sources, list) or len(sources) > 5:
+        if not isinstance(sources, list) or len(sources) > 512:
             raise ValueError()
         data["sources"] = [Source(**source) for source in sources]
         for source in data["sources"]:

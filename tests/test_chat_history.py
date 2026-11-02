@@ -348,7 +348,7 @@ render_sources(result,index=0,last=True,root=context.root,context=context,format
         assert not app.exception and len(app.button) == 2
         assert all("a.pdf" not in b.label for b in app.button)
         assert all("Testata verificata" in b.label and b.proto.type == "tertiary" for b in app.button)
-        assert "S1/S2" in app.button[0].label
+        assert "1/2" in app.button[0].label
         app.button(key="rag_pdf_S3").click().run()
         assert app.session_state["archive_pdf"] == "a.pdf" and app.session_state["archive_page"] == 2
         sdk.assert_not_called()

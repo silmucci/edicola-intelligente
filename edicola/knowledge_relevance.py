@@ -107,7 +107,7 @@ class Topic:
         return best
 
 
-def select_topic_chunks(topic, chunks, hits, limit):
+def select_topic_chunks(topic, chunks, hits, limit, *, preserve_editions=False):
     """Reranking di soli chunk già indicizzati; nessuna quota obbligatoria per PDF."""
     positions = {h["id"]: i for i, h in enumerate(hits)}
     scored = [(topic.score(c.text), positions.get(c.id, len(hits) + 1), c) for c in chunks]
@@ -118,6 +118,8 @@ def select_topic_chunks(topic, chunks, hits, limit):
     selected, seen = [], set()
     for _, _, chunk in ranked:
         signature = " ".join(chunk.text.casefold().split())
+        if preserve_editions:
+            signature = (chunk.metadata["filename"], signature)
         if signature not in seen:
             seen.add(signature)
             selected.append(chunk)

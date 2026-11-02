@@ -103,7 +103,7 @@ def headline_priority(chunk: IndexChunk) -> int:
     return 3 * int(capitals >= 3) + int(heading) + 2 * int(front_page) + int(page_start)
 
 
-def balanced_briefing(catalog: Catalog, limit: int, similarity: float) -> list[IndexChunk]:
+def balanced_briefing(catalog: Catalog, limit: int, similarity: float, *, preserve_editions=False) -> list[IndexChunk]:
     """Alterna testate e date/edizioni; favorisce temi frequenti e testi distinti."""
     chunks = sorted(catalog.chunks, key=lambda item: (item.metadata["filename"], item.metadata["position"]))
     if not chunks:
@@ -131,7 +131,9 @@ def balanced_briefing(catalog: Catalog, limit: int, similarity: float) -> list[I
                 candidates = editions_queue.popleft()
                 candidates[:] = [chunk for chunk in candidates
                                  if len(chunk.text.strip()) >= 40
-                                 and not any(near_duplicate(chunk.text, other.text) for other in selected)]
+                                 and not any((" ".join(chunk.text.split()) == " ".join(other.text.split())
+                                              if preserve_editions else near_duplicate(chunk.text, other.text)) for other in selected
+                                             if not preserve_editions or chunk.metadata["filename"] == other.metadata["filename"])]
                 if candidates:
                     index = max(range(len(candidates)), key=lambda i: (
                         (candidates[i].metadata["filename"], candidates[i].metadata["page"]) not in seen_pages,

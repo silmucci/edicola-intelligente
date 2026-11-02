@@ -1,3 +1,6 @@
+> Documento storico dell’audit di ottobre: alcune funzioni qui descritte sono state ritirate.
+> La navigazione attuale e i flussi supportati sono descritti in [README.md](README.md) e [CONSUMER_APP.md](CONSUMER_APP.md).
+
 # Audit funzionale dei prodotti editoriali
 
 Audit del codice e completamento funzionale del 30 ottobre 2026. Le verifiche
