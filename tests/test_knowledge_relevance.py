@@ -91,8 +91,9 @@ def test_ranking_comes_before_degree_and_does_not_remove_an_isolated_priority_no
     data = {"nodes": nodes, "edges": edges}
     original = deepcopy(data)
     view = compact_map(data)
-    assert [n["id"] for n in view["nodes"]] == [n["id"] for n in nodes[:10]]
-    assert not view["edges"] and data == original
+    assert len(view["nodes"]) == 10
+    assert {"N0", "N11"} <= {n["id"] for n in view["nodes"]}
+    assert view["edges"] and all(edge in edges for edge in view["edges"]) and data == original
 
 
 def test_relevance_can_use_only_verified_contiguous_relation_context():
@@ -121,12 +122,14 @@ def test_intrinsic_graph_size_and_readable_fonts_prevent_fitting_two_nodes_to_th
     with installed_fixture(module):
         app = AppTest.from_string(code).run()
     assert not app.exception and not app.dataframe
-    assert len(app.get("graphviz_chart")) == 1
-    # Le impostazioni del layout sono nei messaggi del contenitore Streamlit;
-    # la chiamata documentata non deve richiedere stretch o un'altezza forzata.
-    with installed_fixture(module), patch("streamlit.graphviz_chart") as graph:
+    # Nessun grafo riuscito viene simulato quando il risultato non ha relazioni.
+    assert len(app.get("graphviz_chart")) == 0
+    assert any("Non emergono relazioni verificabili" in message.value for message in app.info)
+    data["edges"] = [{"from_id": "N0", "to_id": "N1", "kind": "documented", "label": "riguarda", "source_ids": []}]
+    with installed_fixture(module), patch("edicola.map_component.graph_component") as graph:
         AppTest.from_string(code).run()
-    assert graph.call_args.kwargs["width"] == "content" and graph.call_args.kwargs["height"] == "content"
+    assert len(graph.call_args.kwargs["data"]["nodes"]) == count
+    assert graph.call_args.kwargs["data"]["edges"][0]["from"] == "N0"
 
 
 def test_timeline_subject_guard_does_not_change_verified_dates():
@@ -163,13 +166,15 @@ def test_full_map_flow_uses_one_search_one_generation_and_versioned_cache(setup_
     assert not generate_knowledge("map", QUESTION, authorize_external=True, root=root, client=client).from_cache
 
 
-def test_old_ram_map_is_not_shown_or_regenerated_after_strategy_change(archive):
+def test_old_ram_map_remains_available_without_regeneration_after_strategy_change(archive):
     _, context, _ = archive
     with platform(context) as app, patch("edicola.knowledge.generate_knowledge") as generate:
         raw, sources = example()
         data, counts = validate_map(raw, sources)
         app.session_state["knowledge_results"] = {"map": KnowledgeResult("map", QUESTION, data, sources, COVERAGE, counts)}
-        app.selectbox(key="nav_section").set_value("Mappe concettuali").run()
+        app.session_state["nav_section"] = "Mappe concettuali"
+        app.run()
         assert not app.get("graphviz_chart") and not app.exception
-        assert any("non è disponibile nella vista attuale" in item.value for item in app.info)
+        assert "map" in app.session_state["knowledge_results"]
+        assert any("Lettura precedente" in item.value for item in app.caption)
         generate.assert_not_called()

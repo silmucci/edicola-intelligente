@@ -20,7 +20,11 @@ FUTURE = re.compile(r"\b(prossim[oa]|si terrà|si svolgerà|avrà luogo|è in pr
 PAST = re.compile(r"\b(scors[oa]|passat[oa]|si è svolt[oa]|si è tenut[oa]|ha avuto luogo|è avvenut[oa]|ha approvato|ha partecipato)\b", re.I)
 OCCURRED = re.compile(r"\b(si è svolt[oa]|si è tenut[oa]|ha avuto luogo|è avvenut[oa]|ha approvato|ha partecipato)\b", re.I)
 ANNOUNCED = re.compile(r"\b(annunciat[oa]|programmat[oa]|previst[oa]|doveva essere|avrebbe dovuto)\b", re.I)
-VERSION = "timeline-dates-v2"
+VERSION = "timeline-dates-v3"
+ACTION_PAST = r"\b(?:(?:ha|hanno|aveva|avevano)\s+(?:manifestato|protestato|scioperato|partecipato|presentato|deciso|respinto|approvato)|si\s+(?:è|sono)\s+(?:svolt[oaie]|tenut[oaie]|riunit[oaie]))\b"
+OCCURRED = re.compile(OCCURRED.pattern + "|" + ACTION_PAST, re.I)
+PAST = re.compile(PAST.pattern + "|" + ACTION_PAST, re.I)
+ANNOUNCED = re.compile(ANNOUNCED.pattern + r"|\b(?:ha|hanno)\s+(?:annunciato|indetto)\b", re.I)
 RELATIVE = re.compile(r"\b(l['’]altro\s+ieri|dopodomani|oggi|domani|ieri)\b", re.I)
 
 
@@ -76,6 +80,9 @@ def resolve_date(quote, proposed, published):
               "date_reason": "insufficient_context", "date_rule": ""}
     def fail(reason, status="unverified"):
         return dict(result, date_reason=reason, date_status=status)
+    # "Precedente" richiede il referente: non presumere che un giorno narrato
+    # preceda l'edizione anziché un altro evento dell'articolo.
+    quote = re.sub(r"\bil giorno precedente (?:alla pubblicazione|alla data (?:di questa edizione|dell['’]edizione))\b", "ieri", quote, flags=re.I)
     # L'intestazione ripetuta dell'estrazione non è una data dell'evento.
     header = re.match(r"^\s*Edizione del\s+(\d{1,2})/(\d{1,2})/(\d{4})\s+", quote, re.I)
     if header:

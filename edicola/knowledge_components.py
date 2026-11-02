@@ -3,7 +3,7 @@ import html
 import re
 from datetime import date as calendar_date
 import streamlit as st
-from edicola.design_tokens import TOKENS
+from edicola.design_tokens import TOKENS, scoped_css
 from edicola.knowledge_presentation import short_text
 
 LABELS = {"fact": "Fatto riferito dalla fonte", "decision": "Decisione documentata",
@@ -54,4 +54,42 @@ def event_card(event):
                    f'{summary}</details>')
     st.html(f'<style>.edi-event{{{variables}}}{CSS}</style><article class="edi-event {category} {layout}">'
             f'<div class="event-meta">{date_label}{type_label}</div>'
-            f'<h3>{html.escape(short_text(event["title"],75))}</h3>{summary}</article>')
+            f'<h3>{html.escape(event_text(event["title"]))}</h3>{summary}</article>')
+
+
+STORY_CSS = scoped_css("""
+.story{font-family:var(--edi-sans);color:var(--edi-ink);max-width:900px;margin:0;padding:0 0 0 32px;list-style:none;position:relative;box-sizing:border-box}
+.story:before{content:'';position:absolute;left:10px;top:22px;bottom:22px;width:3px;background:var(--edi-primary);border-radius:4px}
+.story li{position:relative;padding:0 0 22px}.story li:before{content:'';position:absolute;left:-28px;top:22px;width:13px;height:13px;border:3px solid white;box-shadow:0 0 0 2px var(--edi-primary);background:var(--edi-primary);border-radius:50%;box-sizing:border-box}
+.story article{background:var(--edi-paper);border:1px solid var(--edi-border);border-radius:var(--edi-radius);box-shadow:var(--edi-shadow);padding:20px}
+.story time{font-size:15px;font-weight:750;color:var(--edi-primary)}.story h3{font:700 23px/1.3 var(--edi-serif);margin:10px 0;overflow-wrap:anywhere}
+.story p{font-size:16px;line-height:1.6;margin:0 0 12px;white-space:pre-line;overflow-wrap:anywhere}.story .status{font-size:12px;color:var(--edi-muted);margin:6px 0}
+.story .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.story button{font:600 13px/1.5 var(--edi-sans);color:var(--edi-primary);background:var(--edi-surface);border:1px solid var(--edi-border);border-radius:10px;padding:10px 12px;cursor:pointer;text-align:left;overflow-wrap:anywhere;max-width:100%}
+.story button:focus-visible,.story summary:focus-visible{outline:3px solid var(--edi-primary);outline-offset:3px}.story button:disabled{color:var(--edi-muted);cursor:default;background:var(--edi-paper)}
+.story summary{cursor:pointer;color:var(--edi-primary);font-size:14px}.story details p{margin-top:10px}
+@media(max-width:600px){.story{padding-left:27px}.story:before{left:7px}.story li:before{left:-25px}.story article{padding:15px}.story h3{font-size:20px}.story p{font-size:15px}}
+""")
+
+STORY_JS = """
+export default function({parentElement,data,setTriggerValue}){
+ const root=parentElement.querySelector('.story');root.replaceChildren();
+ const element=(tag,text)=>{const item=document.createElement(tag);if(text!==undefined)item.textContent=text;return item;};
+ for(const [index,item] of data.items.entries()){
+  const row=element('li'),card=element('article'),time=element('time',item.date);time.dateTime=item.iso;card.append(time);
+  if(item.status) {const status=element('p',item.status);status.className='status';card.append(status);}
+  card.append(element('h3',item.title),element('p',item.summary));
+  if(item.summary!==item.description){const details=element('details');details.append(element('summary','Continua a leggere'),element('p',item.description));card.append(details);}
+  const actions=element('div');actions.className='actions';
+  for(const [source,reference] of item.sources.entries()){
+   const button=element('button',reference.label);button.type='button';button.disabled=!reference.available;
+   button.setAttribute('aria-label',(reference.available?'Apri la fonte: ':'Fonte non disponibile: ')+reference.label);
+   button.onclick=()=>setTriggerValue('action',{event:index,source});actions.append(button);
+  }
+  const more=element('button','Dettagli');more.type='button';more.setAttribute('aria-label','Dettagli: '+item.title);
+  more.onclick=()=>setTriggerValue('action',{event:index});actions.append(more);card.append(actions);row.append(card);root.append(row);
+ }
+}
+"""
+
+timeline_story = st.components.v2.component("edicola_timeline_story", html='<ol class="story" aria-label="Cronologia degli eventi"></ol>',
+                                           css=STORY_CSS, js=STORY_JS, isolate_styles=True)

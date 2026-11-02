@@ -1,103 +1,128 @@
-"""Podcast solo da prodotti già salvati e dopo invio autorizzato."""
-
+"""Podcast autonomi su invio esplicito; gli episodi storici restano ascoltabili."""
 import os
+from datetime import datetime, timezone
 from pathlib import Path
-
 import streamlit as st
 from dotenv import load_dotenv
 
-from edicola.podcast import VOICES, MODEL, generate_podcast
-from edicola.podcast_text import PodcastError, list_products, prepare_script
-from edicola.pdf_viewer import source_button
-from edicola.archive_ui import diagnostics_enabled
-from edicola.consent_ui import authorize_action
-from edicola.consent import perform
+from edicola import consent
 from edicola.api_guard import PermissionDenied
+from edicola.consent_ui import authorize_action
+from edicola.design import friendly_error, section_intro
 from edicola.personal_store import PersonalStoreError
-from edicola.design import friendly_error, section_intro, reading_title
-from edicola.chat_sources import citation_text, document_label, render_contributions
+from edicola.podcast import VOICES
+from edicola.podcast_text import PodcastError
+from edicola.standalone_podcast import generate_standalone_podcast, list_episodes, PodcastAudioError
+from edicola.chat_sources import document_label, render_contributions
+from edicola.pdf_viewer import source_button
+
+
+def prepared_label(value):
+    try:
+        prepared = datetime.fromisoformat(value)
+        if prepared.tzinfo is not None:
+            return prepared.astimezone(timezone.utc).strftime("%d/%m/%Y, %H:%M UTC")
+        return prepared.strftime("%d/%m/%Y, %H:%M")
+    except (ValueError, TypeError):
+        return "Data non disponibile"
+
+
+def authorize_episode(action, submitted, payload):
+    """Continua lo stesso invio attraverso i due consensi, consumati una volta."""
+    pending = st.session_state.get("consent_pending", {})
+    if not submitted and pending.get("action") != action:
+        return False
+    purpose = pending.get("purpose", "text") if not submitted else "text"
+    if purpose not in {"text", "audio"}:
+        return False
+    if not authorize_action(purpose, action, submitted, payload):
+        return False
+    other = "audio" if purpose == "text" else "text"
+    try:
+        if consent.allowed(other):
+            return True
+    except PersonalStoreError:
+        st.error("Le autorizzazioni non sono disponibili in questo momento. Nessun contenuto è stato inviato.")
+        return False
+    return authorize_action(other, action, True, payload)
+
+
+def run_episode(root, voice, *, retry_key=None, topic=""):
+    owner = consent.actor()
+    try:
+        with st.spinner("Preparo l’audio…" if retry_key else "Preparo il podcast dalle notizie disponibili…"):
+            episode = generate_standalone_podcast(root=root, voice=voice, authorize_text=True, authorize_audio=True,
+                text_check=lambda: consent.actor() == owner and consent.allowed("text"),
+                audio_check=lambda: consent.actor() == owner and consent.allowed("audio"), retry_key=retry_key, topic=topic)
+        st.session_state["podcast_episode"] = episode
+        st.session_state["podcast_episode_choice"] = episode.key
+        st.session_state.pop("podcast_failed_draft", None)
+    except PodcastAudioError as exc:
+        st.session_state["podcast_failed_draft"] = exc.draft
+        st.error("Il copione è pronto, ma l’episodio non è stato completato. Puoi riprovare soltanto l’audio.")
+    except PodcastError as exc:
+        if "fonti" in str(exc).lower() or "affidabile" in str(exc).lower():
+            st.info("Le fonti disponibili non sono sufficienti per preparare un episodio affidabile.")
+        else:
+            st.error(friendly_error(exc))
+    except (PermissionDenied, PersonalStoreError) as exc:
+        st.error(friendly_error(exc))
 
 
 def render_podcast_ui(root: Path, archive=None):
-    section_intro("Podcast", "Le notizie da ascoltare, in italiano. Un audio breve dalle letture già disponibili.", "La biblioteca audio")
-    try:
-        products = list_products(root)
-    except PodcastError as exc:
-        st.info("Questa lettura non è disponibile per l’ascolto in questo momento.")
-        return
-    if not products:
-        st.info("La tua biblioteca audio è ancora vuota. Prepara un briefing, poi trasformalo in un ascolto.")
-        return
-    topic = st.text_input("Cerca un episodio per argomento", key="podcast_topic", max_chars=500)
-    if topic.strip():
-        terms = topic.casefold().split()
-        products = [p for p in products if all(term in (p.result.title + " " + " ".join(
-            section["text"] for section in p.result.sections)).casefold() for term in terms)]
-    if not products:
-        st.info("Non ci sono letture disponibili su questo tema. Prepara un briefing e torna qui per ascoltarlo.")
-        return
+    section_intro("Podcast", "Ascolta le notizie che ti interessano.")
+    topic = st.text_input("Di cosa vuoi ascoltare le notizie?", key="podcast_topic", max_chars=500,
+        placeholder="Es. sanità abruzzese, economia, tribunali, caro carburante...",
+        help="Facoltativo: lascia vuoto per ascoltare una selezione generale delle notizie.")
     load_dotenv(root / ".env", override=False)
-    available = {p.key: p for p in products}
-    if st.session_state.get("podcast_product") not in available:
-        st.session_state.pop("podcast_product", None)
-    selected = st.selectbox("Lettura da ascoltare", list(available), key="podcast_product",
-        format_func=lambda key: citation_text(reading_title(available[key].result), available[key].result.used_source_ids) + " · " + available[key].created_at)
-    product = available[selected]
-    from edicola.corpus_cache import render_history_notice
-    render_history_notice(product.result.coverage, archive)
-    try:
-        script = prepare_script(product)
-    except PodcastError as exc:
-        st.info("Questa lettura non è disponibile per l’ascolto in questo momento.")
-        return
     default = os.getenv("GEMINI_TTS_VOICE", "Kore").strip()
-    if default not in VOICES:
-        st.info("Scegli una voce per il tuo ascolto.")
-    with st.expander("Voce e opzioni di ascolto"):
+    with st.popover("Voce", icon=":material/record_voice_over:"):
         voice = st.selectbox("Voce del podcast", VOICES, index=VOICES.index(default) if default in VOICES else 0, key="podcast_voice")
-    st.caption(f"Durata stimata: {len(script.text.split()) / 130:.1f} minuti.")
-    if script.excerpt:
-        st.info("Questo ascolto riprende alcune sezioni della lettura. Il testo completo resta consultabile.")
-    if script.coverage.get("partial"):
-        st.warning("Copertura parziale: il podcast riprende solo i contenuti della lettura scelta.")
-    from types import SimpleNamespace
-    render_contributions([SimpleNamespace(**source) for source in script.sources],
-                         [source["id"] for source in script.sources], root)
-    with st.expander("Testo da leggere e fonti"):
-        st.caption("Il testo letto riprende la lettura scelta. Le fonti sono disponibili qui sotto.")
-        st.text(script.text)
-        for source in script.sources:
-            st.text(document_label(archive, source["filename"], source["page"]))
-            if diagnostics_enabled(root):
-                st.caption(f"Chunk originale: {source['chunk_id']}")
-            source_button(source["filename"], source["page"], context=archive, chunk_id=source["chunk_id"], key=f"podcast_pdf_{source['id']}")
-    from edicola.personalization_ui import cached_audio
-    existing = cached_audio(root, selected, voice, script=script)
-    st.caption("Pronto da ascoltare" if existing else "Da creare · circa 1–2 minuti di ascolto")
-    submitted = st.button("Genera podcast", type="primary", key="podcast_submit", disabled=existing is not None)
-    signature = (selected, voice, script.text, os.getenv("GEMINI_TTS_MODEL", MODEL).strip() or MODEL)
-    if authorize_action("audio", "podcast", submitted, signature):
-        st.session_state.pop("podcast_result", None)
-        st.session_state.pop("podcast_result_selection", None)
-        try:
-            with st.spinner("Preparo il tuo ascolto…"):
-                st.session_state["podcast_result"] = perform("audio", generate_podcast, selected, voice=voice, authorize_external=True, root=root)
-                st.session_state["podcast_result_selection"] = signature
-        except (PodcastError, PermissionDenied, PersonalStoreError) as exc:
-            st.error(friendly_error(exc))
-    if existing:
-        data, manifest = existing
-        st.caption(f"Audio già disponibile · voce {manifest['voice']}")
+    submitted = st.button("Genera podcast", key="podcast_submit", type="primary")
+    if authorize_episode("podcast_generate", submitted, {"voice": voice, "topic": topic}):
+        run_episode(root, voice, topic=topic)
+    draft = st.session_state.get("podcast_failed_draft")
+    if draft:
+        with st.expander("Copione pronto", expanded=True):
+            st.text(draft.script.text)
+            render_episode_sources(draft.script, draft.sources, root, archive, "podcast_draft")
+            retry = st.button("Riprova solo l’audio", key="podcast_retry")
+            if authorize_episode("podcast_retry", retry, {"voice": voice, "draft": draft.key}):
+                run_episode(root, voice, retry_key=draft.key)
+    try:
+        episodes = {e.key: e for e in list_episodes(root)}
+    except (OSError, PodcastError):
+        episodes = {}
+        st.info("Gli episodi precedenti non sono disponibili in questo momento.")
+    latest = st.session_state.get("podcast_episode")
+    if latest:
+        episodes[latest.key] = latest
+    if not episodes:
+        st.info("Genera un episodio per ascoltare le notizie disponibili nell’archivio.")
+        return
+    if st.session_state.get("podcast_episode_choice") not in episodes:
+        st.session_state["podcast_episode_choice"] = next(iter(episodes))
+    selected = st.selectbox("Episodi disponibili", list(episodes), key="podcast_episode_choice",
+                            format_func=lambda key: episodes[key].title + " · " + prepared_label(episodes[key].created_at) + " · " + episodes[key].voice)
+    episode = episodes[selected]
+    st.text(episode.title)
+    st.caption("Preparato: " + prepared_label(episode.created_at) + f" · {episode.seconds / 60:.1f} minuti · voce {episode.voice}")
+    try:
+        data = episode.audio_path.read_bytes()
+        from edicola.podcast import wav_duration
+        wav_duration(data)
         st.audio(data, format="audio/wav")
-        st.download_button("Scarica WAV", data, file_name="podcast-edicola.wav", mime="audio/wav", key="podcast_download", on_click="ignore")
-    elif st.session_state.get("podcast_result_selection") == signature:
-        result = st.session_state["podcast_result"]
-        st.caption(f"Audio {'già disponibile' if result.from_cache else 'pronto'} · {result.seconds:.1f} secondi · voce {result.voice}")
-        try:
-            data = result.audio_path.read_bytes()
-        except OSError:
-            st.error("Questo audio non è disponibile in questo momento. Puoi provare a generarlo di nuovo.")
-            return
-        st.audio(data, format="audio/wav")
-        st.download_button("Scarica WAV", data, file_name="podcast-edicola.wav",
-                           mime="audio/wav", key="podcast_download", on_click="ignore")
+        st.download_button("Scarica l’audio", data, file_name="edicola-podcast.wav", mime="audio/wav", key="podcast_download")
+    except (OSError, PodcastError):
+        st.info("Questo audio non è disponibile in questo momento. Gli altri episodi restano consultabili.")
+    with st.expander("Testo e fonti"):
+        st.text(episode.script.text)
+        render_episode_sources(episode.script, episode.sources, root, archive, "podcast_episode")
+
+
+def render_episode_sources(script, sources, root, archive, key):
+    used = [s["id"] for s in script.sources]
+    render_contributions(sources, used, root, compact=True)
+    for source in script.sources:
+        source_button(source["filename"], source["page"], context=archive, chunk_id=source["chunk_id"],
+                      key=key + "_" + source["id"], label=document_label(archive, source["filename"], source["page"]))

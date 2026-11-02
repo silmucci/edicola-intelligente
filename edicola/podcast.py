@@ -121,7 +121,27 @@ def atomic_write(path, data):
             temporary.unlink(missing_ok=True)
 
 
+def audio_identity(text, model, voice, cache_context=None):
+    material = [VERSION, text, model, voice, STYLE]
+    if cache_context is not None:
+        material.append(cache_context)
+    return hashlib.sha256(json.dumps(material, ensure_ascii=False).encode()).hexdigest()
+
+
 def generate_podcast(product_key: str, *, voice=None, authorize_external=False, root=ROOT, client=None):
+    """Percorso storico, conservato per letture e ascolti personali esistenti."""
+    if not authorize_external:
+        raise PodcastError("Autorizzare l'invio a Gemini TTS del copione selezionato.")
+    product = next((p for p in list_products(root) if p.key == product_key), None)
+    if product is None:
+        raise PodcastError("Prodotto editoriale non presente nella cache: selezionare una lettura già disponibile.")
+    return generate_script_audio(prepare_script(product), product.key, voice=voice,
+        authorize_external=authorize_external, root=root, client=client)
+
+
+def generate_script_audio(script: Script, product_key: str, *, voice=None, authorize_external=False,
+                          root=ROOT, client=None, cache_context=None, minimum_seconds=0.):
+    """TTS e cache condivisi: identità storica invariata se manca cache_context."""
     if not authorize_external:
         raise PodcastError("Autorizzare l'invio a Gemini TTS del copione selezionato.")
     own_client = False
@@ -132,11 +152,7 @@ def generate_podcast(product_key: str, *, voice=None, authorize_external=False, 
         voice = voice or os.getenv("GEMINI_TTS_VOICE", "Kore").strip()
         if voice not in VOICES:
             raise PodcastError("Scegliere una delle voci predefinite supportate.")
-        product = next((p for p in list_products(root) if p.key == product_key), None)
-        if product is None:
-            raise PodcastError("Prodotto editoriale non presente nella cache: selezionare un briefing o dossier già disponibile.")
-        script = prepare_script(product)
-        identity = hashlib.sha256(json.dumps([VERSION, script.text, model, voice, STYLE], ensure_ascii=False).encode()).hexdigest()
+        identity = audio_identity(script.text, model, voice, cache_context)
         directory = root / "data/podcast_cache"
         audio_path = directory / f"{identity}.wav"
 
@@ -145,7 +161,8 @@ def generate_podcast(product_key: str, *, voice=None, authorize_external=False, 
                 return None
             data = audio_path.read_bytes()
             try:
-                wav_duration(data)
+                if wav_duration(data) < minimum_seconds:
+                    return None
             except PodcastError:
                 return None
             return data
@@ -171,10 +188,14 @@ def generate_podcast(product_key: str, *, voice=None, authorize_external=False, 
                         timeout=60000, retry_options=types.HttpRetryOptions(attempts=1)))
                     own_client = True
                 data = synthesize(client, model, voice, script.text)
+                if wav_duration(data) < minimum_seconds:
+                    raise PodcastError("L’audio ricevuto è troppo breve per il copione; risultato non salvato.")
                 atomic_write(audio_path, data)
         # Provenienza separata: un audio identico può appartenere a prodotti/fonti diversi.
-        manifest = {"version": VERSION, "product_key": product.key, "model": model, "voice": voice,
+        manifest = {"version": VERSION, "product_key": product_key, "model": model, "voice": voice,
                     "script": asdict(script), "audio_sha256": hashlib.sha256(data).hexdigest(), "audio_file": audio_path.name}
+        if cache_context is not None:
+            manifest["context"] = cache_context
         provenance = hashlib.sha256(json.dumps(manifest, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         atomic_write(directory / f"{identity}-{provenance}.json", json.dumps(manifest, ensure_ascii=False).encode())
         logger.info("phase=podcast_cache event=%s", "hit" if from_cache else "stored")

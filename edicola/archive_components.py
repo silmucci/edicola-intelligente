@@ -20,11 +20,14 @@ GALLERY_CSS = scoped_css("""
 @media(max-width:1024px){.editions{grid-template-columns:repeat(3,minmax(200px,1fr));grid-auto-columns:minmax(200px,1fr)}}
 @media(max-width:600px){.editions{grid-template-columns:none;grid-auto-columns:78%;gap:14px}.cover{height:320px;padding:14px}.description{padding:16px}.publication{font-size:19px}.deck-controls{margin-bottom:8px}}
 @media(prefers-reduced-motion:reduce){.edition{transition:none}}
+.deck.grid .editions{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));grid-auto-flow:row;grid-auto-columns:auto;overflow:visible;scroll-snap-type:none}
+.deck.grid .deck-controls{display:none}
 """)
 
 GALLERY_JS = """
 export default function({parentElement,data,setTriggerValue}) {
   const gallery=parentElement.querySelector('.editions'); gallery.replaceChildren();
+  parentElement.querySelector('.deck').classList.toggle('grid',data.layout==='grid');
   for(const [index,item] of data.editions.entries()) {
     const card=document.createElement('button'); card.type='button'; card.className='edition';
     card.setAttribute('aria-label',`Sfoglia ${item.title}, ${item.date}`);
@@ -41,6 +44,7 @@ export default function({parentElement,data,setTriggerValue}) {
     card.onclick=()=>setTriggerValue('open_edition',index);gallery.append(card);
   }
   const previous=parentElement.querySelector('[data-scroll="previous"]'),next=parentElement.querySelector('[data-scroll="next"]');
+  if(data.layout==='grid')return;
   const update=()=>{previous.disabled=gallery.scrollLeft<=1;next.disabled=gallery.scrollLeft+gallery.clientWidth>=gallery.scrollWidth-1;};
   previous.onclick=()=>gallery.scrollBy({left:-gallery.clientWidth,behavior:'auto'});
   next.onclick=()=>gallery.scrollBy({left:gallery.clientWidth,behavior:'auto'});

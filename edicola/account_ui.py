@@ -71,7 +71,7 @@ def render_account_profile(root, archive=None):
         st.caption(f"Il tuo spazio · {profile.minutes} minuti · formato {profile.format}. Preferenze, salvati e briefing ti seguono anche su un altro dispositivo.")
         if not profile.interests:
             st.subheader("Cominciamo dai tuoi interessi")
-            st.caption("Scegli qualche tema e il tempo che hai: troverai qui una selezione locale, senza invii automatici all’AI.")
+            st.caption("Scegli qualche tema e il tempo che hai: troverai qui letture dedicate ai tuoi interessi.")
         areas = st.tabs(["Per te", "Raccolta", "I miei briefing", "Preferenze", "Privacy"],
                         default="Preferenze" if not profile.interests else "Per te",
                         key="personal_area", on_change="rerun")

@@ -32,8 +32,6 @@ def show_product(result, archive=None):
     st.subheader(readable(citation_text(reading_title(result), result.used_source_ids)))
     if result.from_cache:
         st.caption("Lettura già disponibile.")
-    if result.coverage.get("partial"):
-        st.warning("Copertura parziale: questo briefing usa solo una parte dell’archivio.")
     render_context_limit(result.coverage)
     if result.message:
         st.info(product_notice(result))

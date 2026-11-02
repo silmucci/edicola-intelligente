@@ -15,6 +15,7 @@ from edicola.ingestion import ingest_directory
 from edicola.pdf_viewer import (PdfViewError, archive_context, read_original, render_page,
                                 resolve_reference)
 from edicola.rag import RagResult, Source
+from edicola.consent import PURPOSES
 from test_ingestion import make_pdf
 
 
@@ -46,7 +47,7 @@ root=Path({str(context.root)!r})
 documents=ingest_directory(root / "data/incoming", root / "data/archive.sqlite3")
 prepared=prepare_documents(documents, root / "data/archive.sqlite3")
 context=archive_context(root, documents, prepared)
-st.tabs(["Archivio PDF", "Chat AI"], key="nav_section", on_change="rerun")
+st.tabs(["In edicola", "Chat AI"], key="nav_section", on_change="rerun")
 render_archive(context, prepared)
 '''
 
@@ -152,7 +153,7 @@ source_button("a.pdf", 2, context=context, chunk_id={chunk.id!r}, key="open_sour
     app.run()
     app.button(key="open_source").click().run()
     assert not app.exception and not app.error
-    assert app.session_state["nav_section"] == "Archivio PDF"
+    assert app.session_state["nav_section"] == "In edicola"
     assert app.session_state["archive_pdf"] == "a.pdf"
     assert app.session_state["archive_page"] == 2 and app.session_state["archive_open"]
     assert app.checkbox(key="consent").value
@@ -175,14 +176,14 @@ def test_chat_citation_navigates_without_regenerating_answer(archive):
     with patch("edicola.rag.ask_question", return_value=answer) as ask:
         app = AppTest.from_string(source, default_timeout=10).run()
         app.chat_input(key="rag_input").set_value("Domanda di prova")
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", PURPOSES["text"][0]): True}
         app.run()
         assert not app.exception
         ask.assert_called_once()
         app.button(key="rag_pdf_S1").click().run()
         assert not app.exception and app.session_state["archive_page"] == 2
         ask.assert_called_once()
-        assert app.session_state["consent_choices"][("text", "text-v2")]
+        assert app.session_state["consent_choices"][("text", PURPOSES["text"][0])]
 
 
 @pytest.mark.parametrize("kind", ["dossier", "briefing", "personal", "timeline", "map"])

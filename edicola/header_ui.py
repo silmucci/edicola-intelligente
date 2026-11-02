@@ -4,7 +4,7 @@ import re
 import streamlit as st
 from edicola import identity
 from edicola.design_tokens import page_css
-from edicola.product_navigation import PRODUCTS, open_product, destination, cancel_navigation_action
+from edicola.product_navigation import PRODUCTS, open_product_id, destination, cancel_navigation_action
 from edicola.archive_ui import edition_metadata
 from edicola.pdf_viewer import source_button
 
@@ -32,27 +32,28 @@ def _profile():
 
 def render_header(root, context):
     identity.synchronize_identity()
-    with st.container():
-        st.html(f'<style>{page_css()}</style><header class="edi-brand">{LOGO}<div>'
-                '<h1>Edicola Digitale <strong>Intelligente</strong></h1>'
-                '<p>Quotidiani, analisi e fonti per capire il mondo.</p></div></header>')
-        with st.container(horizontal=True, horizontal_alignment="left", vertical_alignment="center", gap="small"):
-            person = identity.current_identity() if not identity.local_demo() else None
-            name = st.user.get("name", "") if person else ""
-            initials = "".join(part[0] for part in name.split()[:2]).upper() if isinstance(name, str) else ""
-            with st.popover("Profilo" + (" · " + initials if initials else ""), icon=":material/person:"):
-                st.button((initials + " · " if initials else "") + "Il mio profilo", key="header_profile", on_click=_profile,
-                          icon=":material/person:")
-                if identity.local_demo():
-                    st.caption("Profilo condiviso su questa installazione")
-                else:
-                    identity.login_controls(key="header_auth")
-            with st.popover("Cerca", icon=":material/search:"):
+    with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+        with st.container(width="stretch"):
+            st.html(f'<style>{page_css()}</style><header class="edi-brand">{LOGO}<div>'
+                    '<h1>Edicola Digitale <strong>Intelligente</strong></h1>'
+                    '<p>Quotidiani, analisi e fonti per capire il mondo.</p></div></header>')
+        with st.container(width="content"):
+            with st.popover("", icon=":material/search:", help="Cerca nell’Edicola", type="tertiary", key="header_search_menu"):
                 query = st.text_input("Cerca nell'Edicola", max_chars=120, key="account_header_search",
                                       placeholder="Un argomento o una testata")
                 if query.strip():
                     st.caption("Cerca nelle sezioni e nelle edizioni disponibili.")
                     render_search_results(root, context, query)
+        with st.container(width="content"):
+            with st.popover("", icon=":material/person:", help="Profilo e accesso Google", type="tertiary", key="header_profile_menu"):
+                person = identity.current_identity() if not identity.local_demo() else None
+                name = st.user.get("name", "") if person else ""
+                initials = "".join(part[0] for part in name.split()[:2]).upper() if isinstance(name, str) else ""
+                st.button((initials + " · " if initials else "") + "Il mio profilo", key="header_profile", on_click=_profile, icon=":material/person:")
+                if identity.local_demo():
+                    st.caption("Profilo condiviso su questa installazione")
+                else:
+                    identity.login_controls(key="header_auth")
 
 
 def render_search_results(root, context, query):
@@ -65,7 +66,7 @@ def render_search_results(root, context, query):
         st.caption("La ricerca nei testi non è disponibile in questo momento; puoi cercare sezioni ed edizioni.")
     products, editions, passages = local_matches(query, context.documents, metadata, chunks)
     for index in products:
-        st.button(PRODUCTS[index]["title"], key=f"header_product_{index}", on_click=open_product, args=(index,))
+        st.button(PRODUCTS[index]["title"], key=f"header_product_{PRODUCTS[index]['id']}", on_click=open_product_id, args=(PRODUCTS[index]["id"],))
     for index, document in enumerate(editions):
         source_button(document.filename, 1, context=context, key=f"header_edition_{index}",
                       label=metadata[document.filename]["title"] + " · prima pagina")

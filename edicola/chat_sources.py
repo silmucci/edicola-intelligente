@@ -20,7 +20,7 @@ def citation_text(text, source_ids):
     return re.sub(r"\[(S\d+)\]", lambda match: "[" + numbers[match[1]] + "]" if match[1] in numbers else "", text)
 
 
-def render_contributions(sources, used_source_ids, root, *, editions=None):
+def render_contributions(sources, used_source_ids, root, *, editions=None, compact=False):
     """Distingue documenti inviati e citati, senza attribuire letture al corpus intero."""
     if not sources:
         return
@@ -28,7 +28,8 @@ def render_contributions(sources, used_source_ids, root, *, editions=None):
     groups = OrderedDict()
     for source in sources:
         groups.setdefault(source.filename, []).append(source)
-    with st.expander("Edizioni incluse nella lettura"):
+    container = st.popover("Fonti consultate") if compact else st.expander("Edizioni incluse nella lettura")
+    with container:
         for index, members in enumerate(groups.values(), 1):
             info = metadata.get(members[0].id, {})
             title = info.get("publication") or f"Edizione {index}"
@@ -39,7 +40,7 @@ def render_contributions(sources, used_source_ids, root, *, editions=None):
 
 
 def render_context_limit(coverage):
-    if coverage.get("context_selection", {}).get("omitted_passages", 0):
+    if coverage.get("partial") or coverage.get("context_selection", {}).get("omitted_passages", 0):
         st.caption("Questa lettura è una selezione: puoi approfondire nelle edizioni originali.")
 
 
@@ -78,7 +79,7 @@ def render_sources(result, *, index, last, root, context, formatter, namespace="
                 source_button(filename, page, context=context, chunk_id=source.chunk_id, pdf_sha256=sha,
                               key=key, label=formatter(label), help_text=description)
     if result.sources:
-        with st.popover("Mostra passaggi originali", type="tertiary"):
+        with st.popover("Leggi la fonte", type="tertiary"):
             for source in result.sources:
                 if source.id not in result.used_source_ids:
                     continue

@@ -3,8 +3,65 @@
 import streamlit as st
 from collections import Counter
 
-from edicola.press_review import ReviewSelection, filter_catalog, review_groups
+from edicola.press_review import ReviewSelection, filter_catalog, review_groups, ranked_chunks, article_groups
 from edicola.editorial_selection import read_catalog
+
+
+def render_press_review(catalog, context, metadata):
+    """Un invio locale esplicito, nessuna API durante digitazione o navigazione."""
+    from edicola.experience_ui import excerpt, readable
+    from edicola.pdf_viewer import source_button
+    for suffix in ("files", "scope", "from", "to", "latest", "group", "limit", "keyword"):
+        st.session_state.pop("editorial_review_" + suffix, None)
+    with st.form("press_search_form"):
+        query = st.text_input("Cerca una notizia o un argomento", key="editorial_press_draft", max_chars=500,
+                              placeholder="Es. sanità abruzzese, caro carburante, tribunali...",
+                              help="Se hai autorizzato le funzioni AI, all’invio la domanda può essere usata anche per cercare per significato. Altrimenti la ricerca resta locale.")
+        submitted = st.form_submit_button("Cerca")
+    if submitted:
+        st.session_state["editorial_press_query"] = query.strip()
+        st.session_state["editorial_press_hits"] = []
+        st.session_state.pop("editorial_press_more", None)
+        # Solo l'invio corrente può cercare semanticamente. Il consenso non viene
+        # richiesto né riattivato da bozza, navigazione, errori o rerun.
+        if query.strip():
+            from edicola import consent
+            from edicola.search import semantic_search
+            try:
+                if consent.decision("text") is True:
+                    st.session_state["editorial_press_hits"] = consent.perform("text", semantic_search, query.strip(),
+                        authorize_external=True, root=context.root, corpus_wide=True,
+                        allowed_ids={c.id for c in catalog.chunks}, filenames={c.metadata["filename"] for c in catalog.chunks})
+            except Exception:
+                # Restano disponibili i risultati locali; nessun retry remoto.
+                st.info("La ricerca approfondita non è disponibile in questo momento. Qui trovi i risultati disponibili.")
+    query = st.session_state.get("editorial_press_query", "")
+    ranked = ranked_chunks(catalog.chunks, query, st.session_state.get("editorial_press_hits", []))
+    groups = article_groups(ranked)
+    if not groups:
+        st.info("Non ci sono notizie corrispondenti. Prova un altro argomento.")
+        return
+    limit = len(groups) if st.session_state.get("editorial_press_more") else 12
+    for index, members in enumerate(groups[:limit]):
+        chunk = members[0]
+        info = metadata.get(chunk.metadata["filename"], {})
+        title = chunk.metadata.get("article_title", "")
+        trusted_title = chunk.metadata.get("article_title_verified") is True and title and title in chunk.text
+        with st.container(border=True):
+            st.caption((info.get("title") or "Documento dell’archivio") + " · " + (info.get("date") or "Data non disponibile"))
+            st.markdown("**" + readable(title if trusted_title else "Dalle notizie del quotidiano") + "**")
+            st.markdown(readable(excerpt(chunk.text, 340)))
+            source_button(chunk.metadata["filename"], chunk.metadata["page"], context=context, chunk_id=chunk.id,
+                          key=f"press_article_{index}", label="Leggi l’articolo")
+            with st.popover("Leggi la fonte", key=f"press_original_{index}"):
+                for member in members:
+                    st.text(member.text)
+                    if member is not chunk:
+                        source_button(member.metadata["filename"], member.metadata["page"], context=context, chunk_id=member.id,
+                                      key=f"press_article_{index}_{member.id}", label=f"Apri pagina {member.metadata['page']}")
+    if limit < len(groups) and st.button("Mostra altre notizie", key="press_more"):
+        st.session_state["editorial_press_more"] = True
+        st.rerun()
 
 
 def review_controls(root, catalog=None):

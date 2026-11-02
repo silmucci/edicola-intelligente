@@ -2,7 +2,7 @@
 
 import streamlit as st
 from edicola.design_tokens import scoped_css
-from edicola.product_navigation import PRODUCTS, open_product
+from edicola.product_navigation import PRODUCTS, open_product_id
 
 CARD_CSS = scoped_css("""
 .cards{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:12px;padding:6px 3px 22px;font-family:var(--edi-sans);color:var(--edi-ink);min-width:0;max-width:100%;box-sizing:border-box}
@@ -16,6 +16,15 @@ CARD_CSS = scoped_css("""
 @media(max-width:1024px){.cards{grid-template-columns:repeat(3,minmax(0,1fr))}.highlights{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.cards{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:6px 3px 18px}.card{flex:0 0 155px;scroll-snap-align:start;min-height:184px;box-sizing:border-box;padding:16px}.highlights .card{flex-basis:85%;min-height:160px;border:0}.card h3{font-size:18px}}
 @media(prefers-reduced-motion:reduce){.card{transition:none}.card:hover{transform:none}}
+.cards.products{grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;padding-bottom:18px}
+.products .card{padding:14px 12px;gap:8px}.products .card svg{width:26px;height:26px;flex-shrink:0}
+.products .card h3{font-size:17px}.products .card p{font-size:12px;line-height:1.5}.products .arrow{width:24px;height:24px;font-size:14px}
+.products .card.active{border-color:var(--edi-primary);background:var(--edi-surface);box-shadow:inset 0 0 0 1px var(--edi-primary)}
+.products .card.active svg{stroke:var(--edi-primary)}.products .card.active h3{color:var(--edi-primary)}
+@media(max-width:1280px){.cards.products{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:1024px){.cards.products{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.cards.products{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible;scroll-snap-type:none;gap:10px}.products .card{min-height:0;flex:none;padding:14px 12px}.products .card h3{font-size:17px}}
+@media(max-width:340px){.cards.products{grid-template-columns:minmax(0,1fr)}}
 """)
 
 CARD_JS = """
@@ -23,6 +32,7 @@ export default function({parentElement,data,setTriggerValue}){
  const root=parentElement.querySelector('.cards');root.replaceChildren();
  root.setAttribute('aria-label',data.mode==='highlights'?'Estratti in evidenza':'Prodotti editoriali');
  root.classList.toggle('highlights',data.mode==='highlights');
+ root.classList.toggle('products',data.mode==='products');
  const paths={paper:'M4 3h13v18H4z M8 7h5 M8 11h5 M8 15h5 M17 6h3v13a2 2 0 0 1-2 2',chat:'M21 11a9 9 0 0 1-9 9H4l-2 2v-8a9 9 0 1 1 19-3 M7 11h.01 M12 11h.01 M17 11h.01',document:'M5 2h14v20H5z M8 7h8 M8 11h8 M8 15h4',clock:'M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18 M12 7v5l4 2',map:'M6 10a3 3 0 1 1 0 .01 M18 3a3 3 0 1 1 0 .01 M18 17a3 3 0 1 1 0 .01 M8 9l7-5 M8 11l7 7',audio:'M4 14v-3a8 8 0 0 1 16 0v3 M4 12H2v8h4v-8z M18 12h4v8h-4z',person:'M12 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8 M3 22v-3a9 9 0 0 1 18 0v3z',archive:'M3 7h18v15H3z M2 2h20v5H2z M9 11h6',list:'M4 4h16v16H4z M8 8h8 M8 12h8 M8 16h5'};
  for(const [index,item] of data.items.entries()){
   const card=document.createElement('button');card.type='button';card.className='card';
@@ -34,7 +44,7 @@ export default function({parentElement,data,setTriggerValue}){
   const title=document.createElement('h3');title.textContent=item.title;
   const text=document.createElement('p');text.textContent=item.description;
   const arrow=document.createElement('span');arrow.className='arrow';arrow.textContent='→';arrow.setAttribute('aria-hidden','true');
-  card.append(title,text,arrow);card.onclick=()=>setTriggerValue('selected',index);root.append(card);
+  card.append(title,text,arrow);card.onclick=()=>setTriggerValue('selected',data.mode==='products'?item.id:index);root.append(card);
  }
 }
 """
@@ -44,9 +54,16 @@ cards_component = st.components.v2.component("edicola_editorial_cards", html='<n
 
 
 def render_products():
+    # Il browser invia un ID stabile: il riordino non cambia la destinazione.
+    visible = [(index, product) for index, product in enumerate(PRODUCTS) if product["id"] != "profile"]
     def selected():
-        open_product(st.session_state.get("home_products", {}).get("selected"))
-    cards_component(data={"mode": "products", "items": [{**p, "active": p["section"] == st.session_state.get("nav_section", PRODUCTS[0]["section"])} for p in PRODUCTS]},
+        chosen = st.session_state.get("home_products", {}).get("selected")
+        if type(chosen) is int:
+            old_order = ("home", "archive", "chat", "briefing", "timeline", "map", "podcast")
+            chosen = old_order[chosen] if 0 <= chosen < len(old_order) else None
+        if isinstance(chosen, str) and chosen in {p["id"] for _, p in visible}:
+            open_product_id(chosen)
+    cards_component(data={"mode": "products", "items": [{**p, "active": p["section"] == st.session_state.get("nav_section", PRODUCTS[0]["section"])} for _, p in visible]},
                     key="home_products", on_selected_change=selected)
 
 

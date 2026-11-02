@@ -1,16 +1,19 @@
 """Viste di esplorazione, senza generazioni o modifiche ai documenti."""
 from pathlib import Path
+from datetime import date as calendar_date
+import hashlib
+import json
 import streamlit as st
 from edicola.archive_ui import diagnostics_enabled
-from edicola.pdf_viewer import source_button
+from edicola.pdf_viewer import source_button, resolve_reference, open_reference, PdfViewError
 from edicola.rag_context import source_editions
-from edicola.knowledge_components import event_card, event_text
-from edicola.knowledge_presentation import undated_order, empty_knowledge_message, theme_title
-from edicola.knowledge_validation import compact_map, map_dot
+from edicola.knowledge_components import event_card, event_text, timeline_story, LABELS
+from edicola.knowledge_presentation import undated_order, empty_knowledge_message, theme_title, short_text
+from edicola.knowledge_validation import compact_map
 from edicola.map_presentation import GROUPS, node_captions, node_groups
 from edicola.chat_sources import render_contributions, render_context_limit
 from edicola.map_relations import relation_category
-from edicola.map_exploration import focused_map
+from edicola.map_component import render_graph
 
 NODE_TYPES = {kind: values[0] for kind, values in GROUPS.items()}
 
@@ -31,7 +34,7 @@ def compact_sources(ids, sources, archive, key):
                 published = editions.get(source.id, {}).get("publication_date") or "Data non disponibile"
                 source_button(source.filename, source.page, context=archive, chunk_id=source.chunk_id,
                               key=f"{key}_pdf_{source.id}", label=readable(name + f" · {published} · pagina {source.page}"), help_text="Apri la pagina originale")
-        with st.popover("Passaggi originali", key=key + "_passages"):
+        with st.popover("Leggi la fonte", key=key + "_passages"):
             for source in selected:
                 st.text(source.text)
 
@@ -44,7 +47,7 @@ def render_knowledge(result, archive=None):
         st.caption(theme_title(result.topic))
         st.info(empty_knowledge_message(result))
         render_context_limit(result.coverage)
-        render_contributions(result.sources, [], archive.root if archive else Path(__file__).resolve().parents[1])
+        render_contributions(result.sources, [], archive.root if archive else Path(__file__).resolve().parents[1], compact=True)
         if technical:
             with st.expander("Diagnostica · sviluppo"):
                 st.json(result.diagnostics)
@@ -52,26 +55,24 @@ def render_knowledge(result, archive=None):
     st.subheader(theme_title(result.topic))
     from edicola.corpus_cache import render_history_notice
     render_history_notice(result.coverage, archive)
-    if result.coverage.get("partial"):
-        st.caption("Copertura parziale dell’archivio.")
     render_context_limit(result.coverage)
     if result.kind == "timeline":
         if data["events"]:
-            for index, event in enumerate(sorted(data["events"], key=lambda item: item["event_date"])):
-                render_event(event, result.sources, archive, f"timeline_{index}")
+            render_timeline(sorted(data["events"], key=lambda item: item["event_date"]), result.sources, archive)
+        else:
+            st.info("Le fonti disponibili non permettono di ricostruire una cronologia affidabile. Puoi consultare le fonti e gli altri sviluppi.")
+            compact_sources([s.id for s in result.sources], result.sources, archive, "timeline_unresolved")
         if data["undated_events"]:
-            st.subheader("Senza data")
-            st.caption("Sviluppi senza una data certa, nell’ordine delle letture e non cronologico.")
-            for index, event in enumerate(undated_order(data["undated_events"], result.sources)):
-                render_event(event, result.sources, archive, f"undated_{index}")
+            with st.expander("Altri sviluppi"):
+                st.caption("Sviluppi documentati sul tema, senza una data certa. L’ordine non è cronologico.")
+                for index, event in enumerate(undated_order(data["undated_events"], result.sources)):
+                    render_event(event, result.sources, archive, f"undated_{index}")
     else:
         render_map(result, archive, technical)
     items = (data.get("events", []) + data.get("undated_events", []) if result.kind == "timeline" else
              data.get("nodes", []) + data.get("edges", []) + data.get("context_edges", []))
     used_ids = {identity for item in items for identity in item.get("source_ids", [])}
-    render_contributions(result.sources, used_ids, archive.root if archive else Path(__file__).resolve().parents[1])
-    with st.popover("Richiesta originale"):
-        st.text(result.topic)
+    render_contributions(result.sources, used_ids, archive.root if archive else Path(__file__).resolve().parents[1], compact=True)
     if technical:
         with st.expander("Diagnostica · sviluppo"):
             st.json(result.diagnostics)
@@ -79,39 +80,47 @@ def render_knowledge(result, archive=None):
 
 
 def render_map(result, archive, technical):
+    from edicola.experience_ui import readable
     data, diagnostics = result.data, result.diagnostics
     captions = node_captions(data["nodes"])
     view = compact_map(data)
-    mode = st.segmented_control("Vista della mappa", ["Grafo", "Elenco"], default="Grafo", key="knowledge_map_view") or "Grafo"
+    if not data["edges"]:
+        st.info("Non emergono relazioni verificabili fra i concetti. Puoi consultare le entità documentate e le loro fonti.")
+        mode = "Elenco"
+    else:
+        mode = st.segmented_control("Vista della mappa", ["Grafo", "Elenco"], default="Grafo", key="knowledge_map_view") or "Grafo"
     focus = ""
     if mode == "Grafo":
-        options = [""] + [node["id"] for node in data["nodes"]]
-        if st.session_state.get("knowledge_map_focus", "") not in options:
+        if st.session_state.get("knowledge_map_focus", "") not in {n["id"] for n in view["nodes"]}:
             st.session_state["knowledge_map_focus"] = ""
-        focus = st.selectbox("Esplora un concetto", options, key="knowledge_map_focus",
-                             format_func=lambda value: captions[value] if value else "Tutti i concetti")
-        view = compact_map(focused_map(data, focus))
+        focus = st.session_state.get("knowledge_map_focus", "")
     isolated = {n["id"] for n in view["nodes"]} - {identity for e in view["edges"] for identity in (e["from_id"], e["to_id"])}
     if view["edges"]:
-        legend = "→ Relazione documentata · ┄ Tema comune, senza legame fattuale"
+        legend = "→ Relazione documentata"
+        if any(edge["kind"] != "documented" for edge in view["edges"]):
+            legend += " · ┄ Tema comune, senza legame fattuale"
         if isolated:
             legend += " · Concetti separati: nessun collegamento documentato"
         st.caption(legend)
     else:
-        st.caption("Gruppi di concetti per orientarsi sul tema; non indicano relazioni.")
+        st.caption("Concetti documentati sul tema. Le fonti di questa mappa non attestano collegamenti fra loro.")
     if mode == "Grafo":
-        # Dimensioni intrinseche: non adattare un grafo di due nodi a tutta la
-        # larghezza/altezza della pagina, causando uno zoom iniziale enorme.
-        with st.container(horizontal=True, horizontal_alignment="center"):
-            with st.container(width=760):
-                st.graphviz_chart(map_dot(view, topic=result.topic, grouping=not view["edges"], focused_node=focus),
-                                  width="content", height="content", alt="Concetti e collegamenti sul tema richiesto")
+        def choose(node_id):
+            st.session_state["knowledge_map_focus"] = node_id
+        st.caption("Seleziona un concetto per leggere collegamenti e fonti. Scorri nella mappa per esplorarla.")
+        render_graph(view, topic=result.topic, selected=focus, on_select=choose)
+        if focus:
+            selected = next(n for n in view["nodes"] if n["id"] == focus)
+            with st.container(border=True):
+                st.subheader(readable(captions[focus]))
+                st.caption(NODE_TYPES[selected["kind"]])
+                st.text(selected["label"])
+                compact_sources(selected["source_ids"], result.sources, archive, "map_selected_" + focus)
+                render_node_connections(selected, data, {n["id"]: n["label"] for n in data["nodes"]}, result.sources, archive)
     if mode == "Grafo" and len(view["nodes"]) < len(data["nodes"]):
-        st.caption("Altri concetti consultabili nei dettagli.")
+        st.caption("Altri concetti disponibili nella vista Elenco.")
     nodes = {n["id"]: n["label"] for n in data["nodes"]}
-    st.caption("Apri un nome per leggere dettagli, collegamenti e fonti.")
-    from edicola.experience_ui import readable
-    for kind, members in node_groups(view["nodes"] if focus else data["nodes"]):
+    for kind, members in node_groups(data["nodes"] if mode == "Elenco" else []):
         st.caption(GROUPS[kind][1])
         with st.container(horizontal=mode == "Grafo", gap="small"):
             for node in members:
@@ -139,6 +148,63 @@ def render_map(result, archive, technical):
             for source in result.sources:
                 st.caption(f"[{source.id}] {source.filename} — pagina {source.page}")
                 st.text(source.text)
+
+
+def render_timeline(events, sources, archive):
+    """Asse continuo con sole date verificate; azioni PDF validate sul server."""
+    root = archive.root if archive else Path(__file__).resolve().parents[1]
+    editions = source_editions(root, sources)
+    months = ("gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre")
+    payload, references = [], []
+    for event in events:
+        date = calendar_date.fromisoformat(event["event_date"])
+        selected, seen = [], set()
+        for source in sources:
+            if source.id in event.get("source_ids", []) and (source.filename, source.page) not in seen:
+                selected.append(source)
+                seen.add((source.filename, source.page))
+        refs = []
+        for source in selected:
+            info = editions.get(source.id, {})
+            label = " · ".join([info.get("publication") or "Documento dell’archivio",
+                                info.get("publication_date") or "Data non disponibile", f"pagina {source.page}"])
+            available = archive is not None
+            if available:
+                try:
+                    resolve_reference(archive, source.filename, source.page, source.chunk_id)
+                except PdfViewError:
+                    available = False
+            refs.append({"label": label, "available": available})
+        description = event_text(event["description"])
+        payload.append({"iso": event["event_date"], "date": f"{date.day} {months[date.month-1]} {date.year}",
+                        "title": event_text(event["title"]), "summary": short_text(description, 280),
+                        "description": description, "status": LABELS.get(event.get("development_kind"), "")
+                        if event.get("development_kind") != "undetermined" else "", "sources": refs})
+        references.append(selected)
+    identity = hashlib.sha256(json.dumps([payload, [[s.chunk_id for s in refs] for refs in references]], sort_keys=True).encode()).hexdigest()[:16]
+    key = "knowledge_timeline_story_" + identity
+    def action():
+        value = st.session_state.get(key, {}).get("action")
+        if not isinstance(value, dict) or type(value.get("event")) is not int or not 0 <= value["event"] < len(events):
+            return
+        index = value["event"]
+        if "source" not in value:
+            st.session_state["knowledge_timeline_detail"] = {"key": key, "index": index}
+            return
+        source_index = value["source"]
+        if type(source_index) is int and 0 <= source_index < len(references[index]) and archive is not None:
+            source = references[index][source_index]
+            try:
+                open_reference(archive, source.filename, source.page, source.chunk_id)
+            except PdfViewError:
+                st.session_state["knowledge_source_notice"] = "Questa fonte non è disponibile nell’archivio attuale."
+    timeline_story(data={"items": payload}, key=key, on_action_change=action)
+    if notice := st.session_state.pop("knowledge_source_notice", None):
+        st.info(notice)
+    detail = st.session_state.get("knowledge_timeline_detail", {})
+    if detail.get("key") == key and type(detail.get("index")) is int and 0 <= detail["index"] < len(events):
+        with st.expander("Dettagli dell’evento selezionato", expanded=True):
+            render_event_details(events[detail["index"]], sources)
 
 
 def render_node_connections(node, data, labels, sources, archive):

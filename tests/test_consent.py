@@ -50,7 +50,7 @@ def test_refusal_and_revocation_block_following_requests():
     app.button(key="send").click().run()
     app.button(key="consent_refuse").click().run()
     assert not app.exception and "rag_calls" not in app.session_state
-    assert app.session_state["consent_choices"][("text", "text-v2")] is False
+    assert app.session_state["consent_choices"][("text", consent.PURPOSES["text"][0])] is False
     app.button(key="send").click().run()
     app.button(key="consent_accept").click().run()
     app.button(key="profile_privacy_text_revoke").click().run()
@@ -74,7 +74,7 @@ def test_new_treatment_version_requires_new_choice(monkeypatch):
         consent.choose("text", True)
         assert consent.allowed("text")
         old = consent.PURPOSES["text"]
-        monkeypatch.setitem(consent.PURPOSES, "text", ("text-v3", *old[1:]))
+        monkeypatch.setitem(consent.PURPOSES, "text", ("next-text-version", *old[1:]))
         assert consent.decision("text") is None
         assert not consent.allowed("text")
 
@@ -184,7 +184,7 @@ def test_revocation_from_another_session_is_checked_before_the_next_call(auth, b
     with patch("edicola.consent.PostgresPersonalStore", side_effect=lambda _: factory()):
         consent.choose("text", True)
         def flow():
-            factory().set_consent("text", "text-v2", False)  # Altro dispositivo.
+            factory().set_consent("text", consent.PURPOSES["text"][0], False)  # Altro dispositivo.
             require_permission("text")
         with pytest.raises(PermissionDenied):
             consent.perform("text", flow)
@@ -235,7 +235,7 @@ def test_missing_consent_table_blocks_account_without_guest_fallback(auth):
     unavailable.get_consent.side_effect = PersonalStoreError("private-schema-error")
     with patch("edicola.consent.PostgresPersonalStore", return_value=unavailable):
         app = AppTest.from_string(SCRIPT).run()
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", consent.PURPOSES["text"][0]): True}
         app.button(key="send").click().run()
     assert not app.exception and app.error
     assert all("private-schema-error" not in error.value for error in app.error)

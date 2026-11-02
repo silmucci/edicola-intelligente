@@ -9,7 +9,7 @@ from datetime import date
 
 import streamlit as st
 
-from edicola.archive_ui import edition_metadata, edition_filter, render_gallery
+from edicola.archive_ui import edition_metadata
 from edicola.editorial_selection import headline_priority, read_catalog
 from edicola.pdf_viewer import source_button
 from edicola.personalization import recommend
@@ -18,11 +18,12 @@ from edicola import identity
 from edicola.design import section_intro, empty_state
 from edicola.editorial_components import render_highlights
 
-from edicola.product_navigation import SECTIONS, cancel_navigation_action
+from edicola.product_navigation import SECTIONS, cancel_navigation_action, canonical_section
 INTERESTS = ["Ambiente", "Cultura", "Economia", "Politica", "Salute", "Scuola", "Sport", "Tecnologia", "Trasporti"]
 
 
 def navigate(section):
+    section = canonical_section(section)
     if section in SECTIONS:
         cancel_navigation_action()
         st.session_state["nav_section"] = section
@@ -132,33 +133,13 @@ def recent_editions(context, limit=3):
 def render_home(root, context):
     identity.synchronize_identity()
     metadata = edition_metadata(root, context.documents)
-    if context.documents:
-        ordered = recent_editions(context, limit=len(context.documents))
-        visible = edition_filter(ordered, metadata, key="home_edition_date")
-        render_gallery(context, metadata, documents=visible, title="Quotidiani in primo piano", key="home_gallery")
-    else:
-        empty_state("La tua edicola è ancora vuota", "Le copertine appariranno qui quando saranno disponibili edizioni nell’archivio.")
-    section_intro("In evidenza", "Estratti dalle edizioni disponibili, senza aggiornamenti in tempo reale.", "Dalle fonti originali")
     try:
         catalog = read_catalog(root)
     except Exception:
         st.info("Le letture selezionate saranno disponibili quando l’archivio sarà pronto.")
         return
-    if catalog.coverage.get("partial"):
-        st.caption("La selezione copre soltanto la parte dell’archivio attualmente disponibile alla ricerca.")
-    selected = home_selection(catalog)
-    if not selected:
-        empty_state("Le letture arriveranno qui", "Non ci sono letture disponibili per questa selezione. Puoi intanto sfogliare le edizioni originali.")
-    if selected:
-        render_highlights(selected, metadata=metadata, context=context, shorten=excerpt)
-    st.subheader("Consulta la rassegna")
-    from edicola.press_review_ui import review_controls, render_review_passages
-    review_catalog, selection = review_controls(root, catalog)
-    if review_catalog is not None:
-        render_review_passages(review_catalog, context, metadata)
-        def prepare_briefing():
-            navigate("Briefing")
-        st.button("Prepara il briefing della selezione", key="home_prepare_briefing", on_click=prepare_briefing)
+    from edicola.press_review_ui import render_press_review
+    render_press_review(catalog, context, metadata)
     if authenticated():
         st.subheader("Consigliati per te")
         try:

@@ -11,10 +11,11 @@ from types import SimpleNamespace
 
 from edicola.map_context import joined_proofs
 
-VERSION = "knowledge-relevance-v2"
+VERSION = "knowledge-relevance-v3"
 STOP = set("a ad al alla alle allo ai agli all di del della delle dello dei degli da dal dalla dalle dei in nel nella nelle negli sul sulla sulle su per con contro tra fra e ed o il lo la le gli i un una uno l d che quali quale qual come cosa quando dove quanto sono è stato stata stati state si non più questo questa questi queste ci se attraverso usando entro fino".split())
-INTENT = set("misur intervent economic propost sostener aiut tutelar novit aggiornament notizi tem event svilupp finanziament dibattit relativ principal criticità".split())
+INTENT = set("misur intervent economic propost sostener aiut tutelar novit aggiornament notizi tem event svilupp finanziament dibattit relativ principal criticità ricostruisc evoluzion mostr relazion politici partit istituzion".split())
 GENERIC_TARGET = set("impres aziend attivit person cittadin settor".split())
+INTENT.update("gennai febbrai marz april maggi giugn lugli agost settembr ottobr novembr dicembr".split())
 
 
 def stem(word):
@@ -67,6 +68,8 @@ class Topic:
         if subject and not beneficiary:
             self.focus = terms(subject.group(1))
         self.region = terms("Abruzzo") if re.search(r"\babruzz(?:o|es[ei])\b", question, re.I) else set()
+        if self.focus - self.region:
+            self.focus -= self.region
         self.context_pattern = None
         if "tribunal" in self.focus and re.search(r"chiusura|salvaguardia|ripristino", question, re.I):
             self.context_pattern = re.compile(r"chiusur|salvaguard|ripristin|circoscrizion|geografi|subprovincial", re.I)
@@ -122,10 +125,12 @@ class Topic:
             # Una citazione ampia non attribuisce automaticamente a ogni concetto
             # il tema di un articolo diverso: usare sempre la prova del concetto.
             for start, end in spans:
-                before = original[max(0, start - 180):start]
-                after = original[end:end + 180]
-                before = re.split(r"[.!?]", before)[-1]
-                after = re.split(r"[.!?]", after)[0]
+                # Una frase lunga può legare autore, provvedimento e argomento.
+                # Non attraversare mai il confine della frase per recuperare il tema.
+                before = re.split(r"[.!?;]", original[:start])[-1]
+                after = re.split(r"[.!?;]", original[end:])[0]
+                if len(before) + end - start + len(after) > 1800:
+                    before, after = before[-180:], after[:180]
                 best = max(best, self.score(before + original[start:end] + after, context_required=False))
         return best
 

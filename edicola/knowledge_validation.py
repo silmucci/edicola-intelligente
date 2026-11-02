@@ -13,6 +13,7 @@ from edicola.timeline_events import compact_events
 from edicola.knowledge_presentation import development_kind, short_text, deadline_reference
 from edicola.design_tokens import COLORS
 from edicola.map_presentation import GROUPS, node_captions, node_groups
+from edicola.map_exploration import informative_nodes
 from edicola.proposal_extraction import ITEM as NOMINAL_PROPOSAL
 
 
@@ -100,7 +101,7 @@ def validate_timeline(data: dict, sources: list[Source], coverage: dict) -> tupl
         category = development_kind(status_quotes, lifecycle)
         # Per annunci e futuro mostrare il passo letterale, non una parafrasi al passato.
         if preserve_original or lifecycle in {"announced", "future", "conflicting"} or category == "proposal":
-            title_text = short_text(temporal_quote or proof_quotes[0], 90)
+            title_text = re.split(r"(?<=[.!?])\s+", temporal_quote or proof_quotes[0])[0]
             description_text = temporal_quote or "\n".join(proof_quotes)
             if category == "proposal" and NOMINAL_PROPOSAL.match(item["title"]["text"]) and all(
                     any(item[key]["text"] in e["quote"] for e in item[key]["evidence"]) for key in ("title", "description")):
@@ -244,7 +245,7 @@ def compact_map(data: dict, limit: int = 10) -> dict:
     """Ordine editoriale di pertinenza, inclusi gli isolati; nessun bonus agli archi."""
     if not 2 <= limit <= 10:
         raise ValueError("Il grafico mostra da 2 a 10 nodi.")
-    nodes = data["nodes"][:limit]
+    nodes = informative_nodes(data, limit)
     chosen = {n["id"] for n in nodes}
     edges = [e for e in data["edges"] if {e["from_id"], e["to_id"]} <= chosen]
     return {"nodes": nodes, "edges": edges}

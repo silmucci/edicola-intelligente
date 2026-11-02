@@ -8,9 +8,9 @@ from edicola.personal_store import PostgresPersonalStore
 
 # Incrementare solo la versione della finalità il cui trattamento cambia.
 PURPOSES = {
-    "text": ("text-v2", "Lettura e approfondimenti AI",
+    "text": ("text-v3", "Lettura e approfondimenti AI",
              "Gemini riceve la domanda o il tema, i passaggi selezionati dei quotidiani e i riferimenti PDF/pagina. "
-             "Li usa per cercare e preparare risposte, briefing, timeline e mappe. "
+             "Li usa per cercare e preparare risposte, briefing, timeline, mappe e copioni podcast autonomi. "
              "La ricerca può inviare la domanda per crearne l’embedding. Nella chat inviamo anche un breve contesto dei messaggi precedenti della stessa conversazione, per comprendere le domande successive; le risposte si basano sempre su nuove fonti recuperate. "
              "I prodotti generali sono condivisi nell’app. Il salvataggio delle chat nel tuo account è una scelta distinta, disattivata inizialmente."),
     "personal_text": ("personal-text-v1", "Il mio briefing AI",
@@ -18,7 +18,7 @@ PURPOSES = {
              "Non inviamo l’identità Google, il profilo, la raccolta dei salvati o lo storico. "
              "I passaggi possono rivelare indirettamente i tuoi interessi. Il briefing resta nel tuo account."),
     "audio": ("audio-v1", "Podcast e lettura audio",
-             "Gemini TTS riceve il copione visualizzato e la voce scelta per creare l’audio. "
+             "Gemini TTS riceve il copione dell’episodio e la voce scelta per creare l’audio; testo e fonti restano consultabili. "
              "Non inviamo l’identità Google o il tuo profilo. Gli audio personali sono temporanei; "
              "i podcast creati dalla biblioteca generale sono condivisi nell’app."),
 }

@@ -3,14 +3,14 @@
 import re
 
 
-VERSION = "concept-map-v6"
+VERSION = "concept-map-v7"
 # Solo elementi grammaticali trasparenti; niente wildcard che scavalchino altri attori.
 ADVERB = r"(?:oggi|ieri|anche|già|poi|ufficialmente|formalmente|direttamente|definitivamente)"
 AUXILIARY = r"(?:ha|hanno|aveva|avevano|è|sono|era|erano|stato|stata|stati|state)"
 LEGAL_REFERENCE = r"\(\s*(?:ex\s+)?\d{1,4}(?:[./]\d{1,4}){0,2}\s*\)"
 BEFORE = rf"(?:\s*,?\s+(?:{ADVERB}|{AUXILIARY})){{0,3}}(?:\s+{LEGAL_REFERENCE})?\s*,?\s+"
 PARTY = r"(?:fratelli\s+d['’]italia|partito\s+democratico|pd|fdi|forza\s+italia|lega|movimento\s+5\s+stelle)"
-ROLE = rf"(?:(?:deputato|senatore|senatrice|presidente|consigliere|consigliera|sindaco|ministro)(?:\s+abruzzese)?(?:\s+(?:di|del|della)\s+{PARTY})?\s+)?"
+ROLE = rf"(?:(?:deputato|senatore|senatrice|presidente|consigliere|consigliera|sindaco|ministro)(?:\s+abruzzese)?(?:\s+(?:di|del|della)\s+{PARTY}(?:\s*\([a-z. ]{{2,12}}\))?)?\s+)?"
 PURPOSE = r"(?:\s+presentat[oaie]\s+per\s+(?:garantire|assicurare|tutelare)\s+la\s+(?:salvaguardia|sopravvivenza|tutela)\s+(?:dei|degli)\s+(?:(?:quattro|tre|due)\s+)?(?:presidi\s+giudiziari|tribunali|uffici\s+giudiziari))?"
 AFTER = rf"(?:\s+{ADVERB}){{0,2}}(?:\s+con\s+(?:una?\s+)?(?:delibera|decreto|voto|decisione)(?:\s+unanime)?)?\s+"
 ARTICLE = r"(?:(?:il|lo|la|i|gli|le|un|una|uno|l['’])\s*)?(?:(?:citato|citata|stesso|stessa|suddetto|suddetta)\s+)?"
@@ -25,12 +25,21 @@ def normalized(text):
     return " ".join(text.casefold().split())
 
 
-def documented_relation(left, relation, right, quote):
+def documented_relation(left, relation, right, quote, *, _aliases=True):
     """Soggetto-predicato-oggetto nella stessa proposizione, con modificatori limitati.
 
     La relazione è letterale. Voci passive sono ammesse se label conserva ausiliari
     e preposizione della fonte (es. 'è stato approvato dal'), senza invertirne il senso.
     """
+    if _aliases:
+        variants = []
+        for endpoint in (left, right):
+            found = [m[1] for m in re.finditer(r"(?<!\w)" + re.escape(endpoint) + r"\s*\(\s*([A-Z.]{2,12})\s*\)", quote, re.I)
+                     if re.fullmatch(r"[A-Z][A-Z.]{1,11}", m[1])]
+            variants.append([endpoint] + list(dict.fromkeys(found)))
+        if any(documented_relation(a, relation, b, quote, _aliases=False)
+               for a in variants[0] for b in variants[1] if (a, b) != (left, right)):
+            return True
     left, relation, right, quote = map(normalized, (left, relation, right, quote))
     if (len(relation) > 80 or len(relation.split()) > 8
             or re.search(r"[.;!?,]|\b(che|mentre|quando|perché|sebbene)\b", relation)):

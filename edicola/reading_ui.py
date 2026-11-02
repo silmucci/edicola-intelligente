@@ -109,7 +109,7 @@ def render_chat(root, context):
     try:
         from edicola.editorial_selection import read_catalog
         if read_catalog(root).coverage.get("partial"):
-            st.caption("Le risposte coprono solo una parte dell’archivio. Puoi consultare tutte le edizioni nell’Archivio PDF.")
+            st.caption("Le risposte coprono solo una parte dell’archivio. Puoi consultare tutte le edizioni nella sezione In edicola.")
     except (OSError, ValueError, RuntimeError):
         pass
     try:
@@ -219,8 +219,6 @@ def render_editorial_product(product, root, context):
     from edicola.design import product_notice
     coverage = product.coverage
     render_history_notice(coverage, context)
-    if coverage.get("partial"):
-        st.caption("Copertura parziale: questa lettura usa solo una parte dell’archivio.")
     render_context_limit(coverage)
     st.subheader(readable(citation_text(reading_title(product), product.used_source_ids)))
     if product.message:
@@ -250,11 +248,6 @@ def render_visuals(root, context, *, kind=None):
     versions = st.session_state.setdefault("knowledge_result_versions", {})
     strategies = {"map": (knowledge.MAP_VERSION, knowledge.RELEVANCE_VERSION),
                   "timeline": (knowledge.TIMELINE_CONTENT_VERSION, knowledge.TIMELINE_VERSION, knowledge.RELEVANCE_VERSION)}
-    outdated = result_kind in results and versions.get(result_kind) != strategies[result_kind]
-    if outdated:
-        results.pop(result_kind, None)
-        if previous is not None and previous.kind == result_kind:
-            st.session_state.pop("knowledge_result", None)
     topic_key = "knowledge_topic" if standalone else "knowledge_topic_" + result_kind
     topic = st.text_input("Quale tema vuoi esplorare?", max_chars=500, key=topic_key, placeholder="Un argomento, un luogo, una questione")
     submitted = st.button("Genera timeline" if kind == "Timeline" else "Genera mappa concettuale",
@@ -262,8 +255,6 @@ def render_visuals(root, context, *, kind=None):
     if submitted and not topic.strip():
         st.warning("Scegli un argomento da esplorare.")
     if topic.strip() and authorize_action("text", "visual_" + kind, submitted, topic):
-        st.session_state.pop("knowledge_result", None)
-        results.pop(result_kind, None)
         try:
             with st.spinner("Preparo la timeline…" if kind == "Timeline" else "Preparo la mappa…"):
                 st.session_state["knowledge_result"] = perform("text", knowledge.generate_knowledge,
@@ -274,8 +265,10 @@ def render_visuals(root, context, *, kind=None):
             st.error(friendly_error(exc))
     if result_kind in results:
         result = results[result_kind]
+        if versions.get(result_kind) != strategies[result_kind]:
+            st.caption("Lettura precedente: un nuovo invio applicherà gli aggiornamenti del prodotto.")
         if " ".join(topic.split()) != result.topic:
             st.caption("Risultato dell’argomento precedente: modifica la richiesta e avvia la generazione per aggiornarlo.")
         render_knowledge(result, archive=context)
     else:
-        st.info("Questo risultato non è disponibile nella vista attuale. Puoi generarne uno nuovo." if outdated else "Scegli un tema per iniziare.")
+        st.info("Scegli un tema per iniziare.")

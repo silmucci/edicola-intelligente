@@ -159,14 +159,15 @@ def test_full_app_client_home_keeps_all_sections_without_archive_diagnostics(arc
     with patch("edicola.ingestion.ingest_directory", return_value=context.documents), patch(
         "edicola.chunking.prepare_documents", return_value=prepared
     ), patch("edicola.pdf_viewer.archive_context", return_value=context), patch(
-        "edicola.podcast_ui.list_products", return_value=[]
+        "edicola.podcast_ui.list_episodes", return_value=[]
     ), patch("edicola.personalization_ui.load_profile", return_value=Profile()), patch(
         "edicola.personalization_ui.list_products", return_value=[]
     ):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=10).run()
         assert not app.exception and not app.dataframe and not app.metric
         from edicola.product_navigation import SECTIONS
-        assert app.selectbox(key="nav_section").options == SECTIONS
+        assert app.session_state["nav_section"] == "In edicola"
+        assert not any(s.key == "nav_section" for s in app.selectbox)
         assert not app.checkbox
         assert "consent_choices" not in app.session_state
         assert not app.get("file_uploader")

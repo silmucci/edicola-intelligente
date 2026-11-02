@@ -1,5 +1,23 @@
 # Regole del progetto
 
+- In edicola: destinazione iniziale con ID archive e alias storico Archivio PDF.
+  Sette card SVG con ID stabili; griglia copertine soltanto nella pagina PDF,
+  date curate recenti per prime. Rassegna separata, Profilo a destra.
+  Podcast generale/tematico nello stesso flusso autonomo: tema facoltativo,
+  retrieval semantico esistente corpus-wide solo su invio e doppio consenso,
+  chunk interi e budget invariati. Cache per tema normalizzato e strategia,
+  compatibile con v1 e ascolti storici; retry audio senza retrieval/testo.
+
+- Podcast autonomo: il comando generale non dipende da letture o cache Briefing.
+  Riusa selezione bilanciata e validatori, con copione breve in cache Podcast
+  separata, senza scritture nel DB editoriale. Consensi testo/audio prima degli
+  invii, verifica aggiornata per ogni SDK, nessun retry automatico. Conservare
+  il copione se il TTS fallisce e ritentare solo l'audio su azione esplicita.
+  Il percorso estrattivo da Briefing rimane per storici e letture personali.
+  Questa regola aggiorna i vincoli Podcast storici riportati più sotto.
+  Intestazione: logo a sinistra, ricerca e Profilo a icone a destra; sette card
+  editoriali invariate, nessun profilo duplicato. Test offline soltanto con mock.
+
 - Regola comune del contesto: per nuovi invii tutti i prodotti cercano nei soli
   passaggi indicizzati correnti dell’intero corpus, entro i filtri espliciti.
   I vecchi tetti globali di 3/5/8 passaggi non si applicano ai prodotti: ranking

@@ -78,7 +78,7 @@ def spoken_text(text: str, filenames: list[str]) -> str:
     return " ".join(text.split()).strip()
 
 
-def prepare_script(product: CachedProduct) -> Script:
+def prepare_script(product: CachedProduct, *, max_words=MAX_WORDS, max_chars=MAX_CHARS) -> Script:
     result = product.result
     if (not isinstance(result.title, str) or not isinstance(result.sections, list) or not isinstance(result.sources, list)
             or not isinstance(result.coverage, dict)
@@ -110,7 +110,7 @@ def prepare_script(product: CachedProduct) -> Script:
         if not block.endswith((".", "?", "!")):
             block += "."
         candidate = "\n\n".join(parts + [block])
-        if len(candidate) > MAX_CHARS or len(candidate.split()) > MAX_WORDS:
+        if len(candidate) > max_chars or len(candidate.split()) > max_words:
             continue  # Saltare la sezione intera; quelle successive possono entrare nel budget.
         parts.append(block)
         original.extend([section.get("heading", ""), section["text"]])

@@ -2,7 +2,7 @@
 
 import re
 
-TIMELINE_CONTENT_VERSION = "timeline-developments-v3"
+TIMELINE_CONTENT_VERSION = "timeline-developments-v4"
 PROPOSAL = re.compile(r"\b(propon\w*|propost[aoe]|richied\w*|chied\w*|ipotizz\w*)\b", re.I)
 DECISION = re.compile(r"\b(ha approvato|hanno approvato|ha deliberato|è stato approvato|è stata approvata|ha deciso)\b", re.I)
 NEGATION = re.compile(r"\b(non|smentisce|nega|mai)\b", re.I)

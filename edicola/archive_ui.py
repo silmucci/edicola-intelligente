@@ -65,9 +65,23 @@ def edition_filter(documents, metadata, *, key):
     return [d for d in documents if selected == "Tutte le edizioni" or metadata[d.filename]["date"] == selected]
 
 
-def render_gallery(context, metadata, *, documents=None, title="Le edizioni", key="archive_gallery"):
+def latest_first(root, documents):
+    """Solo date curate: edizioni senza data verificabile in fondo, ordine stabile."""
+    try:
+        raw = json.loads((root / "data/editions.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raw = {}
+    def published(document):
+        try:
+            return date.fromisoformat(raw[document.filename]["date"])
+        except (KeyError, TypeError, ValueError):
+            return date.min
+    return sorted(documents, key=published, reverse=True)
+
+
+def render_gallery(context, metadata, *, documents=None, title="In edicola", key="archive_gallery"):
     documents = context.documents if documents is None else documents
-    section_intro(title, "Sfoglia le prime pagine e apri il quotidiano originale.", "Le edizioni dell’archivio")
+    section_intro(title, "Sfoglia i quotidiani e scopri le edizioni disponibili.")
     cards = []
     for document in documents:
         thumbnail = None
@@ -87,7 +101,7 @@ def render_gallery(context, metadata, *, documents=None, title="Le edizioni", ke
             open_reference(context, documents[index].filename, 1)
         except PdfViewError:
             st.session_state["pdf_navigation_error"] = "Questa edizione non è consultabile al momento."
-    gallery_component(data={"editions": cards}, key=key, on_open_edition_change=selected)
+    gallery_component(data={"editions": cards, "layout": "grid"}, key=key, on_open_edition_change=selected)
 
 
 def render_reader(context, document, metadata):
@@ -157,7 +171,7 @@ def render_archive_view(context, prepared):
     if st.session_state.pop("pdf_navigation_error", None):
         st.info("La fonte richiesta non è disponibile nell'edizione corrente.")
     if not context.documents:
-        st.header("Le edizioni")
+        section_intro("In edicola", "Sfoglia i quotidiani e scopri le edizioni disponibili.")
         st.info("Non ci sono ancora edizioni disponibili.")
         return
     metadata = edition_metadata(context.root, context.documents)
@@ -170,6 +184,6 @@ def render_archive_view(context, prepared):
     else:
         with st.container(horizontal=True, horizontal_alignment="center"):
             with st.container(width=1120):
-                visible = edition_filter(context.documents, metadata, key="archive_edition_date")
+                visible = edition_filter(latest_first(context.root, context.documents), metadata, key="archive_edition_date")
                 render_gallery(context, metadata, documents=visible)
     render_diagnostics(context, prepared)
