@@ -174,7 +174,9 @@ def prepare_cloud(root):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
-    parser.add_argument("--export", type=Path, help="Nuova cartella destinazione; nessuna pubblicazione")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--export", type=Path, help="Nuova cartella destinazione; nessuna pubblicazione")
+    action.add_argument("--validate", type=Path, help="Verifica uno snapshot locale senza sostituire quello pubblicato")
     parser.add_argument("--pdf", action="append", default=[])
     parser.add_argument("--authorize-distribution", action="store_true")
     args = parser.parse_args(argv)
@@ -183,7 +185,7 @@ def main(argv=None):
             result = export_seed(args.root, args.export, args.pdf, authorize_distribution=args.authorize_distribution)
             print(f"Snapshot locale: {result['pdfs']} PDF, {result['chunks']} chunk, {result['indexed']} embeddings esistenti.")
         else:
-            result = validate_seed(args.root / "deployment/seed")
+            result = validate_seed(args.validate if args.validate is not None else args.root / "deployment/seed")
             print(f"Snapshot verificato: {result['pdfs']} PDF, {result['indexed']}/{result['chunks']} chunk indicizzati. Nessuna API.")
     except (OSError, ValueError, RuntimeError, sqlite3.Error, KeyError, TypeError):
         parser.exit(1, "Snapshot non disponibile/coerente. Verificare DEPLOYMENT.md; nessuna API eseguita.\n")

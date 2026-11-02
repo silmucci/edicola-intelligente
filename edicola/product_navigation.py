@@ -6,7 +6,7 @@ PRODUCTS = [
     dict(id="home", title="Rassegna stampa", description="Le edizioni e le letture dell’archivio.", icon="paper"),
     dict(id="archive", title="Archivio PDF", description="Sfoglia i quotidiani originali.", icon="archive"),
     dict(id="chat", title="Chat AI", description="Fai una domanda, ritrova le fonti.", icon="chat"),
-    dict(id="briefing", title="Briefing", description="Una sintesi delle notizie disponibili.", kind="Briefing", icon="list"),
+    dict(id="briefing", title="Briefing", description="Sintesi delle notizie e infografica editoriale.", kind="Briefing", icon="list"),
     dict(id="dossier", title="Dossier", description="Approfondisci un argomento tra le fonti.", kind="Dossier", icon="document"),
     dict(id="timeline", title="Timeline", description="Gli eventi e le date documentate.", kind="Timeline", icon="clock"),
     dict(id="map", title="Mappe concettuali", description="Esplora i collegamenti verificati.", kind="Mappa", icon="map"),
@@ -29,7 +29,11 @@ def active_product(section):
 
 # Interrompe il cleanup dei soli input persistenti delle viste non montate.
 # Mai pulsanti, consensi, conferme di cancellazione o richieste di generazione.
-VIEW_INPUTS = ("editorial_topic", "knowledge_topic_timeline", "knowledge_topic_map", "knowledge_map_view",
+VIEW_INPUTS = ("editorial_topic", "editorial_review_keyword", "editorial_review_files", "editorial_review_scope",
+               "editorial_review_from", "editorial_review_to", "editorial_review_latest",
+               "editorial_review_group", "editorial_review_limit",
+               "editorial_workspace", "editorial_infographic_topic", "podcast_topic", "knowledge_map_focus",
+               "knowledge_topic_timeline", "knowledge_topic_map", "knowledge_map_view",
                "home_edition_date", "archive_edition_date", "podcast_product", "podcast_voice",
                "personal_area", "personal_interests", "personal_minutes", "personal_format",
                "personal_feedback_topic", "personal_opinion", "personal_product", "personal_voice")

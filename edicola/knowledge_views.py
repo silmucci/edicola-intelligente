@@ -8,6 +8,7 @@ from edicola.knowledge_components import event_card
 from edicola.knowledge_presentation import undated_order, empty_knowledge_message, theme_title
 from edicola.knowledge_validation import compact_map, map_dot
 from edicola.map_presentation import GROUPS, node_captions, node_groups
+from edicola.map_exploration import focused_map
 
 NODE_TYPES = {kind: values[0] for kind, values in GROUPS.items()}
 
@@ -44,6 +45,8 @@ def render_knowledge(result, archive=None):
                 st.json(result.diagnostics)
         return
     st.subheader(theme_title(result.topic))
+    from edicola.corpus_cache import render_history_notice
+    render_history_notice(result.coverage, archive)
     if result.coverage.get("partial"):
         st.caption("Copertura parziale dell’archivio.")
     if result.kind == "timeline":
@@ -68,7 +71,18 @@ def render_knowledge(result, archive=None):
 
 def render_map(result, archive, technical):
     data, diagnostics = result.data, result.diagnostics
-    view = compact_map(data)
+    captions = node_captions(data["nodes"])
+    choices = [""] + [node["id"] for node in data["nodes"]]
+    if st.session_state.get("knowledge_map_focus", "") not in choices:
+        st.session_state["knowledge_map_focus"] = ""
+    focus = st.selectbox("Concentrati su un concetto", choices, key="knowledge_map_focus",
+                         format_func=lambda value: captions[value] if value else "Tutti i concetti")
+    explored = focused_map(data, focus)
+    view = compact_map(explored)
+    if focus:
+        st.caption("Focus locale: il concetto selezionato e i suoi collegamenti già verificati. Nessuna nuova ricerca.")
+        if not explored["edges"]:
+            st.caption("Non ci sono relazioni documentate per questo concetto.")
     mode = st.segmented_control("Vista della mappa", ["Grafo", "Elenco"], default="Grafo", key="knowledge_map_view") or "Grafo"
     isolated = {n["id"] for n in view["nodes"]} - {identity for e in view["edges"] for identity in (e["from_id"], e["to_id"])}
     if view["edges"]:
@@ -83,14 +97,16 @@ def render_map(result, archive, technical):
         # larghezza/altezza della pagina, causando uno zoom iniziale enorme.
         with st.container(horizontal=True, horizontal_alignment="center"):
             with st.container(width=760):
-                st.graphviz_chart(map_dot(view, topic=result.topic, grouping=not view["edges"]),
+                st.graphviz_chart(map_dot(view, topic=result.topic, grouping=not view["edges"], focused_node=focus),
                                   width="content", height="content", alt="Concetti e collegamenti sul tema richiesto")
-    if len(view["nodes"]) < len(data["nodes"]):
+    if len(view["nodes"]) < len(explored["nodes"]):
         st.caption("Altri concetti consultabili nei dettagli.")
     if mode == "Elenco":
-        st.dataframe([{"Concetto": n["label"], "Tipo": NODE_TYPES[n["kind"]]} for n in data["nodes"]], hide_index=True, width="stretch")
+        st.dataframe([{"Concetto": n["label"], "Tipo": NODE_TYPES[n["kind"]]} for n in explored["nodes"]], hide_index=True, width="stretch")
     nodes = {n["id"]: n["label"] for n in data["nodes"]}
     detail_edges = view["edges"] + data.get("context_edges", [])
+    if focus:
+        detail_edges = [edge for edge in detail_edges if focus in (edge["from_id"], edge["to_id"])]
     if detail_edges:
         with st.expander("Collegamenti e prove"):
             for index, edge in enumerate(detail_edges):
@@ -153,7 +169,6 @@ def render_event(event, sources=(), archive=None, key="event"):
         st.caption("Data di pubblicazione delle fonti: " + publication)
         if event.get("date_anchor"):
             st.caption("Anno completato con l’edizione " + event["date_anchor"]["publication_date"])
-            st.caption("edizione " + event["date_anchor"]["publication_date"])
         if event.get("date_reason"):
             st.caption("La citazione non consente una data evento completa e coerente; nessuna data editoriale sostituita all’evento.")
         if event.get("temporal_quote"):

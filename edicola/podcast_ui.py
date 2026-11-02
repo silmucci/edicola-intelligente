@@ -6,7 +6,7 @@ from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 
-from edicola.podcast import VOICES, generate_podcast
+from edicola.podcast import VOICES, MODEL, generate_podcast
 from edicola.podcast_text import PodcastError, list_products, prepare_script
 from edicola.pdf_viewer import source_button
 from edicola.archive_ui import diagnostics_enabled
@@ -27,11 +27,23 @@ def render_podcast_ui(root: Path, archive=None):
     if not products:
         st.info("La tua biblioteca audio è ancora vuota. Crea prima un dossier o un briefing, poi trasformalo in un ascolto.")
         return
+    topic = st.text_input("Cerca un episodio per argomento", key="podcast_topic", max_chars=500)
+    if topic.strip():
+        terms = topic.casefold().split()
+        products = [p for p in products if all(term in (p.result.title + " " + " ".join(
+            section["text"] for section in p.result.sections)).casefold() for term in terms)]
+    if not products:
+        st.info("Nessun prodotto già disponibile corrisponde al tema. Crea un dossier sull’argomento e torna qui per ascoltarlo.")
+        return
     load_dotenv(root / ".env", override=False)
     available = {p.key: p for p in products}
+    if st.session_state.get("podcast_product") not in available:
+        st.session_state.pop("podcast_product", None)
     selected = st.selectbox("Briefing o dossier già generato", list(available), key="podcast_product",
         format_func=lambda key: f"{available[key].result.kind.capitalize()} — {available[key].result.title} — {available[key].created_at}")
     product = available[selected]
+    from edicola.corpus_cache import render_history_notice
+    render_history_notice(product.result.coverage, archive)
     try:
         script = prepare_script(product)
     except PodcastError as exc:
@@ -48,6 +60,7 @@ def render_podcast_ui(root: Path, archive=None):
     if script.coverage.get("partial"):
         st.warning("Archivio parzialmente indicizzato: anche il podcast copre soltanto i contenuti del prodotto disponibile.")
     with st.expander("Testo da leggere e fonti"):
+        st.caption("Copione d’ascolto estrattivo: sezioni complete, riferimenti bibliografici separati dalla lettura.")
         st.text(script.text)
         for source in script.sources:
             st.text(f"[{source['id']}] {source['filename']} — pagina {source['page']}")
@@ -55,10 +68,10 @@ def render_podcast_ui(root: Path, archive=None):
                 st.caption(f"Chunk originale: {source['chunk_id']}")
             source_button(source["filename"], source["page"], context=archive, chunk_id=source["chunk_id"], key=f"podcast_pdf_{source['id']}")
     from edicola.personalization_ui import cached_audio
-    existing = cached_audio(root, selected, voice)
+    existing = cached_audio(root, selected, voice, script=script)
     st.caption("Pronto da ascoltare · nessun nuovo invio a Gemini" if existing else "Da creare · circa 1–2 minuti di ascolto")
     submitted = st.button("Genera podcast", type="primary", key="podcast_submit", disabled=existing is not None)
-    signature = (selected, voice, script.text)
+    signature = (selected, voice, script.text, os.getenv("GEMINI_TTS_MODEL", MODEL).strip() or MODEL)
     if authorize_action("audio", "podcast", submitted, signature):
         st.session_state.pop("podcast_result", None)
         st.session_state.pop("podcast_result_selection", None)

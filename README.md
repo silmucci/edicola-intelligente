@@ -560,3 +560,67 @@ Test degli account, esclusivamente simulati:
 .\.venv\Scripts\python.exe -m pytest -q tests/test_personal_accounts.py
 ```
 
+### Audit funzionale editoriale — ottobre 2026
+
+La **Rassegna stampa** comprende ora filtri locali per parole chiave e fonti,
+consultazione dei gruppi per affinità tematica e briefing della selezione con
+citazioni e cache distinta per filtri. I gruppi usano i vettori già presenti,
+senza nuovi embedding o nomi di temi inventati. Il campo facoltativo curato
+`scope` nelle edizioni può essere `nazionale` o `internazionale`: indica
+l’ambito dell’edizione, non classifica automaticamente gli articoli.
+
+In **Briefing → Prodotto editoriale → Infografica** è disponibile un prodotto
+locale autonomo a blocchi, fino a otto punti estrattivi verificabili per tema,
+con link alle pagine PDF. Non usa Gemini e non produce grafici numerici in
+assenza di dati strutturati verificati. Le nove destinazioni restano invariate.
+
+Le **Mappe concettuali** consentono il focus su un nodo e sui suoi collegamenti
+già verificati, senza ricerca aggiuntiva. La **Chat AI** offre azioni **Prepara…**
+per aprire bozze degli altri prodotti: nessuna generazione parte dalla navigazione.
+I **Dossier** dichiarano le edizioni effettivamente citate; i **Podcast** si
+cercano anche per argomento e mantengono copioni brevi estrattivi con sezioni
+intere e fonti separate dalla lettura. Gli audio già presenti sono mostrati
+solo se corrispondono al copione e al modello correnti.
+
+Audit, file, limiti e istruzioni per ogni prodotto: [EDITORIAL_AUDIT.md](EDITORIAL_AUDIT.md).
+Test specifici, con API simulate:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q tests/test_editorial_audit.py
+```
+
+### Aggiornare il corpus senza perdere l’indice
+
+**Nuovo percorso per il gestore locale:** aprire con doppio clic
+`Gestione archivio.cmd`. Il menu permette stato, preparazione dei soli nuovi file,
+metadati verificati, anteprima e autorizzazione di batch da 10/20/50 chunk, ripresa
+dopo interruzioni e preparazione di snapshot autorizzati. Non è un pannello pubblico
+e non assegna privilegi agli account Google. Guida senza comandi Python:
+[GESTIONE_ARCHIVIO.md](GESTIONE_ARCHIVIO.md).
+
+Il diario/coda locale conserva il progresso; nessun batch successivo parte da solo.
+Questa regola vale per la modalità a batch singolo (opzione 3). Con la nuova
+**6 — Indicizza tutti i chunk mancanti** una conferma autorizza il piano completo:
+i batch, ciascuno di massimo 50 chunk, proseguono automaticamente fino a completamento
+o arresto per errore, quota o Ctrl+C. Il riepilogo mostra PDF, richieste previste e
+massimo dei retry; dopo un arresto la ripresa richiede una nuova conferma dei soli
+mancanti. Non parte alcun invio dalla semplice apertura della console.
+Quote e problemi temporanei hanno retry limitati e pausa persistente. Le cache
+distinguono corpus e selezioni tramite versioni deterministiche, senza cancellare
+prodotti storici. I filtri della rassegna includono date curate e ultima edizione.
+
+Usare `python -m edicola.corpus_update --refresh --report data/corpus_updates/latest.json`
+per acquisizione/chunking locali con backup preventivo, senza Gemini. Verificare
+poi `python -m edicola.indexing --dry-run --limit 50 --keep-stale`. Solo un comando
+successivo esplicitamente autorizzato può generare gli embedding mancanti.
+`--keep-stale` conserva gli eventuali vettori storici, esclusi comunque dalla
+ricerca corrente. Il tool distingue nuove edizioni, metadati incompleti, chunk
+già indicizzati e mancanti, copertura storica e fonti obsolete delle cache.
+
+Le nuove fonti entrano nei sette prodotti solo dopo l’indicizzazione; il podcast
+richiede prima un briefing/dossier aggiornato. Non vengono cancellati o rigenerati
+automaticamente i prodotti precedenti. Per uno snapshot locale nuovo e già
+autorizzato è disponibile `python -m edicola.cloud --validate PERCORSO`.
+Procedura completa, stato verificato e operazioni prima della pubblicazione:
+[CORPUS_UPDATE.md](CORPUS_UPDATE.md).
+

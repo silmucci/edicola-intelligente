@@ -21,6 +21,7 @@ from edicola.indexing import ROOT
 from edicola.rag import (DEFAULT_MODEL, INSUFFICIENT, RagError, Source, build_prompt,
                          generate_response, response_schema, validate_response)
 from edicola.search import semantic_search
+from edicola.press_review import ReviewSelection, filter_catalog
 
 
 PROMPT_VERSION = 1
@@ -100,6 +101,10 @@ def cache_key(kind: str, topic: str, model: str, config: EditorialConfig, catalo
                "chunks": sorted((chunk.id, chunk.fingerprint, chunk.metadata) for chunk in catalog.chunks)}
     if kind == "briefing":
         payload["briefing_prompt_chars"] = briefing_prompt_chars
+        if catalog.coverage.get("selection_version"):
+            # Una nuova edizione fuori dalla selezione non invalida i suoi contenuti.
+            payload["coverage"] = {"selection_version": catalog.coverage["selection_version"],
+                                   "selection": catalog.coverage["selection"]}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -140,7 +145,8 @@ def render_product(kind: str, raw: str, sources: list[Source], coverage: dict, g
 
 
 def generate_product(kind: str, topic: str = "", *, authorize_external=False, root: Path = ROOT,
-                     config: EditorialConfig | None = None, client=None) -> EditorialResult:
+                     config: EditorialConfig | None = None, client=None,
+                     selection: ReviewSelection | None = None) -> EditorialResult:
     if kind not in {"dossier", "briefing"}:
         raise EditorialError("Prodotto editoriale non riconosciuto.")
     if not authorize_external:
@@ -162,6 +168,10 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
             if not 2000 <= prompt_budget <= 40000:
                 raise EditorialError("EDITORIAL_BRIEFING_MAX_PROMPT_CHARS deve essere un intero da 2000 a 40000.")
         catalog = read_catalog(root)
+        if selection is not None:
+            if kind != "briefing":
+                raise EditorialError("I filtri della rassegna si applicano soltanto al briefing.")
+            catalog = filter_catalog(catalog, selection)
         request_id = "editorial-" + uuid4().hex[:12]
         identity = cache_key(kind, topic, model, config, catalog, briefing_prompt_chars=prompt_budget)
         path = root / "data/editorial.sqlite3"

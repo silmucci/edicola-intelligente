@@ -38,12 +38,13 @@ def plan_index(chunks, collection, filenames=None) -> IndexPlan:
     return IndexPlan(pending, updates, sorted(set(stored) - set(desired)), unchanged)
 
 
-def apply_plan(plan: IndexPlan, collection, embedder, limit: int) -> int:
+def apply_plan(plan: IndexPlan, collection, embedder, limit: int, *, prune_stale=True) -> int:
     if limit <= 0:
         raise ValueError("Il limite deve essere positivo.")
     # La riconciliazione locale non genera richieste Gemini.
-    for offset in range(0, len(plan.stale_ids), 500):
-        collection.delete(ids=plan.stale_ids[offset:offset + 500])
+    if prune_stale:
+        for offset in range(0, len(plan.stale_ids), 500):
+            collection.delete(ids=plan.stale_ids[offset:offset + 500])
     for chunk in plan.metadata_updates:
         collection.update(ids=[chunk.id], metadatas=[chunk.chroma_metadata])
     completed = 0
@@ -61,6 +62,7 @@ def main(argv=None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="Controllo locale senza chiamate API o modifiche ai vettori.")
     parser.add_argument("--authorize-external", action="store_true", help="Autorizza l'invio a Gemini dei chunk selezionati.")
     parser.add_argument("--pdf", action="append", help="Limita gli invii a questo nome PDF; ripetibile.")
+    parser.add_argument("--keep-stale", action="store_true", help="Conserva i vettori storici non più attivi; la ricerca li esclude comunque.")
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit <= 0:
         parser.error("--limit deve essere positivo")
@@ -78,9 +80,10 @@ def main(argv=None) -> int:
         plan = plan_index(chunks, collection, args.pdf)
         print(json.dumps({
             "model": MODEL, "dimensions": DIMENSIONS, "api_key_configured": bool(key),
-            "active_chunks": len(chunks), "already_indexed": plan.unchanged,
+            "active_chunks": len(chunks), "already_indexed": plan.unchanged + len(plan.metadata_updates),
             "pending_selected": len(plan.pending), "metadata_updates": len(plan.metadata_updates),
-            "stale_to_delete": len(plan.stale_ids),
+            "stale_to_delete": 0 if args.keep_stale else len(plan.stale_ids),
+            "stale_preserved": len(plan.stale_ids) if args.keep_stale else 0,
             "new_chunks_this_run": min(args.limit or len(plan.pending), len(plan.pending)),
             "warnings": warnings, "dry_run": args.dry_run,
         }, ensure_ascii=False, indent=2))
@@ -92,7 +95,7 @@ def main(argv=None) -> int:
         if plan.pending:
             embedder = GeminiEmbedder(key)
         collection = collection or open_collection(ROOT / "data/chroma", create=True)
-        completed = apply_plan(plan, collection, embedder, args.limit)
+        completed = apply_plan(plan, collection, embedder, args.limit, prune_stale=not args.keep_stale)
         print(f"Chunk indicizzati in questa esecuzione: {completed}.")
         return 0
     except EmbeddingError as exc:
