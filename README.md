@@ -1,138 +1,139 @@
 # Edicola Digitale Intelligente
 
-**Nuovi PDF senza terminale:** copia i quotidiani nella cartella privata `data/inbox` e ricarica Streamlit: l'app li controlla, evita copie identiche e conserva le versioni precedenti. L'indicizzazione Gemini resta autorizzata separatamente. [Istruzioni](PDF_AUTO_INTAKE.md).
+**Edicola Digitale Intelligente** è un prototipo di applicazione web che permette di consultare più quotidiani in un unico spazio e di approfondire le notizie con strumenti basati sull'intelligenza artificiale.
 
-Leggi i quotidiani disponibili, esplora le notizie e ritrova le pagine originali.
+Il progetto nasce per rendere più semplice la ricerca e la lettura di contenuti giornalistici presenti in documenti PDF. Le risposte e i contenuti generati rimandano, quando disponibili, ai quotidiani e alle pagine da cui provengono le informazioni.
 
-**Anteprima frontend (branch Docker):** intestazione testuale essenziale,
-barra di navigazione compatta e scorrevole, menu Streamlit ridotto e
-impaginazione adatta anche al tablet. Le funzioni dei prodotti e i dati
-non cambiano. Per visualizzarla online con i quotidiani del corpus gia
-presente nel repository, vedi [Docker e anteprima Codespaces](DOCKER.md).
+## Cosa si può fare
 
+L'applicazione comprende queste sezioni:
 
-Sotto l’intestazione, tutte le sezioni mostrano le sette card dei prodotti, ciascuna
-con icona, titolo e descrizione. L’intera scheda è cliccabile e quella attiva è
-evidenziata in blu. La griglia si adatta agli schermi piccoli senza duplicarsi
-nella Home. Il logo è a sinistra nell’intestazione; le icone di ricerca e
-**Profilo** sono a destra, con disposizione adattabile agli schermi piccoli.
-Il profilo e l’accesso Google
-sono disponibili soltanto dal menu Profilo. La pagina iniziale ? **In edicola**:
-**Sfoglia i quotidiani e scopri le edizioni disponibili.** Le copertine formano
-una griglia, con le edizioni datate pi? recenti per prime; copertina e titolo
-aprono il lettore originale. La griglia compare soltanto in questa sezione. Nella Rassegna basta scrivere in **Cerca una notizia o un argomento**
-e premere Invio o Cerca. La ricerca avviene nelle edizioni disponibili; se hai
-già autorizzato le funzioni AI, all’invio può cercare anche per significato.
-Durante la digitazione non vengono inviate richieste. Il Briefing conserva la
-scelta esplicita delle fonti.
-[Resoconto della semplificazione dell’interfaccia](UI_SIMPLIFICATION.md).
-Nelle mappe puoi selezionare direttamente un nodo per leggere collegamenti e
-fonti, senza generare nuovi contenuti. Le fonti
-riportano quotidiano, data dell’edizione e pagina. Le date relative nella
-Timeline vengono completate soltanto con riferimenti non ambigui e metadati
-verificati; gli altri sviluppi sono disponibili nell’area **Altri sviluppi**.
-[Correzioni funzionali e stato delle verifiche](FUNCTIONAL_FIXES.md).
+- **In edicola:** sfogliare i quotidiani disponibili e aprire le pagine originali in PDF.
+- **Rassegna stampa:** esplorare le notizie e cercare argomenti nelle edizioni presenti.
+- **Chat AI:** porre domande sui contenuti dei giornali e consultare le fonti delle risposte.
+- **Briefing:** ottenere una sintesi organizzata di un argomento, scegliendo anche le fonti da considerare.
+- **Timeline:** seguire gli eventi in ordine cronologico quando le date sono verificabili.
+- **Mappe concettuali:** esplorare temi, soggetti e collegamenti ricavati dai documenti.
+- **Podcast:** generare un episodio audio sulle notizie disponibili, con la possibilità di indicare un tema.
+- **Il mio profilo:** gestire preferenze, letture e impostazioni personali, secondo la modalità di accesso configurata.
 
-## Le sezioni
+Le funzioni AI lavorano sui contenuti disponibili e indicizzati: non effettuano automaticamente ricerche di notizie in tempo reale sul web.
 
-- **In edicola**: sfoglia i quotidiani, ingrandisci le pagine e scarica gli originali.
-- **Rassegna stampa**: cerca una notizia o esplora le letture disponibili.
-  I risultati indicano quotidiano e data e aprono il PDF alla pagina corretta.
-  I titoli vengono mostrati soltanto se verificati; altrimenti trovi un estratto
-  originale con un’etichetta neutra.
-- **Chat AI**: fai domande sulle edizioni disponibili e consulta le fonti delle risposte.
-- **Briefing**: scegli un tema e le fonti per ottenere una lettura organizzata per notizie,
-  con citazioni e collegamenti alle pagine PDF. In **Letture già disponibili** puoi
-  consultare anche gli approfondimenti salvati in precedenza. I filtri non modificano
-  una lettura già preparata: serve un nuovo invio per aggiornarla.
-- **Timeline**: segui una sequenza verticale di eventi con data verificata.
-  Una linea continua e un marker accompagnano ogni evento, con data, sintesi e
-  fonte apribile. Gli sviluppi senza data certa sono nell’area espandibile
-  **Altri sviluppi**, separati dalla cronologia. Le sintesi lunghe sono espandibili;
-  dettagli temporali e testi originali sono disponibili su richiesta.
-- **Mappe concettuali**: esplora fino a dieci concetti nel grafo o usa l’Elenco.
-  Seleziona un nodo per aprire dettagli, collegamenti e fonti. Gli archi mostrano
-  soltanto relazioni già documentate; i temi comuni sono distinti dalle relazioni
-  fattuali. La mappa si può scorrere anche sugli schermi piccoli.
-- **Podcast**: premi **Genera podcast** per un episodio dalle notizie indicizzate,
-  senza preparare prima un Briefing. Il campo **Di cosa vuoi ascoltare le notizie?**
-  ? facoltativo: vuoto prepara una selezione generale; con un argomento cerca
-  le notizie pertinenti anche per significato, nelle diverse edizioni indicizzate.
-  Se mancano fonti adeguate non viene prodotto un episodio.
-  Puoi ascoltarlo, scaricarlo e consultare testo e fonti. Gli episodi precedenti
-  restano disponibili. Se fallisce l’audio, il copione resta pronto per un retry manuale.
-- **Il mio profilo**: interessi, letture salvate, briefing personali e privacy.
+## Come funziona
 
-## Fonti e autorizzazioni
+Il funzionamento si articola in quattro passaggi principali:
 
-Le citazioni numerate rimandano a pulsanti che aprono il quotidiano alla pagina
-corretta. I passaggi originali sono consultabili separatamente. Una pagina non
-più disponibile nell’archivio attuale non viene sostituita con un’altra edizione.
-Le date delle edizioni non diventano date degli eventi. La copertura può essere
-parziale e non comprende verifiche delle notizie in tempo reale.
+1. **Acquisizione:** i quotidiani vengono caricati come PDF e registrati nell'archivio.
+2. **Preparazione:** il testo viene estratto e suddiviso in passaggi più piccoli (*chunk*).
+3. **Indicizzazione:** i passaggi vengono trasformati in rappresentazioni numeriche (*embedding*) e salvati in un database vettoriale, per consentire la ricerca semantica.
+4. **Consultazione e generazione:** l'app recupera i passaggi pertinenti e li utilizza per rispondere alle domande o preparare i contenuti editoriali.
 
-Per ogni nuovo invio i prodotti considerano tutto il corpus indicizzato corrente,
-rispettando gli eventuali filtri sulle fonti. I contributi pertinenti delle diverse
-edizioni vengono alternati e selezionati entro uno spazio complessivo: il numero
-dei passaggi non è più fermato a tre, cinque o otto. Si usano passaggi interi,
-senza inviare PDF completi e senza aggiungere chiamate AI per ogni giornale.
-**Edizioni incluse nella lettura** distingue le fonti presenti da quelle citate;
-un avviso segnala gli altri contenuti esclusi per lo spazio disponibile. Le schede
-della Rassegna sono una selezione espandibile delle letture pertinenti.
-Nelle Timeline e nelle Mappe questo riepilogo è nel menu discreto **Fonti
-consultate**; **Leggi la fonte** apre il testo di riferimento. Il PDF resta
-accessibile dal pulsante con quotidiano, data dell’edizione e pagina.
-[Resoconto della presentazione editoriale](EDITORIAL_VISUALS.md).
+Questa modalità di lavoro è chiamata **RAG (Retrieval-Augmented Generation)**: il modello AI utilizza informazioni recuperate dai documenti, anziché basarsi soltanto sulle proprie conoscenze.
 
-Il Podcast prepara un copione autonomo dai passaggi selezionati del corpus e
-ne conserva le fonti PDF. Preparazione e audio richiedono autorizzazioni distinte;
-il consenso testuale è aggiornato per comprendere questo uso. I Podcast storici
-derivati da letture restano consultabili. Navigare e ascoltare episodi già pronti
-non avvia richieste AI. [Flusso Podcast e verifiche offline](PODCAST_STANDALONE.md).
-[Nuova pagina iniziale e Podcast tematici](IN_EDICOLA_TOPICS.md).
+Le citazioni consentono di tornare alle fonti originali. I contenuti generati possono comunque contenere imprecisioni e devono essere verificati prima di essere utilizzati come informazioni definitive.
 
-Le generazioni richiedono un invio esplicito e l’autorizzazione prevista.
-Navigare, leggere un risultato esistente o aprire una fonte non avvia generazioni.
-Le autorizzazioni per testi, briefing personali e audio restano separate.
-Il salvataggio delle chat nell’account è facoltativo; le chat degli ospiti
-rimangono temporanee. Le letture generali sono condivise, i dati del profilo
-sono riservati all’account. Nella modalità dimostrativa locale le preferenze
-sono condivise su quella installazione, come indicato nell’app.
+## Tecnologie utilizzate
 
-## Verifica dell’interfaccia
+| Tecnologia | Utilizzo |
+| --- | --- |
+| **Python** | Logica dell'applicazione ed elaborazione dei documenti |
+| **Streamlit** | Interfaccia web |
+| **pypdf e PyMuPDF** | Lettura ed estrazione del contenuto dei PDF |
+| **SQLite** | Archivio locale e metadati dei documenti |
+| **Google Gemini** | Embedding, generazione dei testi e funzioni AI abilitate |
+| **ChromaDB** | Memorizzazione degli embedding e ricerca semantica |
+| **PostgreSQL** | Dati degli account nella modalità che prevede profili personali |
+| **Docker** | Esecuzione dell'app in un ambiente isolato, quando necessario |
 
-Usare risultati già disponibili senza nuovi invii:
+I modelli AI sono utilizzati tramite servizi cloud: non è necessario scaricare o eseguire un modello linguistico in locale.
 
-1. Dalla Rassegna cercare un tema e premere Invio: i risultati cambiano soltanto
-   all’invio. Controllare fonti e pagina PDF, poi cambiare sezione e tornare.
-2. Aprire una lettura precedente, anche un approfondimento, e controllare citazioni,
-   passaggi originali e pagina PDF. Cambiare sezione e tornare.
-3. Provare Timeline, Mappe ed Elenco, un concetto collegato e uno isolato.
-4. Aprire un ascolto già disponibile e controllare testo, fonti e download.
-5. Ripetere a 1440, 768, 390 e 320 px: testi a capo, pulsanti da tastiera e touch,
-   espansioni, navigazione e lettore PDF. Verificare i flussi di errore senza
-   esporre dettagli tecnici o attribuire all’utente problemi del servizio.
+## Avvio del progetto
 
-## Acquisizione intelligente dei PDF (opzionale)
+Per eseguire l'app in locale servono Python, una versione di SQLite compatibile con ChromaDB e le dipendenze del progetto.
 
-PyMuPDF migliora l'estrazione strutturata dei nuovi PDF; una CLI separata può
-analizzare con Gemini Vision le prime pagine e i richiami, verificare i titoli
-contro il testo originale e associare i chunk agli articoli quando possibile.
-Nessuna chiamata Vision durante la navigazione; l'analisi richiede una
-specifica autorizzazione da CLI. I PDF già presenti possono essere rielaborati
-localmente solo con comando esplicito e backup. [Guida e comandi](PDF_INTELLIGENT_RETRIEVAL.md).
+Clonare il repository:
 
-## Documentazione del progetto
+```bash
+git clone https://github.com/silmucci/edicola-intelligente.git
+cd edicola-intelligente
+```
 
-Per sviluppo e manutenzione consultare [il diario tecnico](DEVELOPMENT_HISTORY.md),
-[la guida archivio](GESTIONE_ARCHIVIO.md), [gli account](ACCOUNTS.md),
-[la cronologia chat](CHAT_HISTORY.md), [il deployment](DEPLOYMENT.md)
-e [la valutazione sperimentale](evaluation/README.md).
-Per eseguire l'applicazione localmente in un container, consultare la [guida Docker](DOCKER.md).
-L'avvio abituale con Streamlit rimane disponibile; Docker non include PDF, indici o segreti.
-Il [resoconto dell’unificazione](CONSUMER_APP.md) confronta i prodotti,
-indica i file e i test pertinenti e descrive la compatibilità dei risultati salvati.
-Nessun aggiornamento dei dati o pubblicazione avviene tramite queste istruzioni.
+Creare un ambiente virtuale e installare le dipendenze:
 
-Per l’ultima revisione funzionale e i limiti dei controlli offline consultare
-[il resoconto di Rassegna, Timeline e Mappe](READER_REVISION.md).
+```bash
+python -m venv .venv
+```
+
+Su Windows:
+
+```powershell
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Su macOS o Linux:
+
+```bash
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Avviare l'applicazione:
+
+```bash
+streamlit run app.py
+```
+
+L'interfaccia si apre normalmente all'indirizzo `http://localhost:8501`.
+
+### Configurazione delle API
+
+Per usare le funzioni Gemini, creare un file `.env` locale a partire da `.env.example` e inserire una chiave API valida:
+
+```env
+GEMINI_API_KEY=la_tua_chiave_api
+```
+
+Le chiamate esterne richiedono le autorizzazioni previste dal progetto. La sola apertura dei PDF e la navigazione non comportano automaticamente nuove richieste di generazione AI.
+
+L'accesso Google e i profili personali richiedono una configurazione separata delle credenziali di autenticazione e del database. In assenza di tale configurazione, le funzioni disponibili dipendono dalla modalità di esecuzione.
+
+## Aggiungere nuovi quotidiani
+
+Nella modalità locale, si possono inserire nuovi PDF nella cartella `data/inbox`. Quando l'app viene ricaricata, i file validi vengono preparati e aggiunti all'archivio senza avviare automaticamente chiamate Gemini.
+
+**Importante:** preparare un PDF non significa averlo già indicizzato per la ricerca semantica. Per generare gli embedding mancanti è necessaria un'operazione separata e autorizzata.
+
+L'acquisizione automatica non è attiva nella modalità cloud basata su uno snapshot dei documenti. Per dettagli vedere [Acquisizione dei PDF](PDF_AUTO_INTAKE.md) e [Gestione dell'archivio](GESTIONE_ARCHIVIO.md).
+
+## Esecuzione con Docker
+
+Il progetto include anche una configurazione Docker. È un'alternativa all'avvio con Python e Streamlit, utile per eseguire l'app in un ambiente isolato o visualizzarla tramite GitHub Codespaces.
+
+Per l'avvio locale con Docker:
+
+```bash
+docker compose up --build -d
+```
+
+La configurazione con lo snapshot dei PDF già preparati segue una procedura diversa, descritta in [DOCKER.md](DOCKER.md). Docker non sostituisce Streamlit e non esegue modelli AI locali.
+
+## Organizzazione del progetto
+
+- `app.py`: punto di ingresso dell'interfaccia.
+- `edicola/`: moduli per documenti, ricerca, generazione AI e sezioni dell'app.
+- `tests/`: test automatici.
+- `data/`: dati e documenti locali, secondo la configurazione utilizzata.
+- `deployment/`: file necessari alle modalità di pubblicazione previste.
+- `requirements.txt`: dipendenze Python.
+- `.env.example`: esempio delle variabili di configurazione.
+
+## Limiti e attenzione alle fonti
+
+Il prototipo utilizza i quotidiani effettivamente presenti e i passaggi già indicizzati. Una copertura incompleta dell'indice può limitare i risultati della ricerca. L'estrazione del testo dai PDF, l'individuazione degli articoli e la generazione AI non sono sempre perfette.
+
+I PDF e i contenuti derivati devono essere utilizzati e condivisi nel rispetto dei relativi diritti. Non pubblicare nel repository chiavi API, credenziali, dati personali o documenti non autorizzati.
+
+## Contesto del progetto
+
+L'Edicola Digitale Intelligente è stata sviluppata come prototipo nell'ambito di un percorso di tirocinio, con l'obiettivo di sperimentare l'uso dell'intelligenza artificiale generativa e della ricerca semantica per valorizzare e rendere più accessibili i contenuti editoriali.
