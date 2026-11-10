@@ -23,7 +23,7 @@ from edicola.podcast_ui import render_podcast_ui
 from edicola.personalization_ui import render_personalization_ui
 from edicola.cloud import prepare_cloud
 from edicola.settings import setting
-from edicola.experience_ui import render_home
+from edicola.experience_ui import render_home, render_for_you
 from edicola.identity import synchronize_identity
 from edicola.header_ui import render_header
 from edicola.product_navigation import render_navigation, active_product
@@ -96,6 +96,8 @@ product = active_product(section)
 # navigazione; i pulsanti di generazione non vengono ripristinati.
 if product["id"] == "home":
     render_home(context.root, context)
+elif product["id"] == "for_you":
+    render_for_you(context.root, context)
 elif product["id"] == "archive":
     render_archive(context, prepared)
 elif product["id"] == "chat":
