@@ -134,15 +134,10 @@ def render_personalization_ui(root, archive=None):
 def render_demo_readings(root, archive, profile, catalog):
     """Salvati e briefing demo visualizzati dalla card Per te."""
     with st.expander(f"Le mie letture salvate ({len(profile.saved)})"):
-        if not profile.saved:
-            st.info("Ritrova qui le letture che vuoi conservare. Usa Salva lettura nelle schede consigliate.")
         for identity, item in profile.saved.items():
             with st.container(border=True):
                 st.text(document_label(archive, item["metadata"]["filename"], item["metadata"]["page"]))
                 st.markdown(readable("«" + excerpt(item["text"], 230) + "»"))
-                with st.expander("Leggi il passaggio salvato"):
-                    st.text(item["text"])
-                    st.caption("Copia salvata; questa lettura potrebbe non essere più disponibile nell’archivio attuale. Può comprendere più notizie.")
                 source_button(item["metadata"]["filename"], item["metadata"]["page"], context=archive, chunk_id=identity, key=f"personal_saved_pdf_{identity}")
                 if st.button("Rimuovi dai salvati", key=f"personal_remove_{identity}"):
                     remove_passage(root, profile.user_id, identity)
@@ -176,7 +171,6 @@ def render_demo_readings(root, archive, profile, catalog):
                 show_product(product.result, archive)
         else:
             show_product(product.result, archive)
-        st.caption("Puoi ascoltare un podcast già salvato o crearne uno. L’audio legge un estratto di circa 1–2 minuti anche per briefing lunghi.")
         with st.expander("Ascolta questo briefing"):
             voice = st.selectbox("Voce del podcast personale", VOICES, key="personal_voice")
             audio_submit = st.button("Genera podcast del mio briefing", key="personal_audio_submit")
@@ -190,10 +184,7 @@ def render_demo_readings(root, archive, profile, catalog):
         existing = cached_audio(scope, selected, voice)
         if existing:
             data, manifest = existing
-            st.caption(f"Podcast già disponibile — voce {manifest['voice']}.")
-            if manifest["script"]["selected_sections"] < manifest["script"]["total_sections"]:
-                st.info("L'audio legge un estratto del briefing, composto da sezioni complete.")
-            st.audio(data, format="audio/wav")
+                st.audio(data, format="audio/wav")
             st.download_button("Scarica podcast personale WAV", data, file_name="briefing-personale.wav", mime="audio/wav", key="personal_download")
             with st.expander("Testo letto e fonti del podcast personale"):
                 st.text(manifest["script"]["text"])
