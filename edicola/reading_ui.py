@@ -113,12 +113,6 @@ def render_chat(root, context):
     synchronize_identity()
     section_intro("Chat AI", "Riprendi un argomento, approfondisci le notizie, ritrova le fonti.")
     try:
-        from edicola.editorial_selection import read_catalog
-        if read_catalog(root).coverage.get("partial"):
-            st.caption("Le risposte coprono solo una parte dell’archivio. Puoi consultare tutte le edizioni nella sezione In edicola.")
-    except (OSError, ValueError, RuntimeError):
-        pass
-    try:
         chat = render_navigation()
     except PersonalStoreError:
         st.error("Le conversazioni del tuo account non sono disponibili in questo momento. Riprova più tardi.")
