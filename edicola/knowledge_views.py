@@ -7,6 +7,7 @@ import streamlit as st
 from edicola.archive_ui import diagnostics_enabled
 from edicola.pdf_viewer import source_button, resolve_reference, open_reference, PdfViewError
 from edicola.rag_context import source_editions
+from edicola.article_evidence import article_reference
 from edicola.knowledge_components import event_card, event_text, timeline_story, LABELS
 from edicola.knowledge_presentation import undated_order, empty_knowledge_message, theme_title, short_text
 from edicola.knowledge_validation import compact_map
@@ -18,7 +19,7 @@ from edicola.map_component import render_graph
 NODE_TYPES = {kind: values[0] for kind, values in GROUPS.items()}
 
 
-def compact_sources(ids, sources, archive, key):
+def compact_sources(ids, sources, archive, key, *, articles=None):
     from edicola.experience_ui import readable
     selected = [s for s in sources if s.id in ids]
     if selected:
@@ -32,10 +33,19 @@ def compact_sources(ids, sources, archive, key):
                 seen.add((source.filename, source.page))
                 name = editions.get(source.id, {}).get("publication") or "Documento dell’archivio"
                 published = editions.get(source.id, {}).get("publication_date") or "Data non disponibile"
+                article = (articles or {}).get(source.id)
+                title = article_reference(article) if article else ""
+                label = name + f" · {published} · pagina {source.page}"
+                if title:
+                    label += " · " + title
                 source_button(source.filename, source.page, context=archive, chunk_id=source.chunk_id,
-                              key=f"{key}_pdf_{source.id}", label=readable(name + f" · {published} · pagina {source.page}"), help_text="Apri la pagina originale")
+                              key=f"{key}_pdf_{source.id}", label=readable(label),
+                              help_text="Apri la pagina originale")
         with st.popover("Leggi la fonte", key=key + "_passages"):
             for source in selected:
+                article = (articles or {}).get(source.id)
+                if article:
+                    st.caption(article_reference(article))
                 st.text(source.text)
 
 
@@ -58,15 +68,17 @@ def render_knowledge(result, archive=None):
     render_context_limit(result.coverage)
     if result.kind == "timeline":
         if data["events"]:
-            render_timeline(sorted(data["events"], key=lambda item: item["event_date"]), result.sources, archive)
+            render_timeline(sorted(data["events"], key=lambda item: item["event_date"]), result.sources, archive,
+                            articles=result.source_articles)
         else:
             st.info("Le fonti disponibili non permettono di ricostruire una cronologia affidabile. Puoi consultare le fonti e gli altri sviluppi.")
-            compact_sources([s.id for s in result.sources], result.sources, archive, "timeline_unresolved")
+            compact_sources([s.id for s in result.sources], result.sources, archive, "timeline_unresolved",
+                            articles=result.source_articles)
         if data["undated_events"]:
             with st.expander("Altri sviluppi"):
                 st.caption("Sviluppi documentati sul tema, senza una data certa. L’ordine non è cronologico.")
                 for index, event in enumerate(undated_order(data["undated_events"], result.sources)):
-                    render_event(event, result.sources, archive, f"undated_{index}")
+                    render_event(event, result.sources, archive, f"undated_{index}", articles=result.source_articles)
     else:
         render_map(result, archive, technical)
     items = (data.get("events", []) + data.get("undated_events", []) if result.kind == "timeline" else
@@ -115,8 +127,10 @@ def render_map(result, archive, technical):
                 st.subheader(readable(captions[focus]))
                 st.caption(NODE_TYPES[selected["kind"]])
                 st.text(selected["label"])
-                compact_sources(selected["source_ids"], result.sources, archive, "map_selected_" + focus)
-                render_node_connections(selected, data, {n["id"]: n["label"] for n in data["nodes"]}, result.sources, archive)
+                compact_sources(selected["source_ids"], result.sources, archive, "map_selected_" + focus,
+                                articles=result.source_articles)
+                render_node_connections(selected, data, {n["id"]: n["label"] for n in data["nodes"]}, result.sources, archive,
+                                        articles=result.source_articles)
     if mode == "Grafo" and len(view["nodes"]) < len(data["nodes"]):
         st.caption("Altri concetti disponibili nella vista Elenco.")
     nodes = {n["id"]: n["label"] for n in data["nodes"]}
@@ -127,8 +141,9 @@ def render_map(result, archive, technical):
                 with st.popover(readable(captions[node["id"]]), key="knowledge_node_" + node["id"], icon=":material/info:"):
                     st.caption(NODE_TYPES[kind])
                     st.text(node["label"])
-                    compact_sources(node["source_ids"], result.sources, archive, "map_node_" + node["id"])
-                    render_node_connections(node, data, nodes, result.sources, archive)
+                    compact_sources(node["source_ids"], result.sources, archive, "map_node_" + node["id"],
+                                    articles=result.source_articles)
+                    render_node_connections(node, data, nodes, result.sources, archive, articles=result.source_articles)
     if technical:
         with st.expander("Relazioni · sviluppo"):
             st.caption("Nodi nel grafo: " + ", ".join(n["id"] for n in view["nodes"]))
@@ -150,7 +165,7 @@ def render_map(result, archive, technical):
                 st.text(source.text)
 
 
-def render_timeline(events, sources, archive):
+def render_timeline(events, sources, archive, *, articles=None):
     """Asse continuo con sole date verificate; azioni PDF validate sul server."""
     root = archive.root if archive else Path(__file__).resolve().parents[1]
     editions = source_editions(root, sources)
@@ -168,6 +183,9 @@ def render_timeline(events, sources, archive):
             info = editions.get(source.id, {})
             label = " · ".join([info.get("publication") or "Documento dell’archivio",
                                 info.get("publication_date") or "Data non disponibile", f"pagina {source.page}"])
+            article = (articles or {}).get(source.id)
+            if article:
+                label += " · " + article_reference(article)
             available = archive is not None
             if available:
                 try:
@@ -207,7 +225,7 @@ def render_timeline(events, sources, archive):
             render_event_details(events[detail["index"]], sources)
 
 
-def render_node_connections(node, data, labels, sources, archive):
+def render_node_connections(node, data, labels, sources, archive, *, articles=None):
     """Solo collegamenti già validati, accanto al concetto cui appartengono."""
     edges = data["edges"] + data.get("context_edges", [])
     connected = [(index, edge) for index, edge in enumerate(edges)
@@ -221,17 +239,17 @@ def render_node_connections(node, data, labels, sources, archive):
         label = edge["label"] + (": " + edge["topic"] if edge.get("topic") else "")
         st.text(connector.join((labels[edge["from_id"]], label, labels[edge["to_id"]])))
         key = f"map_node_{node['id']}_edge_{index}"
-        compact_sources(edge["source_ids"], sources, archive, key)
+        compact_sources(edge["source_ids"], sources, archive, key, articles=articles)
         with st.popover("Citazioni del collegamento", key=key + "_quotes"):
             for evidence in edge.get("evidence", []):
                 st.text(evidence["quote"])
 
 
-def render_event(event, sources=(), archive=None, key="event"):
+def render_event(event, sources=(), archive=None, key="event", *, articles=None):
     # Un contenitore comprende narrazione e azioni, anche sugli schermi stretti.
     with st.container(border=False):
         event_card(event)
-        compact_sources(event.get("source_ids", []), sources, archive, key)
+        compact_sources(event.get("source_ids", []), sources, archive, key, articles=articles)
         with st.popover("Dettagli e date", key=key + "_details"):
             render_event_details(event, sources)
 
