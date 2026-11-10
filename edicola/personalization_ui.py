@@ -121,11 +121,11 @@ def render_personalization_ui(root, archive=None):
         privacy_controls(key="demo_privacy")
         with st.expander("Cancella i dati del profilo demo"):
             st.caption("La cancellazione rimuove preferenze, letture salvate, briefing personali e relativi audio. I prodotti editoriali generali restano disponibili.")
-                if st.button("Cancella preferenze e storico demo", key="personal_delete"):
-                    delete_profile(root, profile.user_id)
-                    st.session_state["personal_reset"] = True
-                    st.session_state["profile_deleted_notice"] = True
-                    st.rerun()
+            if st.button("Cancella preferenze e storico demo", key="personal_delete"):
+                delete_profile(root, profile.user_id)
+                st.session_state["personal_reset"] = True
+                st.session_state["profile_deleted_notice"] = True
+                st.rerun()
     if st.session_state.pop("profile_deleted_notice", False):
         st.success("Preferenze e storico demo cancellati.")
 
