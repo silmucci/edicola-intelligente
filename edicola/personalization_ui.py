@@ -32,7 +32,7 @@ def show_product(result, archive=None):
     if result.from_cache:
         st.caption("Lettura già disponibile.")
     render_context_limit(result.coverage)
-    if result.message:
+    if not result.sufficient:
         st.info(product_notice(result))
     for section in result.sections:
         with st.container(border=True):
