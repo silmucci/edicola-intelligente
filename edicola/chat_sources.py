@@ -28,8 +28,8 @@ def render_contributions(sources, used_source_ids, root, *, editions=None, compa
 
 
 def render_context_limit(coverage):
-    if coverage.get("partial") or coverage.get("context_selection", {}).get("omitted_passages", 0):
-        st.caption("Questa lettura è una selezione: puoi approfondire nelle edizioni originali.")
+    """Non ripetere avvisi di copertura quando ci sono contenuti consultabili."""
+    return
 
 
 def render_sources(result, *, index, last, root, context, formatter, namespace="rag"):
