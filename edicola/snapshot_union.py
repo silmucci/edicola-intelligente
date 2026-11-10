@@ -140,7 +140,18 @@ def _inspect(root):
                           if name not in local_editions}
     # Conta i chunk locali già attivi senza eseguire nuove estrazioni.
     local_chunks, warnings = read_active_chunks(registry, incoming)
-    if warnings:
+    # Se l'operazione precedente si è interrotta dopo la copia dei PDF ma
+    # prima della sostituzione del DB, i file dello snapshot non registrati
+    # sono gli unici avvisi ammessi: --apply completa il ripristino.
+    unregistered_seed_files = {
+        name for name, (_, sha) in seed_files.items()
+        if current_files.get(name) == sha and name not in local_sources
+    }
+    unexpected = [
+        warning for warning in warnings
+        if warning.split(": ", 1)[0] not in unregistered_seed_files
+    ]
+    if unexpected:
         raise ValueError("Aggiornare prima i PDF locali segnalati da read_active_chunks.")
     union_ids = {c.id for c in seed_chunks} | {c.id for c in local_chunks}
     return {
