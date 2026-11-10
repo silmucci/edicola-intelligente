@@ -14,7 +14,7 @@ from edicola.account_recovery import offer_guest_access
 from edicola.podcast import VOICES
 from edicola.podcast_text import PodcastError
 from edicola.standalone_podcast import generate_standalone_podcast, list_episodes, PodcastAudioError
-from edicola.chat_sources import document_label, render_contributions
+from edicola.chat_sources import document_label
 from edicola.article_evidence import article_reference
 from edicola.pdf_viewer import source_button
 
@@ -126,8 +126,6 @@ def render_podcast_ui(root: Path, archive=None):
 
 
 def render_episode_sources(script, sources, root, archive, key, *, articles=None):
-    used = [s["id"] for s in script.sources]
-    render_contributions(sources, used, root, compact=True)
     for source in script.sources:
         article = (articles or {}).get(source["id"])
         label = document_label(archive, source["filename"], source["page"])
