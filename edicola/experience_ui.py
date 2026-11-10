@@ -140,27 +140,38 @@ def render_home(root, context):
         return
     from edicola.press_review_ui import render_press_review
     render_press_review(catalog, context, metadata)
-    if authenticated():
-        st.subheader("Consigliati per te")
-        try:
-            store = None
-            if identity.local_demo():
-                st.caption("Preferenze condivise su questa installazione, senza tracciamento.")
-                profile = load_profile(root)
-            else:
-                from edicola.account_ui import personal_context
-                st.caption("Letture selezionate per le tue preferenze personali, senza tracciamento implicito.")
-                store, profile = personal_context()
-            items = recommend(catalog, profile, limit=3)
-        except (OSError, ValueError, RuntimeError, sqlite3.Error):
-            st.info("Le preferenze non sono disponibili in questo momento.")
+
+def render_for_you(root, context):
+    """Letture consigliate accessibili dalla card Per te, senza invii AI."""
+    identity.synchronize_identity()
+    section_intro("Per te", "Le notizie più vicine agli argomenti che segui.", "La tua edicola")
+    if not authenticated():
+        st.info("Accedi con Google dal menu Profilo per consultare le tue letture consigliate."
+                if not identity.local_demo() else
+                "Per vedere le letture consigliate, accedi e imposta i tuoi interessi.")
+        return
+    try:
+        store = None
+        if identity.local_demo():
+            profile = load_profile(root)
+        else:
+            from edicola.account_ui import personal_context
+            store, profile = personal_context()
+        if not profile.interests:
+            st.info("Scegli gli argomenti che ti interessano nel Profilo per personalizzare questa sezione.")
             return
-        if not items:
-            st.info("Scegli i tuoi interessi nel profilo per trovare letture pertinenti tra le fonti disponibili.")
-        with st.container(horizontal=True, gap="medium"):
-            for index, item in enumerate(items):
-                passage_card(item.chunk, context=context, editions=metadata, key=f"home_personal_{index}",
-                             reason=item.reason, root=root, profile=profile, store=store)
-    else:
-        st.caption("Stai esplorando l’edizione per tutti. Accedi con Google per salvare le tue preferenze personali." if not identity.local_demo() else
-                   "Le preferenze di questa installazione sono condivise; non è un account personale.")
+        catalog = read_catalog(root)
+        items = recommend(catalog, profile)
+    except (OSError, ValueError, RuntimeError, sqlite3.Error):
+        st.info("Le letture consigliate non sono disponibili in questo momento.")
+        return
+    if catalog.coverage.get("partial"):
+        st.caption("Le proposte si basano sulle edizioni attualmente disponibili.")
+    if not items:
+        st.info("Non ci sono ancora letture pertinenti agli argomenti scelti.")
+        return
+    metadata = edition_metadata(root, context.documents)
+    with st.container(horizontal=True, gap="medium"):
+        for index, item in enumerate(items):
+            passage_card(item.chunk, context=context, editions=metadata, key=f"for_you_{index}",
+                         root=root, profile=profile, store=store)
