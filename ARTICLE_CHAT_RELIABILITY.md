@@ -10,6 +10,10 @@ presenti nei passaggi originali dei quotidiani.
 
 Le fonti visibili mostrano testata, data curata quando presente, pagina e
 titolo verificato. I titoli incerti o assenti non vengono inventati.
+Per i 12 quotidiani già indicizzati nello snapshot occorre prima un aggiornamento
+controllato delle vecchie estrazioni, altrimenti restano visibili solo i dati
+precedenti; i nuovi PDF acquisiti con PyMuPDF dispongono già dei metadati
+locali necessari.
 La Chat evita passaggi identici dello stesso articolo; il Briefing elimina
 notizie sostanzialmente ripetute, mantenendo notizie con numeri o dettagli
 materialmente differenti. La strategia del Briefing passa a `briefing-v3`:
