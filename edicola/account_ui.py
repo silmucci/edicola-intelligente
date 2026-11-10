@@ -50,7 +50,7 @@ def privacy_notice():
 def render_account_profile(root, archive=None):
     from edicola.experience_ui import INTERESTS
     synchronize_identity()
-    section_intro("Il mio profilo", "Il tuo tempo, i tuoi interessi, le tue letture. Preferenze e privacy in un unico spazio.", "La tua edicola")
+    section_intro("Il mio profilo", "Gestisci i tuoi interessi e le impostazioni personali.", "La tua edicola")
     if current_identity() is None:
         privacy_controls()
         privacy_notice()
