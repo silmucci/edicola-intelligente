@@ -5,6 +5,7 @@ import streamlit as st
 PRODUCTS = [
     dict(id="archive", title="In edicola", description="Sfoglia i quotidiani e scopri le edizioni disponibili.", icon="archive"),
     dict(id="home", title="Rassegna stampa", description="Esplora le notizie dei quotidiani.", icon="paper"),
+    dict(id="for_you", title="Per te", description="Letture selezionate in base ai tuoi interessi.", icon="person"),
     dict(id="chat", title="Chat AI", description="Fai domande e approfondisci le notizie.", icon="chat"),
     dict(id="briefing", title="Briefing", description="Leggi una sintesi organizzata per argomento.", kind="Briefing", icon="list"),
     dict(id="timeline", title="Timeline", description="Segui l'evoluzione degli eventi.", kind="Timeline", icon="clock"),
