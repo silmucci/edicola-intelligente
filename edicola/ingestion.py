@@ -7,6 +7,7 @@ from pathlib import Path
 from pypdf import PdfReader
 
 from edicola.models import Document, Page
+from edicola.pdf_structure import extract_layout
 from edicola.storage import load_result, open_registry, record_source, save_result
 
 
@@ -22,10 +23,18 @@ def extract_pdf(content: bytes) -> dict:
         result["total_pages"] = len(reader.pages)
         if not result["total_pages"]:
             return {**result, "status": "empty", "message": "Il PDF non contiene pagine."}
+        layout = extract_layout(content)
         for number, page in enumerate(reader.pages, start=1):
             item = {"number": number, "text": "", "error": ""}
             try:
-                item["text"] = page.extract_text() or ""
+                structured = layout[number - 1] if layout and number <= len(layout) else None
+                if structured and structured.get("text", "").strip():
+                    item["text"] = structured["text"]
+                    item["blocks"] = structured["blocks"]
+                    item["extraction_method"] = structured["extraction_method"]
+                else:
+                    item["text"] = page.extract_text() or ""
+                    item["extraction_method"] = "pypdf-fallback"
             except Exception as exc:
                 item["error"] = f"Pagina non estraibile: {type(exc).__name__}: {exc}"
             result["pages"].append(item)
