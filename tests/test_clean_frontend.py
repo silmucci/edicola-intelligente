@@ -1,44 +1,43 @@
-"""Smoke test del restyling: nessuna modifica alla logica editoriale o alla AI."""
+"""Regression: ripristino della navigazione editoriale classica senza modifiche alle funzioni."""
 
 from pathlib import Path
 import tomllib
 
-from edicola.design_tokens import APP_SHELL_CSS, COLORS, app_shell_css, page_css
+from edicola.design_tokens import COLORS, page_css
 from edicola.editorial_components import CARD_CSS, CARD_JS
+from edicola.header_ui import LOGO
 from edicola.product_navigation import PRODUCTS
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_minimal_native_toolbar_and_consistent_palette():
+def test_classic_blue_red_theme_and_minimal_streamlit_toolbar():
     config = tomllib.loads((ROOT / ".streamlit/config.toml").read_text(encoding="utf-8"))
     assert config["client"]["toolbarMode"] == "minimal"
     theme = config["theme"]
-    assert theme["primaryColor"] == COLORS["primary"]
+    assert theme["primaryColor"] == COLORS["primary"] == "#0866D9"
+    assert COLORS["accent"] == "#E51B2B"
     assert theme["backgroundColor"] == COLORS["paper"]
     assert theme["textColor"] == COLORS["ink"]
     assert theme["borderColor"] == COLORS["border"]
 
 
-def test_chrome_css_is_separate_from_editorial_components():
-    css = app_shell_css()
-    assert css == APP_SHELL_CSS
-    assert '[data-testid="stToolbar"]' in css
-    assert '[data-testid="stHeader"]' in css
-    assert '[data-testid="stMainBlockContainer"]' in css
-    assert "data-testid" not in page_css()
-    assert "data-testid" not in CARD_CSS
-    assert "prefers-reduced-motion" in CARD_CSS
-
-
-def test_compact_navigation_preserves_actions_and_accessibility():
-    assert ".cards.products{display:flex" in CARD_CSS
-    assert ".products .card p,.products .arrow{display:none}" in CARD_CSS
-    assert "overflow-x:auto" in CARD_CSS
+def test_seven_full_cards_restore_descriptions_and_keep_accessibility():
+    assert ".cards.products{grid-template-columns:repeat(7" in CARD_CSS
+    assert ".products .card p{font-size:12px" in CARD_CSS
+    assert ".cards.products{display:grid;grid-template-columns:repeat(2" in CARD_CSS
     assert "item.id" in CARD_JS
     assert "aria-current" in CARD_JS
     assert "setTriggerValue('selected'" in CARD_JS
     assert [p["id"] for p in PRODUCTS if p["id"] != "profile"] == [
         "archive", "home", "chat", "briefing", "timeline", "map", "podcast"
     ]
+
+
+def test_original_logo_scoped_styles_no_streamlit_dom_overrides():
+    assert LOGO.startswith("<svg")
+    assert "edi-brand" in page_css()
+    assert "data-testid" not in page_css()
+    assert "data-testid" not in CARD_CSS
+    assert "prefers-reduced-motion" in CARD_CSS
