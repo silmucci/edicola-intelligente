@@ -25,7 +25,8 @@ from edicola.article_evidence import source_articles, evidence_source_record, cl
 
 LEGACY_VERSION = "standalone-podcast-v1"
 TOPIC_VERSION = "standalone-podcast-v2"
-VERSION = "standalone-podcast-v3"
+V3_VERSION = "standalone-podcast-v3"
+VERSION = "standalone-podcast-v4"
 INTRO = "Benvenuti. Ecco alcune notizie dalle edizioni disponibili."
 OUTRO = "Per approfondire, trovate le fonti e le pagine originali accanto a questo episodio."
 INSTRUCTION = """Prepara un breve notiziario italiano per l'ascolto, usando esclusivamente
@@ -52,6 +53,15 @@ Se presenti, article_title e article_pages collegano passaggi verificati dello
 stesso articolo. Servono solo per non ripetere una notizia: titoli e pagine
 non sono una prova autonoma di fatti, cifre o date. Usa citazioni letterali
 dei passaggi originali per ogni notizia pubblicata."""
+V3_INSTRUCTION = INSTRUCTION
+INSTRUCTION += """
+Per un notiziario da ascoltare, sviluppa le notizie con dettagli verificabili:
+contesto, fatti, soggetti coinvolti e conseguenze documentate. Quando le fonti
+lo consentono, scrivi circa 280-330 parole complessive, per un ascolto di circa
+2-3 minuti. Usa più notizie distinte quando disponibili e collega i passaggi
+con frasi naturali. Se le fonti sono scarse, produci un episodio più breve:
+non ripetere frasi, non diluire il testo e non aggiungere fatti non provati.
+Le evidenze letterali restano obbligatorie per titoli e sintesi."""
 
 
 @dataclass
@@ -121,13 +131,14 @@ def load_draft(root, key, catalog=None):
     try:
         saved = json.loads(path.read_text(encoding="utf-8"))
         strategy = saved["version"]
-        topic = normalize_topic(saved.get("topic", "")) if strategy in {TOPIC_VERSION, VERSION} else ""
+        topic = normalize_topic(saved.get("topic", "")) if strategy in {TOPIC_VERSION, V3_VERSION, VERSION} else ""
         instruction = (LEGACY_INSTRUCTION if strategy == LEGACY_VERSION else
-                       TOPIC_INSTRUCTION if strategy == TOPIC_VERSION else INSTRUCTION)
+                       TOPIC_INSTRUCTION if strategy == TOPIC_VERSION else
+                       V3_INSTRUCTION if strategy == V3_VERSION else INSTRUCTION)
         identity = [strategy, saved["source_identity"], saved["model"], saved["config"], instruction]
-        if strategy in {TOPIC_VERSION, VERSION}:
+        if strategy in {TOPIC_VERSION, V3_VERSION, VERSION}:
             identity.append(topic)
-        if saved["key"] != key or strategy not in {VERSION, TOPIC_VERSION, LEGACY_VERSION} or digest(identity) != key:
+        if saved["key"] != key or strategy not in {VERSION, V3_VERSION, TOPIC_VERSION, LEGACY_VERSION} or digest(identity) != key:
             raise ValueError
         sources = [Source(**s) for s in saved["sources"]]
         articles = clean_source_articles(saved.get("source_articles", {}), {s.id for s in sources})
@@ -153,7 +164,7 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None)
     topic = normalize_topic(topic)
     key_value = api_key(root)
     model = os.getenv("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
-    config = EditorialConfig(max_source_chars=int(os.getenv("EDITORIAL_MAX_SOURCE_CHARS", "8000")),
+    config = EditorialConfig(max_source_chars=int(os.getenv("EDITORIAL_MAX_SOURCE_CHARS", "11000")),
                              topic_similarity=float(os.getenv("EDITORIAL_TOPIC_SIMILARITY", "0.82")))
     cache_config = {**asdict(config), "query_embedding": [EMBEDDING_MODEL, FORMAT_VERSION] if topic else None,
                     "ranking": RANKING_VERSION if topic else None}
@@ -175,7 +186,7 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None)
                            "sources": [evidence_source_record(s, article_details.get(s.id)) for s in items]},
                           ensure_ascii=False)
     candidates = sources
-    sources, _ = fit_context(sources, lambda items: INSTRUCTION + prompt(items), 14000, text_budget=config.max_source_chars)
+    sources, _ = fit_context(sources, lambda items: INSTRUCTION + prompt(items), 19000, text_budget=config.max_source_chars)
     article_details = {s.id: article_details[s.id] for s in sources if s.id in article_details}
     if not sources:
         raise PodcastError("Le fonti disponibili non sono sufficienti per preparare un episodio affidabile.")
