@@ -6,6 +6,7 @@ from dataclasses import asdict
 from uuid import UUID
 
 from edicola.personal_store import PersonalStoreError
+from edicola.article_evidence import clean_source_articles
 
 MAX_CHATS = 200
 MAX_LOCAL_CHATS = 20
@@ -105,6 +106,7 @@ def decode_result(content, details):
                     raise ValueError()
         if not isinstance(data.get("temporal_notice", ""), str):
             raise ValueError()
+        data["source_articles"] = clean_source_articles(data.get("source_articles", {}), ids)
         return RagResult(answer=content, **data)
     except (ValueError, TypeError, KeyError, AttributeError):
         raise PersonalStoreError("Una risposta salvata non è leggibile. Nessuna rigenerazione automatica.") from None
