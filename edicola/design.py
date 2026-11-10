@@ -39,12 +39,10 @@ def friendly_error(error):
 
 
 def product_notice(product):
-    """Messaggi per la lettura; cause tecniche conservate nei risultati originali."""
-    status = product.diagnostics.get("status", "")
-    if status in {"empty_index", "selection_empty", "model_abstention"} or not product.sources and not status:
-        return "Non ci sono contenuti sufficienti per questa lettura tra le fonti disponibili."
-    if status == "partial_validation" and product.sufficient:
+    """Mostra un avviso soltanto quando non esiste una lettura utilizzabile."""
+    if product.sufficient:
         return ""
-    if not product.sufficient:
-        return "Non è stato possibile preparare questa lettura. Le edizioni originali restano consultabili."
-    return "Questa lettura è disponibile solo in parte. Puoi approfondire nelle fonti originali."
+    status = (product.diagnostics or {}).get("status", "")
+    if status in {"empty_index", "selection_empty", "model_abstention"} or not product.sources:
+        return "Non ci sono informazioni sufficienti per questa lettura."
+    return "Non è stato possibile preparare questa lettura. Riprova con un altro argomento."
