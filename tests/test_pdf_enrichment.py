@@ -169,3 +169,47 @@ def test_local_refresh_requires_named_valid_pdf(tmp_path):
     from edicola.pdf_refresh import refresh
     with pytest.raises(ValueError):
         refresh(tmp_path, [], apply=True)
+
+
+
+def test_verified_article_is_attached_to_sqlite_chunks_without_changing_text(tmp_path):
+    from edicola.archive import read_active_chunks
+    from edicola.chunking import prepare_documents
+    from edicola.ingestion import ingest_directory
+
+    incoming = tmp_path / "data/incoming"
+    incoming.mkdir(parents=True)
+    (incoming / "giornale.pdf").write_bytes(make_layout_pdf())
+    registry = tmp_path / "data/archive.sqlite3"
+    docs = ingest_directory(incoming, registry)
+    prepare_documents(docs, registry)
+    before, warnings = read_active_chunks(registry, incoming)
+    assert not warnings and before
+    original = [(c.id, c.text, c.metadata["page"]) for c in before]
+    text = docs[0].pages[0].text
+    response = validate_vision_response({"articles": [
+        {"title": "Titolo generale del quotidiano", "importance": "apertura"}]},
+        text, 1, 1)
+    save_page(tmp_path / "data/editorial_pages.sqlite3", docs[0].sha256,
+              1, "mock", text, response)
+    after, warnings = read_active_chunks(registry, incoming)
+    assert not warnings
+    assert [(c.id, c.text, c.metadata["page"]) for c in after] == original
+    assert any(c.metadata.get("article_title_verified") for c in after)
+    assert all("article_title" not in c.metadata or c.metadata["article_title"] in text
+               for c in after)
+
+
+def test_vision_cli_caches_validated_page_without_repeat_requests(tmp_path):
+    incoming = tmp_path / "data/incoming"
+    incoming.mkdir(parents=True)
+    (incoming / "giornale.pdf").write_bytes(make_layout_pdf())
+    reply = '{"articles": [{"title": "Titolo generale del quotidiano", "importance": "apertura"}]}'
+    with patch("edicola.pdf_enrichment.vision_request", return_value=reply) as vision:
+        first = execute(tmp_path, dry_run=False, authorize_external=True, limit=2,
+                        maximum=2, model="mock", client=Mock())
+        second = execute(tmp_path, dry_run=False, authorize_external=True, limit=2,
+                         maximum=2, model="mock", client=Mock())
+    assert first["completed"] == 1 and first["failed"] == 0
+    assert second["cached_pages"] == 1 and second["completed"] == 0
+    assert vision.call_count == 1
