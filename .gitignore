@@ -42,3 +42,8 @@ deployment/seed/
 *.log
 *.zip
 *.bak
+
+# Solo lo scheletro della inbox è versionato, mai i PDF depositati.
+!data/inbox/
+data/inbox/*
+!data/inbox/.gitkeep
