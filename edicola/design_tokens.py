@@ -35,9 +35,9 @@ def page_css():
     return f".edi-brand,.edi-section{{{variables}}}" + EDITORIAL_CSS
 
 
-// La shell Streamlit non e parte del contenuto editoriale. Questi selettori
-// sono isolati dal CSS dei componenti v2: possono richiedere manutenzione
-// quando cambia la versione di Streamlit. Non toccare dialoghi o controlli.
+# La shell Streamlit non e parte del contenuto editoriale. Questi selettori
+# sono isolati dal CSS dei componenti v2: possono richiedere manutenzione
+# quando cambia la versione di Streamlit. Non toccare dialoghi o controlli.
 APP_SHELL_CSS = """
 [data-testid="stToolbar"],[data-testid="stDecoration"],[data-testid="stAppDeployButton"],
 #MainMenu,footer[data-testid="stFooter"]{display:none!important}
