@@ -8,8 +8,14 @@ non cambia la navigazione e non chiama Gemini durante il caricamento dell'app.
 - I PDF **nuovi** vengono estratti con PyMuPDF (blocchi, coordinate e ordine di lettura
   per colonne). `pypdf` resta fallback di singola pagina, anche quando PyMuPDF
   perderebbe una parte significativa del testo.
+- Le pagine interne con **un solo titolo dominante** sono identificate già in locale.
+  Una pagina successiva senza titolo viene collegata soltanto se inizia come
+  continuazione e non presenta altri titoli forti. I metadati riportano titolo,
+  ID dell'articolo, pagine collegate e ruolo della pagina. Copertine complesse,
+  pagine ambigue e pagine senza titolo verificabile restano escluse.
 - L'analisi Vision di Gemini è un **comando esplicito**, limitato a poche pagine
-  (prima pagina, pagine richiamate e aperture di sezione riconoscibili).
+  (prima pagina, pagine richiamate e aperture di sezione riconoscibili),
+  escludendo le pagine già riconosciute con sufficiente evidenza geometrica.
   Il PDF completo non viene inviato; vengono inviati solo PNG delle pagine scelte
   a 200 DPI. Nessun OCR, nessun modello locale.
 - I titoli proposti da Vision vengono **verificati letteralmente** contro il testo
@@ -33,7 +39,26 @@ non cambia la navigazione e non chiama Gemini durante il caricamento dell'app.
 Installare prima le dipendenze da `requirements.txt` e configurare
 `GEMINI_API_KEY` nell'ambiente privato. Non versionare le credenziali o i PDF.
 
-**Per PDF già acquisiti che richiedono una nuova estrazione, eseguire il punto 3\nprima del punto 2**: una nuova estrazione cambia la versione testuale e rende\nobsoleta l'eventuale cache Vision precedente.\n\n1. **Anteprima senza rete né scritture:**
+**Per PDF già acquisiti che richiedono una nuova estrazione, eseguire il punto 3
+prima del punto 2**: una nuova estrazione può cambiare il testo e rende
+obsoleta l'eventuale cache Vision precedente.
+
+### Verifica immediata da GitHub Codespaces (senza API)
+
+I dodici PDF dello snapshot sono in `deployment/seed/data/incoming`, non
+necessariamente in `data/incoming`. Il comando seguente cerca in entrambe le
+cartelle, legge il PDF in memoria, e **non scrive file**:
+
+```bash
+python -m edicola.pdf_diagnostics --pdf "7ZycEw6ad2611b84bd0_full.pdf"
+```
+
+Nel campione A4 Quotidiano 17/10/2026 (35 pagine), l'analisi locale con
+PyMuPDF ha identificato **25 articoli** su **33 pagine**, comprendendo
+**8 pagine di continuazione**. Pagina 1 e pagina 35 non sono state attribuite
+ad articoli completi. Il risultato è euristico, non una verifica editoriale
+manuale né una modifica dell'indice pubblicato.
+\n1. **Anteprima senza rete né scritture:**
 
    ```powershell
    python -m edicola.pdf_enrichment --dry-run --max-pages-per-pdf 4 --limit 4
@@ -85,11 +110,16 @@ Installare prima le dipendenze da `requirements.txt` e configurare
   una nuova generazione autorizzata.
 - La Vision non prova la verità dei contenuti: fornisce soltanto proposte
   sull'impaginazione, validate contro il PDF.
+- Il riconoscimento locale di articoli si applica alle nuove estrazioni
+  PyMuPDF o dopo un refresh esplicito: i dati storici `pypdf` non possiedono
+  ancora i blocchi geometrici. La diagnostica dello snapshot non attiva
+  automaticamente queste annotazioni nel database.
 - L'estrazione geometrica su impaginazioni editoriali complesse non è
   infallibile. Per PDF scansionati senza testo non c'è OCR: queste pagine
   restano fuori dall'annotazione e dal recupero RAG testuale.
 - I PDF già acquisiti non vengono reprocessati automaticamente al cambio
   di versione; usare `pdf_refresh` su un campione di prova, confrontare
   prima/dopo e solo poi estendere agli altri documenti.
-- L'analisi Vision non è stata eseguita sui giornali reali del repository
-  durante l'implementazione: i test usano PDF sintetici e nessuna API reale.
+- L'analisi **locale** del PDF reale è stata effettuata senza Gemini. Vision
+  non è stata eseguita su quotidiani reali: i relativi test usano PDF sintetici
+  e nessuna API reale.
