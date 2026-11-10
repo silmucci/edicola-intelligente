@@ -78,7 +78,7 @@ def render_personalization_ui(root, archive=None):
         render_account_profile(root, archive)
         return
     from edicola.design import section_intro
-    section_intro("Il mio profilo", "Interessi, letture e preferenze.", "La tua edicola")
+    section_intro("Il mio profilo", "Preferenze di lettura e privacy.", "La tua edicola")
     if setting("EDICOLA_CLOUD_DEMO", "0") == "1":
         st.warning("Profilo demo pubblico e condiviso: tutti i visitatori possono leggere, modificare o cancellare "
                    "le preferenze e lo storico. Nessuno spazio personale riservato; non inserire dati personali. "
@@ -101,7 +101,6 @@ def render_personalization_ui(root, archive=None):
                 interests = st.multiselect("Argomenti di interesse", list(dict.fromkeys(profile.interests + INTERESTS)),
                                           default=profile.interests, key="personal_interests", max_selections=10,
                                           accept_new_options=True, placeholder="Scegli o scrivi un interesse")
-                st.caption("Le proposte sono categorie di interesse, non indicano notizie necessariamente presenti nell’archivio.")
                 minutes = st.selectbox("Tempo disponibile (minuti)", [2, 5, 10],
                                        index=[2, 5, 10].index(profile.minutes), key="personal_minutes")
                 preferred = st.selectbox("Formato preferito", ["testo", "visuale", "audio"],
@@ -121,7 +120,7 @@ def render_personalization_ui(root, archive=None):
     with tabs[1]:
         privacy_controls(key="demo_privacy")
         with st.expander("Cancella i dati del profilo demo"):
-                st.caption("La cancellazione rimuove preferenze, letture salvate, briefing personali e relativi audio. I prodotti editoriali generali restano disponibili.")
+            st.caption("La cancellazione rimuove preferenze, letture salvate, briefing personali e relativi audio. I prodotti editoriali generali restano disponibili.")
                 if st.button("Cancella preferenze e storico demo", key="personal_delete"):
                     delete_profile(root, profile.user_id)
                     st.session_state["personal_reset"] = True
