@@ -79,54 +79,98 @@ def render_account_profile(root, archive=None):
             if st.session_state.get("personal_area") == "Privacy":
                 privacy_controls()
             privacy_notice()
-        with areas[3]:
-            with st.expander("Preferenze e impostazioni", expanded=not profile.interests):
-                with st.form("personal_preferences"):
-                    interests = st.multiselect("Argomenti di interesse", list(dict.fromkeys(profile.interests + INTERESTS)),
-                                              default=profile.interests, key="personal_interests", max_selections=10,
-                                              accept_new_options=True, placeholder="Scegli o scrivi un interesse")
-                    minutes = st.selectbox("Tempo disponibile (minuti)", [2, 5, 10], index=[2, 5, 10].index(profile.minutes), key="personal_minutes")
-                    preferred = st.selectbox("Formato preferito", ["testo", "visuale", "audio"],
-                                            index=["testo", "visuale", "audio"].index(profile.format), key="personal_format")
-                    save = st.form_submit_button("Salva preferenze", type="primary")
-                if save:
-                    profile.interests, profile.minutes, profile.format = interests, minutes, preferred
-                    profile.feedback = {k: v for k, v in profile.feedback.items() if k in interests}
-                    store.save_preferences(profile)
-                    st.session_state.pop("account_export", None)
-                    st.session_state["account_notice"] = "Preferenze salvate nel tuo account."
-                    st.rerun()
-                if profile.interests:
-                    with st.form("personal_feedback"):
-                        topic = st.selectbox("Argomento su cui dare feedback", profile.interests, key="personal_feedback_topic")
-                        opinion = st.selectbox("Preferenza volontaria", ["Gradito (+1)", "Non pertinente (escludi)", "Neutro"], key="personal_opinion")
-                        if st.form_submit_button("Aggiorna gradimento"):
-                            store.set_feedback(topic, {"Gradito (+1)": 1, "Non pertinente (escludi)": -1, "Neutro": 0}[opinion])
-                            st.session_state.pop("account_export", None)
-                            st.session_state["account_notice"] = "Gradimento aggiornato."
-                            st.rerun()
-                    if profile.feedback:
-                        st.caption("Feedback attivo: " + "; ".join(f"{topic}: {'gradito' if value == 1 else 'escluso'}" for topic, value in profile.feedback.items()))
-                if st.button("Prepara esportazione dei miei dati", key="account_export_prepare"):
+            with st.expander("Esporta i miei dati"):
+                st.caption("Puoi ottenere una copia dei dati associati al tuo profilo.")
+                if st.button("Prepara una copia", key="account_export_prepare"):
                     st.session_state["account_export"] = json.dumps(store.export_data(), ensure_ascii=False, indent=2)
                 if "account_export" in st.session_state:
-                    private_download(st.session_state["account_export"], label="Scarica i miei dati JSON", filename="i-miei-dati-edicola.json", mime="application/json", key="account_export_download")
-                with st.expander("Cancella i miei dati"):
-                    confirmed = st.checkbox("Confermo la cancellazione di preferenze, salvati, briefing personali e cronologia chat", key="account_delete_confirm")
-                    if st.button("Cancella tutti i miei dati", key="account_delete", disabled=not confirmed):
-                        store.delete_all()
-                        cleanup_failed = False
-                        try:
-                            remove_audio(root, store)
-                        except (OSError, PersonalStoreError):
-                            cleanup_failed = True
-                        from edicola.identity import clear_private_state
-                        clear_private_state()
-                        if cleanup_failed:
-                            st.session_state["account_warning"] = "Dati personali cancellati; alcuni audio temporanei non sono stati rimossi. Contatta il gestore."
-                        else:
-                            st.session_state["account_notice"] = "I tuoi dati personali sono stati cancellati."
+                    private_download(st.session_state["account_export"], label="Scarica i miei dati",
+                                     filename="i-miei-dati-edicola.json", mime="application/json",
+                                     key="account_export_download")
+            with st.expander("Elimina i miei dati"):
+                st.warning("Questa operazione elimina preferenze, letture salvate, briefing personali e cronologia chat.")
+                confirmed = st.checkbox("Confermo di voler eliminare i miei dati", key="account_delete_confirm")
+                if st.button("Elimina definitivamente", key="account_delete", disabled=not confirmed):
+                    store.delete_all()
+                    cleanup_failed = False
+                    try:
+                        remove_audio(root, store)
+                    except (OSError, PersonalStoreError):
+                        cleanup_failed = True
+                    from edicola.identity import clear_private_state
+                    clear_private_state()
+                    if cleanup_failed:
+                        st.session_state["account_warning"] = (
+                            "Dati personali cancellati; alcuni audio temporanei non sono stati rimossi. Contatta il gestore."
+                        )
+                    else:
+                        st.session_state["account_notice"] = "I tuoi dati personali sono stati cancellati."
+                    st.rerun()
+        with areas[3]:
+            st.subheader("I miei interessi")
+            st.caption("Seleziona gli argomenti che desideri seguire. Le modifiche vengono salvate automaticamente.")
+            options = list(dict.fromkeys(profile.interests + INTERESTS))
+            selected = st.pills("Argomenti", options, selection_mode="multi",
+                                default=profile.interests, key="account_interest_chips",
+                                label_visibility="collapsed")
+            selected = list(selected or [])
+            if selected != profile.interests:
+                if len(selected) > 10:
+                    st.warning("Puoi seguire fino a 10 argomenti.")
+                else:
+                    profile.interests = selected
+                    profile.feedback = {k: v for k, v in profile.feedback.items() if k in selected}
+                    store.save_preferences(profile)
+                    st.session_state.pop("account_export", None)
+                    st.toast("Interessi aggiornati")
+                    st.rerun()
+            with st.expander("Aggiungi un argomento"):
+                topic = st.text_input("Nuovo argomento", max_chars=100,
+                                      key="account_custom_interest", placeholder="Ad esempio: Cinema")
+                if st.button("Aggiungi", key="account_add_interest", disabled=not topic.strip()):
+                    new_topic = topic.strip()
+                    if new_topic not in profile.interests and len(profile.interests) >= 10:
+                        st.warning("Puoi seguire fino a 10 argomenti.")
+                    elif new_topic not in profile.interests:
+                        profile.interests = profile.interests + [new_topic]
+                        store.save_preferences(profile)
+                        st.session_state.pop("account_export", None)
+                        st.session_state.pop("account_custom_interest", None)
+                        st.toast("Interesse aggiunto")
                         st.rerun()
+            if profile.interests:
+                with st.expander("Personalizza i suggerimenti"):
+                    st.caption("Indica quali argomenti vuoi vedere più spesso o evitare.")
+                    labels = {"Normale": 0, "Più spesso": 1, "Non mostrare": -1}
+                    inverse = {value: label for label, value in labels.items()}
+                    for index, topic in enumerate(profile.interests):
+                        choice = st.segmented_control(
+                            topic, list(labels),
+                            default=inverse.get(profile.feedback.get(topic, 0), "Normale"),
+                            key=f"account_feedback_{index}"
+                        )
+                        value = labels[choice] if choice else 0
+                        if value != profile.feedback.get(topic, 0):
+                            store.set_feedback(topic, value)
+                            st.session_state.pop("account_export", None)
+                            st.toast("Preferenza aggiornata")
+                            st.rerun()
+            st.divider()
+            st.subheader("Preferenze di lettura")
+            st.caption("Scegli quanto tempo dedicare alle notizie e come preferisci consultarle.")
+            minutes = st.segmented_control("Tempo di lettura", [2, 5, 10],
+                                           default=profile.minutes, format_func=lambda n: f"{n} min",
+                                           key="account_reading_minutes")
+            preferred = st.segmented_control("Formato preferito", ["testo", "visuale", "audio"],
+                                             default=profile.format, key="account_reading_format")
+            if minutes is not None and preferred is not None and (
+                minutes != profile.minutes or preferred != profile.format
+            ):
+                profile.minutes, profile.format = minutes, preferred
+                store.save_preferences(profile)
+                st.session_state.pop("account_export", None)
+                st.toast("Preferenze salvate")
+                st.rerun()
         try:
             catalog = read_catalog(root)
         except Exception:
