@@ -90,7 +90,10 @@ def start_new(backend=None):
 def prepare_send(question):
     chat = active()
     backend = store()
-    enabled = backend.history_enabled() if backend else False
+    try:
+        enabled = backend.history_enabled() if backend else False
+    except PersonalStoreError:
+        enabled = False
     if chat["saved"] and (not enabled or any(t.get("save_error") for t in chat["turns"])):
         # La parte già salvata resta intatta. Nessun messaggio aggiunto dopo la
         # disattivazione viene importato implicitamente riattivando l'opzione.
@@ -147,7 +150,6 @@ def retry_saved_turn(chat_id, turn_id):
 def retry_unsaved():
     """Riprende in ordine i soli turni già destinati al DB e non confermati."""
     saved = 0
-    remaining = 0
     for chat in st.session_state.get("rag_chats", {}).values():
         if not chat.get("saved"):
             continue
@@ -156,8 +158,12 @@ def retry_unsaved():
                 if retry_saved_turn(chat["id"], turn["id"]):
                     saved += 1
                 else:
-                    remaining += 1
-                    break  # Gli invii della stessa chat devono restare in ordine.
+                    break
+    remaining = sum(
+        bool(turn.get("save_error"))
+        for chat in st.session_state.get("rag_chats", {}).values() if chat.get("saved")
+        for turn in chat["turns"]
+    )
     return {"saved": saved, "remaining": remaining}
 
 
