@@ -15,6 +15,7 @@ from edicola.consent_ui import authorize_action
 from edicola.consent import perform
 from edicola.api_guard import PermissionDenied
 from edicola.personal_store import PersonalStoreError
+from edicola.account_recovery import offer_guest_access
 from edicola.design import section_intro, friendly_error, reading_title
 from edicola import consent
 from edicola.identity import synchronize_identity
@@ -115,7 +116,8 @@ def render_chat(root, context):
     try:
         chat = render_navigation()
     except PersonalStoreError:
-        st.error("Le conversazioni del tuo account non sono disponibili in questo momento. Riprova più tardi.")
+        st.error("La cronologia del tuo account non è disponibile. Il database personale deve essere configurato o ripristinato.")
+        offer_guest_access(key="chat_guest_recovery")
         st.chat_input("Chat momentaneamente non disponibile", key="rag_input", disabled=True)
         return
     pending = st.session_state.get("rag_pending")
