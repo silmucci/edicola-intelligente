@@ -63,7 +63,7 @@ def render_navigation():
                 st.toggle("Salva le nuove chat nel mio account", key="rag_save_history", on_change=change)
                 st.caption("Le chat temporanee non vengono salvate automaticamente. Le chat già salvate restano disponibili se disattivi l'opzione.")
             else:
-                st.caption("Ospite: le conversazioni durano solo per questa sessione. Accedi per scegliere il salvataggio nel tuo account; nessuna importazione automatica.")
+                st.caption("Salvataggio non disponibile al momento: questa chat è temporanea." if unavailable else "Chat temporanee: per salvarle nel tuo account, accedi e attiva la cronologia.")
             confirmed_all = st.checkbox("Confermo la cancellazione di tutta la cronologia", key="rag_delete_all_confirm")
             st.button("Cancella tutta la cronologia", key="rag_delete_all", disabled=not confirmed_all,
                       on_click=safe_action, args=(sessions.delete_all, backend))
