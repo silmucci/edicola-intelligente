@@ -28,12 +28,17 @@ def extract_pdf(content: bytes) -> dict:
             item = {"number": number, "text": "", "error": ""}
             try:
                 structured = layout[number - 1] if layout and number <= len(layout) else None
-                if structured and structured.get("text", "").strip():
+                traditional = page.extract_text() or ""
+                # PyMuPDF può omettere testo fuori dalla pagina visibile
+                # (o ritagliato da un PDF malformato). Non perdere contenuto:
+                # confrontare la copertura con l'estrattore già utilizzato.
+                if (structured and structured.get("text", "").strip() and
+                        len(structured["text"].strip()) >= .8 * len(traditional.strip())):
                     item["text"] = structured["text"]
                     item["blocks"] = structured["blocks"]
                     item["extraction_method"] = structured["extraction_method"]
                 else:
-                    item["text"] = page.extract_text() or ""
+                    item["text"] = traditional
                     item["extraction_method"] = "pypdf-fallback"
             except Exception as exc:
                 item["error"] = f"Pagina non estraibile: {type(exc).__name__}: {exc}"
