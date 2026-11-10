@@ -13,6 +13,7 @@ if sqlite3.sqlite_version_info < (3, 35, 0):
 
 from edicola.ingestion import ingest_directory
 from edicola.pdf_intake import process_inbox
+from edicola.vector_reuse import reuse_unchanged_vectors
 from edicola.chunking import prepare_documents
 from edicola.pdf_viewer import archive_context, render_archive
 from edicola.archive_ui import diagnostics_enabled
@@ -42,6 +43,7 @@ if setting("EDICOLA_CLOUD_DEMO", "0") == "1":
 
 # La versione pubblicata usa uno snapshot immutabile: la inbox è solo locale.
 # Una copia PDF depositata in data/inbox viene preparata senza Gemini al reload.
+intake_report = {"added": []}
 if setting("EDICOLA_CLOUD_DEMO", "0") != "1":
     try:
         intake_report = process_inbox(ROOT)
@@ -58,6 +60,16 @@ try:
 except (OSError, RuntimeError):
     st.error("L’archivio non è disponibile in questo momento. Riprova più tardi.")
     st.stop()
+
+# Stessa pagina, testo e prompt di embedding: riutilizzare il vettore
+# precedente, ma solo per edizioni esplicitamente collegate dalla inbox.
+if intake_report["added"]:
+    try:
+        reused = reuse_unchanged_vectors(ROOT)
+        if reused:
+            logging.getLogger("edicola").info("Embedding riutilizzati localmente: %d", reused)
+    except (OSError, RuntimeError, ValueError, sqlite3.Error):
+        logging.getLogger("edicola").warning("Riuso vettori differito; vecchio indice preservato.")
 
 if diagnostics_enabled(ROOT):
     with st.expander("Dati dell'archivio · sviluppo"):
