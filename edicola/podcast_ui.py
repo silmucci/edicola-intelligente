@@ -62,10 +62,11 @@ def run_episode(root, voice, *, retry_key=None, topic=""):
         st.session_state.pop("podcast_failed_draft", None)
     except PodcastAudioError as exc:
         st.session_state["podcast_failed_draft"] = exc.draft
-        st.error("Il copione è pronto, ma l’episodio non è stato completato. Puoi riprovare soltanto l’audio.")
+        st.error("Il testo del podcast è pronto, ma l'audio non è disponibile.")
+        st.caption("Puoi utilizzare «Riprova solo l’audio» senza rigenerare il testo.")
     except PodcastError as exc:
         if "fonti" in str(exc).lower() or "affidabile" in str(exc).lower():
-            st.info("Le fonti disponibili non sono sufficienti per preparare un episodio affidabile.")
+            st.info("Non ci sono notizie sufficienti per questo argomento. Prova un tema più generale.")
         else:
             st.error(friendly_error(exc))
     except (PermissionDenied, PersonalStoreError) as exc:
@@ -102,7 +103,6 @@ def render_podcast_ui(root: Path, archive=None):
     if latest:
         episodes[latest.key] = latest
     if not episodes:
-        st.info("Genera un episodio per ascoltare le notizie disponibili nell’archivio.")
         return
     if st.session_state.get("podcast_episode_choice") not in episodes:
         st.session_state["podcast_episode_choice"] = next(iter(episodes))
