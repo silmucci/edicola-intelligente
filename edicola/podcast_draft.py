@@ -54,6 +54,8 @@ stesso articolo. Servono solo per non ripetere una notizia: titoli e pagine
 non sono una prova autonoma di fatti, cifre o date. Usa citazioni letterali
 dei passaggi originali per ogni notizia pubblicata."""
 V3_INSTRUCTION = INSTRUCTION
+INSTRUCTION = INSTRUCTION.replace("circa 180-210 parole complessive,",
+                                  "circa 280-330 parole complessive quando le fonti lo permettono,")
 INSTRUCTION += """
 Per un notiziario da ascoltare, sviluppa le notizie con dettagli verificabili:
 contesto, fatti, soggetti coinvolti e conseguenze documentate. Quando le fonti
@@ -89,7 +91,7 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-def script_from_response(raw, sources, coverage, topic=""):
+def script_from_response(raw, sources, coverage, topic="", *, max_words=350, max_chars=5000):
     """Riusa i validatori, respingendo anche numeri non presenti nelle prove."""
     try:
         value = json.loads(raw) if isinstance(raw, str) else raw
@@ -115,7 +117,7 @@ def script_from_response(raw, sources, coverage, topic=""):
                  ", attraverso le edizioni disponibili.") if topic else INTRO
         framing = intro + "\n\n" + OUTRO
         script = prepare_script(CachedProduct("temporary-podcast-only", "", product),
-            max_words=MAX_WORDS-len(framing.split()), max_chars=MAX_CHARS-len(framing)-4)
+            max_words=max_words-len(framing.split()), max_chars=max_chars-len(framing)-4)
         script.text = intro + "\n\n" + script.text + "\n\n" + OUTRO
         if re.search(r"\bS\d+\b|\bchunk[_-]|\.pdf\b", script.text, re.I):
             raise ValueError
@@ -148,7 +150,9 @@ def load_draft(root, key, catalog=None):
                    s.filename != current[s.chunk_id].metadata["filename"] or s.page != current[s.chunk_id].metadata["page"] or
                    saved["fingerprints"].get(s.chunk_id) != current[s.chunk_id].fingerprint for s in sources):
                 raise ValueError
-        script = script_from_response(saved["raw"], sources, saved["coverage"], topic)
+        script = script_from_response(saved["raw"], sources, saved["coverage"], topic,
+            max_words=350 if strategy == VERSION else MAX_WORDS,
+            max_chars=5000 if strategy == VERSION else MAX_CHARS)
         if asdict(script) != saved["script"]:
             raise ValueError
         return EpisodeDraft(key, saved["title"], saved["created_at"], script, sources, saved["model"],
