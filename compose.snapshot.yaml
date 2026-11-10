@@ -1,0 +1,14 @@
+# Opt-in preview using the already-authorized snapshot deployed by Streamlit.
+# Combine with compose.yaml; do not expose this Codespace port publicly.
+services:
+  edicola:
+    environment:
+      EDICOLA_CLOUD_DEMO: "1"
+    volumes:
+      # This snapshot is read-only and is NOT copied into the Docker image.
+      - ./deployment/seed:/app/deployment/seed:ro
+      # Keep regenerated Chroma vectors, PDF copies and caches between recreations.
+      - edicola_snapshot_runtime:/app/.cloud-runtime
+
+volumes:
+  edicola_snapshot_runtime:
