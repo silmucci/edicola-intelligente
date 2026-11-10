@@ -25,6 +25,32 @@ CARD_CSS = scoped_css("""
 @media(max-width:1024px){.cards.products{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:600px){.cards.products{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible;scroll-snap-type:none;gap:10px}.products .card{min-height:0;flex:none;padding:14px 12px}.products .card h3{font-size:17px}}
 @media(max-width:340px){.cards.products{grid-template-columns:minmax(0,1fr)}}
+
+/* La navigazione editoriale diventa una barra leggera, non sette riquadri.
+   Gli ID e le azioni delle card restano gli stessi anche sul tablet. */
+.cards.products{display:flex;flex-wrap:nowrap;align-items:stretch;overflow-x:auto;gap:6px;
+ padding:6px 0 14px;border-bottom:1px solid var(--edi-border);scrollbar-width:thin;
+ scrollbar-color:var(--edi-border) transparent;scroll-snap-type:x proximity}
+.products .card{flex:0 0 auto;display:flex;flex-direction:row;justify-content:center;align-items:center;
+ width:auto;min-height:44px;gap:8px;padding:10px 13px;border:1px solid transparent;
+ border-radius:10px;background:transparent;box-shadow:none;white-space:nowrap;scroll-snap-align:start}
+.products .card:hover{transform:none;border-color:var(--edi-border);background:var(--edi-surface)}
+.products .card.active{border-color:var(--edi-border);background:var(--edi-surface);
+ box-shadow:none}
+.products .card svg{width:19px;height:19px;stroke:var(--edi-muted)}
+.products .card.active svg{stroke:var(--edi-primary)}
+.products .card h3{font:600 14px/1.3 var(--edi-sans);white-space:nowrap}
+.products .card p,.products .arrow{display:none}
+@media(max-width:600px){
+ .cards.products{display:flex;flex-wrap:nowrap;gap:4px;padding:4px 0 12px}
+ .products .card{flex:0 0 auto;min-height:42px;padding:9px 10px}
+ .products .card h3{font-size:13px}
+ .products .card svg{width:17px;height:17px}
+}
+@media(max-width:340px){
+ .cards.products{display:flex;grid-template-columns:none}
+ .products .card{min-height:40px;padding:8px 9px}
+}
 """)
 
 CARD_JS = """
