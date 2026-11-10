@@ -23,17 +23,13 @@ from edicola.settings import setting
 from edicola.experience_ui import render_home
 from edicola.identity import synchronize_identity
 from edicola.header_ui import render_header
-from edicola.design_tokens import app_shell_css
 from edicola.product_navigation import render_navigation, active_product
 
 ROOT = Path(__file__).resolve().parent
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logging.getLogger("edicola").setLevel(logging.INFO)
 
-st.set_page_config(page_title="Edicola Digitale Intelligente", layout="wide", page_icon="📰",
-                   initial_sidebar_state="collapsed")
-# La presentazione del lettore e separata dalla logica dei prodotti.
-st.html(f"<style>{app_shell_css()}</style>")
+st.set_page_config(page_title="Edicola Digitale Intelligente", layout="wide", page_icon="📰")
 synchronize_identity()
 if setting("EDICOLA_CLOUD_DEMO", "0") == "1":
     try:
