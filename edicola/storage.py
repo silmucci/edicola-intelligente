@@ -45,6 +45,16 @@ def open_registry(path: Path):
                 UNIQUE(pdf_sha256, position)
             )"""
         )
+        # Traccia privata delle nuove versioni immesse tramite la inbox.
+        # Il PDF precedente resta fisicamente in incoming; non viene cancellato.
+        connection.execute(
+            """CREATE TABLE IF NOT EXISTS edition_lineage (
+                sha256 TEXT PRIMARY KEY,
+                parent_sha256 TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"""
+        )
         connection.commit()
         yield connection
     except sqlite3.Error as exc:
