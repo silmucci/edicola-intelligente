@@ -2,19 +2,19 @@
 gatherUsageStats = false
 
 [client]
-# Menu essenziale: evita strumenti da sviluppatore nell'interfaccia lettore.
+# Mantieni ridotta la barra tecnica Streamlit, senza alterare il layout classico.
 toolbarMode = "minimal"
 
 [theme]
 base = "light"
-primaryColor = "#275D9B"
+primaryColor = "#0866D9"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F2F7FD"
-textColor = "#1C2938"
+textColor = "#082654"
 font = "sans-serif"
 headingFont = "serif"
 baseRadius = "medium"
 buttonRadius = "medium"
-borderColor = "#E3E8ED"
+borderColor = "#E2E8F0"
 showWidgetBorder = true
 
