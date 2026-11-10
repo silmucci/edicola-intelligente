@@ -219,7 +219,7 @@ def render_editorial_product(product, root, context):
     render_history_notice(coverage, context)
     render_context_limit(coverage)
     st.subheader(readable(citation_text(reading_title(product), product.used_source_ids)))
-    if product.message:
+    if not product.sufficient:
         st.info(product_notice(product))
     for section in product.sections:
         with st.container(border=True):
