@@ -68,6 +68,8 @@ def render_account_profile(root, archive=None):
         if not profile.interests:
             st.subheader("Cominciamo dai tuoi interessi")
             st.caption("Scegli qualche tema e il tempo che hai: troverai qui letture dedicate ai tuoi interessi.")
+        if st.session_state.get("personal_area") not in (None, "Preferenze", "Privacy"):
+            st.session_state.pop("personal_area", None)
         areas = st.tabs(["Preferenze", "Privacy"],
                         default="Preferenze",
                         key="personal_area", on_change="rerun")
