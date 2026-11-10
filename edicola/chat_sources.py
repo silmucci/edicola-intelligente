@@ -6,6 +6,7 @@ import streamlit as st
 
 from edicola.pdf_viewer import source_button, resolve_reference, PdfViewError
 from edicola.rag_context import source_editions
+from edicola.article_evidence import article_reference
 
 
 def document_label(context, filename, page):
@@ -36,7 +37,7 @@ def render_contributions(sources, used_source_ids, root, *, editions=None, compa
             published = info.get("publication_date") or "Data non disponibile"
             cited = any(source.id in used_source_ids for source in members)
             st.text(title + " · " + published + (" · Citata" if cited else " · Inclusa, non citata"))
-        st.caption("Sono elencate solo le edizioni presenti nei passaggi di questa lettura.")
+
 
 
 def render_context_limit(coverage):
@@ -48,6 +49,7 @@ def render_sources(result, *, index, last, root, context, formatter, namespace="
     editions = getattr(result, "source_editions", {}) or source_editions(root, result.sources)
     render_contributions(result.sources, result.used_source_ids, root, editions=editions)
     references = getattr(result, "source_references", {})
+    articles = getattr(result, "source_articles", {}) or {}
     groups = OrderedDict()
     for source in result.sources:
         if source.id in result.used_source_ids:
@@ -71,10 +73,15 @@ def render_sources(result, *, index, last, root, context, formatter, namespace="
                 numbers = {identity: str(i) for i, identity in enumerate(dict.fromkeys(result.used_source_ids), 1)}
                 ids = "/".join(numbers[s.id] for s in sources)
                 published = info.get("publication_date") or "Data non disponibile"
+                article = articles.get(source.id)
                 label = f"{ids} · {name or 'Documento dell’archivio'} · {published} · pagina {page}"
+                if article:
+                    label += " · " + article["title"]
                 description = name or "Documento dell’archivio"
                 if info.get("publication_date"):
                     description += " · " + info["publication_date"]
+                if article:
+                    description += " · " + article_reference(article)
                 key = f"{namespace}_pdf_{source.id}" if last else f"{namespace}_history_{index}_{source.id}"
                 source_button(filename, page, context=context, chunk_id=source.chunk_id, pdf_sha256=sha,
                               key=key, label=formatter(label), help_text=description)
@@ -86,5 +93,9 @@ def render_sources(result, *, index, last, root, context, formatter, namespace="
                 name = editions.get(source.id, {}).get("publication") or "Documento dell’archivio"
                 number = list(dict.fromkeys(result.used_source_ids)).index(source.id) + 1
                 published = editions.get(source.id, {}).get("publication_date") or "Data non disponibile"
-                st.caption(formatter(f"[{number}] {name} · {published} · pagina {source.page}"))
+                article = articles.get(source.id)
+                heading = f"[{number}] {name} · {published} · pagina {source.page}"
+                if article:
+                    heading += " · " + article_reference(article)
+                st.caption(formatter(heading))
                 st.text(source.text)
