@@ -4,11 +4,17 @@ services:
   edicola:
     environment:
       EDICOLA_CLOUD_DEMO: "1"
+      STREAMLIT_SERVER_RUN_ON_SAVE: "true"
+      STREAMLIT_SERVER_FILE_WATCHER_TYPE: "poll"
     volumes:
       # This snapshot is read-only and is NOT copied into the Docker image.
       - ./deployment/seed:/app/deployment/seed:ro
       # Keep regenerated Chroma vectors, PDF copies and caches between recreations.
       - edicola_snapshot_runtime:/app/.cloud-runtime
+      # Codespaces live preview: code changes appear without a new image build.
+      - ./app.py:/app/app.py:ro
+      - ./edicola:/app/edicola:ro
+      - ./.streamlit/config.toml:/app/.streamlit/config.toml:ro
 
 volumes:
   edicola_snapshot_runtime:
