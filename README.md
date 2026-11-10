@@ -2,6 +2,13 @@
 
 Leggi i quotidiani disponibili, esplora le notizie e ritrova le pagine originali.
 
+**Anteprima frontend (branch Docker):** intestazione testuale essenziale,
+barra di navigazione compatta e scorrevole, menu Streamlit ridotto e
+impaginazione adatta anche al tablet. Le funzioni dei prodotti e i dati
+non cambiano. Per visualizzarla online con i quotidiani del corpus gia
+presente nel repository, vedi [Docker e anteprima Codespaces](DOCKER.md).
+
+
 Sotto l’intestazione, tutte le sezioni mostrano le sette card dei prodotti, ciascuna
 con icona, titolo e descrizione. L’intera scheda è cliccabile e quella attiva è
 evidenziata in blu. La griglia si adatta agli schermi piccoli senza duplicarsi
@@ -110,6 +117,8 @@ Per sviluppo e manutenzione consultare [il diario tecnico](DEVELOPMENT_HISTORY.m
 [la guida archivio](GESTIONE_ARCHIVIO.md), [gli account](ACCOUNTS.md),
 [la cronologia chat](CHAT_HISTORY.md), [il deployment](DEPLOYMENT.md)
 e [la valutazione sperimentale](evaluation/README.md).
+Per eseguire l'applicazione localmente in un container, consultare la [guida Docker](DOCKER.md).
+L'avvio abituale con Streamlit rimane disponibile; Docker non include PDF, indici o segreti.
 Il [resoconto dell’unificazione](CONSUMER_APP.md) confronta i prodotti,
 indica i file e i test pertinenti e descrive la compatibilità dei risultati salvati.
 Nessun aggiornamento dei dati o pubblicazione avviene tramite queste istruzioni.

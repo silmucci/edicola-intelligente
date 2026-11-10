@@ -1,0 +1,9 @@
+# Include only application files in the image build context.
+# Private PDFs, extracted content, SQLite/Chroma data, and secrets remain outside.
+**
+!requirements.txt
+!app.py
+!edicola/
+!edicola/**
+!.streamlit/
+!.streamlit/config.toml
