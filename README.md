@@ -1,5 +1,7 @@
 # Edicola Digitale Intelligente
 
+**Nuovi PDF senza terminale:** copia i quotidiani nella cartella privata `data/inbox` e ricarica Streamlit: l'app li controlla, evita copie identiche e conserva le versioni precedenti. L'indicizzazione Gemini resta autorizzata separatamente. [Istruzioni](PDF_AUTO_INTAKE.md).
+
 Leggi i quotidiani disponibili, esplora le notizie e ritrova le pagine originali.
 
 **Anteprima frontend (branch Docker):** intestazione testuale essenziale,
