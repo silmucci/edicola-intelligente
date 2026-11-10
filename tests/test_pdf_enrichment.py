@@ -145,3 +145,27 @@ def test_dry_run_is_read_only_and_never_calls_vision(tmp_path):
 def test_without_vision_annotations_returns_empty(tmp_path):
     assert read_annotations(tmp_path / "absent.sqlite3", "f" * 64, {1: "Testo"}) == {}
     assert chunk_annotation("f" * 64, 1, 0, 5, {}) == {}
+
+
+
+def test_local_refresh_dry_run_does_not_modify_archive(tmp_path):
+    from edicola.ingestion import ingest_directory
+    from edicola.chunking import prepare_documents
+    from edicola.pdf_refresh import refresh
+
+    incoming = tmp_path / "data/incoming"
+    incoming.mkdir(parents=True)
+    (incoming / "giornale.pdf").write_bytes(make_layout_pdf())
+    registry = tmp_path / "data/archive.sqlite3"
+    prepare_documents(ingest_directory(incoming, registry), registry)
+    before = registry.read_bytes()
+    report = refresh(tmp_path, ["giornale.pdf"], apply=False)
+    assert report["dry_run"]
+    assert report["backup"] is None
+    assert registry.read_bytes() == before
+
+
+def test_local_refresh_requires_named_valid_pdf(tmp_path):
+    from edicola.pdf_refresh import refresh
+    with pytest.raises(ValueError):
+        refresh(tmp_path, [], apply=True)
