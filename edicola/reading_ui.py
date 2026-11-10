@@ -91,9 +91,6 @@ def _render_chat_turn(turn, index, last, root, context):
         st.markdown(chat_markdown(citation_text(result.answer, result.used_source_ids)), unsafe_allow_html=False)
         render_sources(result, index=index, last=last, root=root, context=context, formatter=chat_markdown)
         _render_save_status(turn)
-        if last and result.sufficient:
-            from edicola.editorial_handoff import render_handoff
-            render_handoff(turn["question"])
 
 
 def _render_save_status(turn):
