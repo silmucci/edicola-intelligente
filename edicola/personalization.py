@@ -23,7 +23,7 @@ from edicola.rag import DEFAULT_MODEL, RagError, Source
 from edicola.context_selection import VERSION as CONTEXT_VERSION, selection_coverage
 
 
-VERSION = "personal-briefing-v1"
+VERSION = "personal-briefing-v2"
 WORD_BUDGET = {2: 240, 5: 600, 10: 1200}
 STOPWORDS = set("a ad al alla alle ai agli con da dal dalla delle degli dei del di e ed il in la le lo gli i l un una uno per tra su sul sulla nel nella nelle degli notizie notizia informazioni tema temi".split())
 
@@ -108,6 +108,42 @@ def recommend(catalog, profile: Profile, limit=None):
     return result
 
 
+def balanced_briefing_selection(catalog, profile):
+    """Priorità agli interessi, con spazio per notizie generali di altre edizioni."""
+    preferred = recommend(catalog, profile, limit=len(catalog.chunks))
+    if not preferred:
+        return []
+    used = {item.chunk.id for item in preferred}
+    other = []
+    excluded = [tokens(topic) for topic, value in profile.feedback.items() if value == -1]
+    for chunk in catalog.chunks:
+        if chunk.id in used:
+            continue
+        words = tokens(chunk.text)
+        if any(topic_words and len(topic_words & words) / len(topic_words) >= .6 for topic_words in excluded):
+            continue
+        other.append(chunk)
+    # Aggiunge una notizia generale ogni tre selezioni pertinenti,
+    # senza mettere in coda tutto il corpus prima dei temi preferiti.
+    editions = defaultdict(deque)
+    for chunk in other:
+        editions[chunk.metadata["filename"]].append(chunk)
+    general = []
+    while any(editions.values()):
+        for name in sorted(editions):
+            if editions[name]:
+                general.append(editions[name].popleft())
+    result = []
+    index = 0
+    for position, item in enumerate(preferred, 1):
+        result.append(item.chunk)
+        if position % 3 == 0 and index < len(general):
+            result.append(general[index])
+            index += 1
+    result.extend(general[index:])
+    return result
+
+
 def generate_personal_briefing(root, profile, *, authorize_external=False, client=None, catalog=None, store=None):
     if not authorize_external:
         raise RagError("Autorizza l'invio dei passaggi selezionati e del tempo di lettura a Gemini.")
@@ -115,7 +151,7 @@ def generate_personal_briefing(root, profile, *, authorize_external=False, clien
     if store is not None:
         store.assert_owner(profile.user_id)
     catalog = catalog if catalog is not None else read_catalog(root)
-    selected = recommend(catalog, profile, limit=len(catalog.chunks))
+    selected = balanced_briefing_selection(catalog, profile)
     if not selected:
         raise RagError("Nessun passaggio indicizzato pertinente agli interessi attivi. Modifica le preferenze.")
     key = api_key(root)  # Carica soltanto la configurazione locale; nessuna rete.
@@ -123,15 +159,18 @@ def generate_personal_briefing(root, profile, *, authorize_external=False, clien
     delivery = {"available_minutes": profile.minutes, "max_words": WORD_BUDGET[profile.minutes],
                 "instruction": "Briefing selettivo: rispetta il limite di parole, senza aggiungere notizie per riempire il tempo."}
     extra = json.dumps(delivery, ensure_ascii=False)
-    sources = [Source(f"S{i}", item.chunk.id, item.chunk.metadata["filename"],
-                      item.chunk.metadata["page"], item.chunk.text, 0.0) for i, item in enumerate(selected, 1)]
+    sources = [Source(f"S{i}", chunk.id, chunk.metadata["filename"],
+                      chunk.metadata["page"], chunk.text, 0.0) for i, chunk in enumerate(selected, 1)]
     candidates = sources
     sources, prompt = fit_briefing_prompt(sources, catalog.coverage, [], 14000 - len(extra) - 40)
     data = json.loads(prompt)
     data["delivery"] = delivery
+    data["editorial_preference"] = ("Dai priorità alle notizie sugli interessi scelti, "
+        "ma includi anche notizie importanti su altri temi quando supportate dalle fonti. "
+        "Non inventare e non ripetere notizie.")
     prompt = json.dumps(data, ensure_ascii=False)
     identity = hashlib.sha256(json.dumps({"version": [VERSION, STRATEGY_VERSION, CONTEXT_VERSION], "model": model, "prompt": prompt,
-        "chunks": [(r.chunk.id, r.chunk.fingerprint) for r in selected]}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        "chunks": [(r.id, r.fingerprint) for r in selected]}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     path = personal_root(root, profile.user_id) / "data/editorial.sqlite3" if store is None else None
     cached = read_personal_cache(path, identity) if store is None else store.get_briefing(identity)
     if cached is not None:
