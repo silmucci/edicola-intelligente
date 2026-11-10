@@ -100,7 +100,13 @@ def headline_priority(chunk: IndexChunk) -> int:
     heading = bool(re.search(r"^[^.!?]{12,110}(?:[.!?]|:)", prefix))
     front_page = chunk.metadata["page"] == 1
     page_start = chunk.metadata.get("start", 0) == 0
-    return 3 * int(capitals >= 3) + int(heading) + 2 * int(front_page) + int(page_start)
+    # Usare la priorità editoriale soltanto se il titolo Vision è stato
+    # verificato nel testo originale, non da etichette inventate.
+    editorial = 0
+    if chunk.metadata.get("article_title_verified") is True:
+        editorial = {"apertura": 5, "spalla": 3, "taglio basso": 2,
+                     "breve": 1}.get(chunk.metadata.get("article_importance"), 0)
+    return editorial + 3 * int(capitals >= 3) + int(heading) + 2 * int(front_page) + int(page_start)
 
 
 def balanced_briefing(catalog: Catalog, limit: int, similarity: float, *, preserve_editions=False) -> list[IndexChunk]:
