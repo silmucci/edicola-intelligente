@@ -78,3 +78,20 @@ def duplicate_article_hit(candidate: dict, accepted: list[dict]) -> bool:
         re.sub(r"\s+", " ", previous.get("text", "")).strip().casefold() == normalized
         for previous in accepted
     )
+
+
+def evidence_source_record(source, article=None, *, include_chunk=False):
+    """Formato comune delle prove inviate ai generatori editoriali.
+
+    Il titolo è un aiuto di contesto, non un'evidenza autonoma; il testo
+    resta sempre quello integrale del chunk originale verificabile.
+    """
+    payload = {"source_id": source.id, "pdf": source.filename, "page": source.page,
+               "text": source.text}
+    if include_chunk:
+        payload["chunk_id"] = source.chunk_id
+    if article:
+        payload["article_title"] = article["title"]
+        if article.get("pages"):
+            payload["article_pages"] = article["pages"]
+    return payload
