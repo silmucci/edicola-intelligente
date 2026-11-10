@@ -123,8 +123,14 @@ compose.snapshot.yaml`) utilizza lo snapshot del repository. Evita di avviare
 entrambe le configurazioni contemporaneamente con lo stesso nome di progetto.
 
 
-- I PDF presenti in `data/incoming` sul PC vengono montati **in sola lettura**
-  nel container; non entrano nell'immagine Docker o nel repository.
+- I PDF presenti in `data/incoming` sul PC vengono montati dal filesystem
+  del computer nel container, senza entrare nell'immagine Docker o nel repository.
+  Il mount deve essere scrivibile per l'acquisizione automatica; è utilizzato
+  soltanto nella modalità locale, non nello snapshot pubblico.
+- La cartella privata `data/inbox` viene montata in lettura/scrittura.
+  Per aggiungere nuove edizioni, copiare i PDF qui e ricaricare la pagina:
+  copie identiche vengono riconosciute e nomi già usati non sovrascrivono
+  vecchie edizioni. Vedi [PDF_AUTO_INTAKE.md](PDF_AUTO_INTAKE.md).
 - SQLite (`data/archive.sqlite3`), Chroma (`data/chroma`) e le cache
   del container sono conservati in un volume Docker persistente `edicola_data`.
 - L'indice Chroma e il database SQLite della precedente installazione Windows
