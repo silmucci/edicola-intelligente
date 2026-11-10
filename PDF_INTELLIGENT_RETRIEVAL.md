@@ -33,7 +33,7 @@ non cambia la navigazione e non chiama Gemini durante il caricamento dell'app.
 Installare prima le dipendenze da `requirements.txt` e configurare
 `GEMINI_API_KEY` nell'ambiente privato. Non versionare le credenziali o i PDF.
 
-1. **Anteprima senza rete né scritture:**
+**Per PDF già acquisiti che richiedono una nuova estrazione, eseguire il punto 3\nprima del punto 2**: una nuova estrazione cambia la versione testuale e rende\nobsoleta l'eventuale cache Vision precedente.\n\n1. **Anteprima senza rete né scritture:**
 
    ```powershell
    python -m edicola.pdf_enrichment --dry-run --max-pages-per-pdf 4 --limit 4
