@@ -4,7 +4,7 @@ import json
 import os
 import re
 import unicodedata
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
 from google import genai
@@ -21,9 +21,11 @@ from edicola.press_review import ranked_chunks, VERSION as RANKING_VERSION
 from edicola.podcast import atomic_write
 from edicola.podcast_text import CachedProduct, PodcastError, Script, prepare_script, MAX_WORDS, MAX_CHARS
 from edicola.rag import Source, DEFAULT_MODEL
+from edicola.article_evidence import source_articles, evidence_source_record, clean_source_articles
 
 LEGACY_VERSION = "standalone-podcast-v1"
-VERSION = "standalone-podcast-v2"
+TOPIC_VERSION = "standalone-podcast-v2"
+VERSION = "standalone-podcast-v3"
 INTRO = "Benvenuti. Ecco alcune notizie dalle edizioni disponibili."
 OUTRO = "Per approfondire, trovate le fonti e le pagine originali accanto a questo episodio."
 INSTRUCTION = """Prepara un breve notiziario italiano per l'ascolto, usando esclusivamente
@@ -44,6 +46,12 @@ Se vuoto, scegli notizie diversificate. Altrimenti includi esclusivamente notizi
 pertinenti al tema: non aggiungere altri argomenti per riempire il notiziario.
 Se mancano notizie pertinenti documentate, sufficient=false. Collega le notizie
 con brevi passaggi naturali senza aggiungere fatti non sostenuti dalle prove."""
+TOPIC_INSTRUCTION = INSTRUCTION
+INSTRUCTION += """
+Se presenti, article_title e article_pages collegano passaggi verificati dello
+stesso articolo. Servono solo per non ripetere una notizia: titoli e pagine
+non sono una prova autonoma di fatti, cifre o date. Usa citazioni letterali
+dei passaggi originali per ogni notizia pubblicata."""
 
 
 @dataclass
@@ -57,6 +65,7 @@ class EpisodeDraft:
     source_identity: str
     topic: str = ""
     strategy: str = VERSION
+    source_articles: dict = field(default_factory=dict)
 
 
 def normalize_topic(value):
@@ -112,14 +121,16 @@ def load_draft(root, key, catalog=None):
     try:
         saved = json.loads(path.read_text(encoding="utf-8"))
         strategy = saved["version"]
-        topic = normalize_topic(saved.get("topic", "")) if strategy == VERSION else ""
-        identity = [strategy, saved["source_identity"], saved["model"], saved["config"],
-                    LEGACY_INSTRUCTION if strategy == LEGACY_VERSION else INSTRUCTION]
-        if strategy == VERSION:
+        topic = normalize_topic(saved.get("topic", "")) if strategy in {TOPIC_VERSION, VERSION} else ""
+        instruction = (LEGACY_INSTRUCTION if strategy == LEGACY_VERSION else
+                       TOPIC_INSTRUCTION if strategy == TOPIC_VERSION else INSTRUCTION)
+        identity = [strategy, saved["source_identity"], saved["model"], saved["config"], instruction]
+        if strategy in {TOPIC_VERSION, VERSION}:
             identity.append(topic)
-        if saved["key"] != key or strategy not in {VERSION, LEGACY_VERSION} or digest(identity) != key:
+        if saved["key"] != key or strategy not in {VERSION, TOPIC_VERSION, LEGACY_VERSION} or digest(identity) != key:
             raise ValueError
         sources = [Source(**s) for s in saved["sources"]]
+        articles = clean_source_articles(saved.get("source_articles", {}), {s.id for s in sources})
         if catalog is not None:
             current = {c.id: c for c in catalog.chunks}
             if any(s.chunk_id not in current or s.text != current[s.chunk_id].text or
@@ -129,7 +140,8 @@ def load_draft(root, key, catalog=None):
         script = script_from_response(saved["raw"], sources, saved["coverage"], topic)
         if asdict(script) != saved["script"]:
             raise ValueError
-        return EpisodeDraft(key, saved["title"], saved["created_at"], script, sources, saved["model"], saved["source_identity"], topic, strategy)
+        return EpisodeDraft(key, saved["title"], saved["created_at"], script, sources, saved["model"],
+                            saved["source_identity"], topic, strategy, articles)
     except (OSError, ValueError, TypeError, KeyError):
         raise PodcastError("Il copione non è disponibile o le sue fonti sono cambiate. Prepara un nuovo episodio.") from None
 
@@ -145,19 +157,26 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None)
                              topic_similarity=float(os.getenv("EDITORIAL_TOPIC_SIMILARITY", "0.82")))
     cache_config = {**asdict(config), "query_embedding": [EMBEDDING_MODEL, FORMAT_VERSION] if topic else None,
                     "ranking": RANKING_VERSION if topic else None}
-    identity = digest({"coverage": catalog.coverage, "chunks": [(c.id, c.fingerprint) for c in catalog.chunks]})
+    identity = digest({"coverage": catalog.coverage, "chunks": [
+        (c.id, c.fingerprint, c.metadata.get("article_title_verified"),
+         c.metadata.get("article_title"), c.metadata.get("article_pages_json"))
+        for c in catalog.chunks]})
     key = digest([VERSION, identity, model, cache_config, INSTRUCTION, topic])
     directory = root / "data/podcast_cache/standalone/scripts"
     path = directory / (key + ".json")
     if path.exists():
         return load_draft(root, key, catalog)
     selected = select_chunks(root, catalog, config, topic, key_value, embedder)
-    sources = [Source(f"S{i}", c.id, c.metadata["filename"], c.metadata["page"], c.text, 0.) for i, c in enumerate(selected, 1)]
+    sources = [Source(f"S{i}", c.id, c.metadata["filename"], c.metadata["page"], c.text, 0.)
+               for i, c in enumerate(selected, 1)]
+    article_details = source_articles(sources, {c.id: c.metadata for c in selected})
     def prompt(items):
         return json.dumps({"topic": topic, "editions": included_coverage(catalog.coverage, items).get("files", []),
-                           "sources": [{"source_id": s.id, "pdf": s.filename, "page": s.page, "text": s.text} for s in items]}, ensure_ascii=False)
+                           "sources": [evidence_source_record(s, article_details.get(s.id)) for s in items]},
+                          ensure_ascii=False)
     candidates = sources
     sources, _ = fit_context(sources, lambda items: INSTRUCTION + prompt(items), 14000, text_budget=config.max_source_chars)
+    article_details = {s.id: article_details[s.id] for s in sources if s.id in article_details}
     if not sources:
         raise PodcastError("Le fonti disponibili non sono sufficienti per preparare un episodio affidabile.")
     directory.mkdir(parents=True, exist_ok=True)
@@ -187,12 +206,14 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None)
         current = {c.id: c for c in catalog.chunks}
         saved = {"key": key, "version": VERSION, "title": "Le notizie dell’Edicola", "created_at": datetime.now(timezone.utc).isoformat(),
                  "model": model, "source_identity": identity, "config": cache_config, "raw": response.text, "sources": [asdict(s) for s in sources],
-                 "fingerprints": {s.chunk_id: current[s.chunk_id].fingerprint for s in sources}, "coverage": coverage, "script": asdict(script)}
+                 "fingerprints": {s.chunk_id: current[s.chunk_id].fingerprint for s in sources},
+                 "source_articles": article_details, "coverage": coverage, "script": asdict(script)}
         saved["topic"] = topic
         if topic:
             saved["title"] = "Notizie su " + topic
         atomic_write(path, json.dumps(saved, ensure_ascii=False).encode())
-        return EpisodeDraft(key, saved["title"], saved["created_at"], script, sources, model, identity, topic)
+        return EpisodeDraft(key, saved["title"], saved["created_at"], script, sources, model, identity,
+                            topic, VERSION, article_details)
     except PodcastError:
         raise
     except Exception:
