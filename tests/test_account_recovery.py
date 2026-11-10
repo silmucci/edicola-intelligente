@@ -19,7 +19,7 @@ def test_account_database_failure_explains_issue_and_offers_explicit_guest(auth,
         app = AppTest.from_string(script(tmp_path)).run()
         assert not app.exception
         assert app.chat_input[0].disabled
-        assert any("database personale" in e.message.lower() for e in app.error)
+        assert any("database personale" in e.value.lower() for e in app.error)
         assert app.button(key="chat_guest_recovery").label == "Continua senza account"
         assert "rag_pending" not in app.session_state
         ask.assert_not_called()
