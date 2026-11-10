@@ -69,7 +69,10 @@ def validate_vision_response(raw, page_text: str, page: int, total_pages: int) -
         # Un riferimento di pagina proposto dal modello non prova una continuazione.
         if (type(next_page) is not int or not 1 <= next_page <= total_pages or
                 next_page == page or
-                not any(int(m.group(1)) == next_page for m in PAGE_REFERENCE.finditer(text))):
+                not any(int(m.group(1)) == next_page and
+                        re.search(r"\\b(?:continua|segue|prosegue)\\b",
+                                  text[max(0, m.start() - 80):m.end() + 20], re.I)
+                        for m in PAGE_REFERENCE.finditer(text))):
             next_page = None
         matches.append({"title": title, "start": found[0], "title_end": found[1],
                         "section": section, "importance": importance,
