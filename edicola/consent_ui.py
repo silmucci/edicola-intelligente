@@ -8,6 +8,7 @@ import streamlit as st
 from edicola import consent
 from edicola.api_guard import PermissionDenied
 from edicola.personal_store import PersonalStoreError
+from edicola.account_recovery import offer_guest_access
 
 
 def cancel_pending():
@@ -42,7 +43,8 @@ def consent_dialog(purpose):
             st.rerun()
         except PersonalStoreError:
             cancel_pending()
-            st.error("Non possiamo salvare l’autorizzazione in questo momento. Nessun contenuto è stato inviato; riprova più tardi.")
+            st.error("Il database personale non è disponibile: autorizzazione non salvata e nessun invio a Gemini.")
+            offer_guest_access(key="consent_dialog_guest_recovery")
 
 
 def authorize_action(purpose, action, submitted, payload=None):
@@ -66,7 +68,8 @@ def authorize_action(purpose, action, submitted, payload=None):
         consent_dialog(purpose)
     except PersonalStoreError:
         cancel_pending()
-        st.error("Le autorizzazioni del tuo account non sono disponibili. Riprova più tardi; nessun contenuto è stato inviato.")
+        st.error("Le autorizzazioni del tuo account non sono disponibili. Nessun contenuto è stato inviato.")
+        offer_guest_access(key=f"consent_{action}_guest_recovery")
     return False
 
 
@@ -92,4 +95,5 @@ def privacy_controls(key="profile_privacy"):
                 if pending.get("review") and pending.get("purpose") == purpose and pending.get("owner") == consent.actor():
                     consent_dialog(purpose)
             except PersonalStoreError:
-                st.info("Le impostazioni AI non sono disponibili in questo momento. Nessun contenuto verrà inviato.")
+                st.info("Le impostazioni AI dell'account non sono disponibili. Nessun contenuto verrà inviato.")
+                offer_guest_access(key=f"{key}_{purpose}_guest_recovery")
