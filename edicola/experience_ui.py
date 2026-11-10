@@ -69,9 +69,7 @@ def passage_card(chunk, *, context, editions, key, reason=None, root=None, profi
         # Le virgolette indicano un estratto, non un titolo ricostruito dall'app.
         st.markdown("**Una lettura da scoprire**")
         st.markdown(readable("«" + excerpt(chunk.text, 230) + "»"))
-        st.caption(f"Pagina {chunk.metadata['page']} · Estratto originale")
-        if reason:
-            st.caption(reason)
+        # Fonte PDF e pagina sono disponibili dal collegamento qui sotto.
         source_button(chunk.metadata["filename"], chunk.metadata["page"], context=context,
                       chunk_id=chunk.id, key=f"{key}_pdf")
         if root is not None and profile is not None:
@@ -91,10 +89,6 @@ def passage_card(chunk, *, context, editions, key, reason=None, root=None, profi
                     st.rerun()
                 except (OSError, ValueError, RuntimeError, sqlite3.Error):
                     st.error("Non è stato possibile salvare la lettura. Riprova tra poco.")
-        with st.expander("Leggi il passaggio originale"):
-            st.text(info.get("title", "Documento dell’archivio") + f" · pagina {chunk.metadata['page']}")
-            st.text(chunk.text)
-            st.caption("Il passaggio può comprendere parti di più notizie, secondo l’impaginazione del quotidiano.")
 
 
 def home_selection(catalog, limit=4):
