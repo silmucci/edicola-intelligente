@@ -68,7 +68,6 @@ def render_account_profile(root, archive=None):
         warning = st.session_state.pop("account_warning", None)
         if warning:
             st.warning(warning)
-        st.caption(f"Il tuo spazio · {profile.minutes} minuti · formato {profile.format}. Preferenze, salvati e briefing ti seguono anche su un altro dispositivo.")
         if not profile.interests:
             st.subheader("Cominciamo dai tuoi interessi")
             st.caption("Scegli qualche tema e il tempo che hai: troverai qui letture dedicate ai tuoi interessi.")
@@ -138,23 +137,6 @@ def render_account_profile(root, archive=None):
                         st.session_state.pop("account_custom_interest", None)
                         st.toast("Interesse aggiunto")
                         st.rerun()
-            if profile.interests:
-                with st.expander("Personalizza i suggerimenti"):
-                    st.caption("Indica quali argomenti vuoi vedere più spesso o evitare.")
-                    labels = {"Normale": 0, "Più spesso": 1, "Non mostrare": -1}
-                    inverse = {value: label for label, value in labels.items()}
-                    for index, topic in enumerate(profile.interests):
-                        choice = st.segmented_control(
-                            topic, list(labels),
-                            default=inverse.get(profile.feedback.get(topic, 0), "Normale"),
-                            key=f"account_feedback_{index}"
-                        )
-                        value = labels[choice] if choice else 0
-                        if value != profile.feedback.get(topic, 0):
-                            store.set_feedback(topic, value)
-                            st.session_state.pop("account_export", None)
-                            st.toast("Preferenza aggiornata")
-                            st.rerun()
             st.divider()
             st.subheader("Preferenze di lettura")
             st.caption("Scegli quanto tempo dedicare alle notizie e come preferisci consultarle.")
