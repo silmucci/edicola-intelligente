@@ -17,6 +17,7 @@ from pathlib import Path
 
 from edicola.article_vision import (VISION_VERSION, cached_page, page_candidates,
                                     save_page, validate_vision_response)
+from edicola.article_structure import infer_article_annotations
 from edicola.embeddings import api_key
 from edicola.ingestion import extract_pdf
 
@@ -60,7 +61,11 @@ def plan_pages(root: Path, *, filenames=(), maximum=4) -> tuple[list[dict], list
             digest = hashlib.sha256(content).hexdigest()
             result = _snapshot(registry, digest, content)
             text_pages = [item.get("text", "") for item in result.get("pages", [])]
-            candidates = page_candidates(text_pages, maximum)
+            local_articles = infer_article_annotations(result, digest)
+            # Non inviare a Vision pagine con un articolo già verificato
+            # geometricamente: basta la prima pagina / layout complessi.
+            candidates = [number for number in page_candidates(text_pages, maximum)
+                          if number not in local_articles]
             if not candidates:
                 warnings.append(f"{path.name}: nessuna pagina testuale utilizzabile.")
                 continue
