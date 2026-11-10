@@ -1,4 +1,4 @@
-# Edicola Digitale Intelligente — avvio locale con Docker
+# Edicola Digitale Intelligente — Docker e anteprima su Codespaces
 
 Questa configurazione introduce un ambiente **locale e isolato** con Python,
 Streamlit, SQLite e Chroma. Gemini resta un servizio esterno tramite API:
@@ -12,7 +12,50 @@ L'avvio abituale su Windows con `streamlit run app.py` resta disponibile.
 - Il repository clonato sul computer.
 - Connessione Internet per scaricare immagine e dipendenze al primo build.
 
-## Avviare l'app
+## Anteprima con i 12 PDF gia pubblicati (GitHub Codespaces, anche da tablet)
+
+Il repository contiene gia `deployment/seed`: e lo snapshot che la versione
+Streamlit Cloud usa per i quotidiani. Per mostrarli anche in Docker **senza
+ricaricare i PDF e senza chiamare Gemini**, il file `compose.snapshot.yaml`
+attiva la stessa funzione di ripristino (`prepare_cloud`). In un Codespace,
+apri il Terminale sul branch di questa modifica ed esegui:
+
+```bash
+git pull
+docker compose -f compose.yaml -f compose.snapshot.yaml up --build -d
+```
+
+La prima ricostruzione di Chroma puo richiedere tempo. In Codespaces apri
+**Ports / Porte**, inoltra la porta **8501** e seleziona **Open in Browser**.
+Lascia la visibilita **Private**. All'inizio non servono chiavi Gemini per
+sfogliare i quotidiani, le fonti e i passaggi gia indicizzati.
+
+Per vedere i log (utile se l'app sembra ancora in avvio):
+
+```bash
+docker compose -f compose.yaml -f compose.snapshot.yaml logs -f edicola
+```
+
+Per fermare l'anteprima senza cancellare il volume:
+
+```bash
+docker compose -f compose.yaml -f compose.snapshot.yaml down
+```
+
+**Attenzione ai diritti:** usa lo snapshot soltanto se i PDF e i contenuti
+derivati sono autorizzati per questo utilizzo. Il repository e pubblico e
+l'anteprima non deve diventare pubblica senza una verifica separata dei diritti.
+La presenza dei file in GitHub non dimostra che siano liberamente distribuibili.
+
+Lo snapshot viene **montato in sola lettura**: non finisce nell'immagine Docker.
+Viene verificato il manifest (hash dei file) e l'indice Chroma viene ricostruito
+localmente dagli embedding esistenti, in un volume dedicato. Non si esegue OCR,
+nuova estrazione o indicizzazione Gemini. Il corpus e un'istantanea:
+non include automaticamente i PDF nuovi presenti soltanto sul PC. La modalita
+account continua a richiedere i Secrets OIDC e PostgreSQL; senza di essi si
+consulta come ospite e non si utilizza il profilo Google.
+
+## Avviare l'app in modalita locale, senza snapshot
 
 Aprire PowerShell nella cartella principale del repository ed eseguire:
 
@@ -40,12 +83,18 @@ indice e cache memorizzati nel volume Docker.
 
 ## Dati e persistenza
 
+I due avvii sono alternativi: `docker compose up --build -d` utilizza i PDF
+locali, mentre il comando con **entrambi i file** (`-f compose.yaml -f
+compose.snapshot.yaml`) utilizza lo snapshot del repository. Evita di avviare
+entrambe le configurazioni contemporaneamente con lo stesso nome di progetto.
+
+
 - I PDF presenti in `data/incoming` sul PC vengono montati **in sola lettura**
   nel container; non entrano nell'immagine Docker o nel repository.
 - SQLite (`data/archive.sqlite3`), Chroma (`data/chroma`) e le cache
   del container sono conservati in un volume Docker persistente `edicola_data`.
 - L'indice Chroma e il database SQLite della precedente installazione Windows
-  **non vengono importati automaticamente**: il volume Docker è separato.
+  **non vengono importati automaticamente** nella modalità locale: il volume Docker è separato. La modalità snapshot, invece, ricostruisce l'indice dai vettori del pacchetto pubblicato.
   Al primo avvio l'app acquisisce e prepara localmente i PDF visibili,
   ma non invia automaticamente contenuti a Gemini e non crea gli embedding.
   Per la ricerca semantica bisogna disporre di vettori indicizzati.
