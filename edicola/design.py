@@ -43,8 +43,8 @@ def product_notice(product):
     status = product.diagnostics.get("status", "")
     if status in {"empty_index", "selection_empty", "model_abstention"} or not product.sources and not status:
         return "Non ci sono contenuti sufficienti per questa lettura tra le fonti disponibili."
-    if status == "partial_validation":
-        return "Il briefing è parziale: alcune notizie non sono disponibili."
+    if status == "partial_validation" and product.sufficient:
+        return ""
     if not product.sufficient:
         return "Non è stato possibile preparare questa lettura. Le edizioni originali restano consultabili."
     return "Questa lettura è disponibile solo in parte. Puoi approfondire nelle fonti originali."
