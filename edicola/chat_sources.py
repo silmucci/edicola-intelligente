@@ -22,21 +22,8 @@ def citation_text(text, source_ids):
 
 
 def render_contributions(sources, used_source_ids, root, *, editions=None, compact=False):
-    """Distingue documenti inviati e citati, senza attribuire letture al corpus intero."""
-    if not sources:
-        return
-    metadata = editions if editions is not None else source_editions(root, sources)
-    groups = OrderedDict()
-    for source in sources:
-        groups.setdefault(source.filename, []).append(source)
-    container = st.popover("Fonti consultate") if compact else st.expander("Edizioni incluse nella lettura")
-    with container:
-        for index, members in enumerate(groups.values(), 1):
-            info = metadata.get(members[0].id, {})
-            title = info.get("publication") or f"Edizione {index}"
-            published = info.get("publication_date") or "Data non disponibile"
-            cited = any(source.id in used_source_ids for source in members)
-            st.text(title + " · " + published + (" · Citata" if cited else " · Inclusa, non citata"))
+    """Compatibilità con vecchi prodotti; le fonti sono mostrate nei rispettivi link PDF."""
+    return
 
 
 
