@@ -10,6 +10,7 @@ import httpx
 from google.genai import errors, types
 
 from edicola.rag import RagError, Source, response_schema, validate_response
+from edicola.article_evidence import evidence_source_record
 from edicola.context_selection import fit_context, included_coverage, COMPARISON_INSTRUCTION
 
 
@@ -67,15 +68,8 @@ def briefing_schema(sources: list[Source]) -> dict:
 def build_briefing_prompt(sources: list[Source], coverage: dict, hints: list[list[str]], *, articles=None) -> str:
     included = {source.id for source in sources}
     hints = [[identity for identity in group if identity in included] for group in hints]
-    records = []
-    for item in sources:
-        record = {"source_id": item.id, "pdf": item.filename, "page": item.page, "text": item.text}
-        article = (articles or {}).get(item.id)
-        if article:
-            record["article_title"] = article["title"]
-            if article.get("pages"):
-                record["article_pages"] = article["pages"]
-        records.append(record)
+    records = [evidence_source_record(item, (articles or {}).get(item.id))
+               for item in sources]
     return json.dumps({"task": "briefing", "coverage": included_coverage(coverage, sources),
                        "topic_hints": [group for group in hints if group],
                        "sources": records}, ensure_ascii=False)
