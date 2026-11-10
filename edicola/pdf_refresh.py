@@ -12,7 +12,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from edicola.chunking import prepare_documents
+from edicola.chunking import prepare_documents, clean_text
 from edicola.ingestion import extract_pdf, ingest_directory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +26,7 @@ def refresh(root: Path, names: list[str], *, apply=False):
     if not registry.is_file() or not incoming.is_dir():
         raise ValueError("Archivio locale non disponibile.")
     planned = {}
+    changed_text_pages = 0
     with sqlite3.connect(registry.resolve().as_uri() + "?mode=ro", uri=True) as connection:
         for filename in names:
             path = incoming / filename
@@ -43,11 +44,21 @@ def refresh(root: Path, names: list[str], *, apply=False):
             updated = extract_pdf(content)
             if updated["status"] not in {"ok", "partial", "no_text"}:
                 raise ValueError("Il nuovo estrattore non ha prodotto un risultato utilizzabile.")
-            if json.loads(previous[0]) != updated:
+            older = json.loads(previous[0])
+            if older != updated:
                 planned[digest] = updated
+                old_pages = {p["number"]: clean_text(p.get("text", ""))
+                             for p in older.get("pages", [])}
+                new_pages = {p["number"]: clean_text(p.get("text", ""))
+                             for p in updated.get("pages", [])}
+                changed_text_pages += sum(
+                    old_pages.get(p) != new_pages.get(p)
+                    for p in set(old_pages) | set(new_pages)
+                )
     report = {"dry_run": not apply, "pdf_requested": len(names),
               "extractions_to_update": len(planned), "backup": None,
-              "embedding_refresh_required": bool(planned)}
+              "text_pages_changed": changed_text_pages,
+              "embedding_refresh_required": bool(changed_text_pages)}
     if not apply or not planned:
         return report
     backup_dir = root / "data/corpus_updates"
