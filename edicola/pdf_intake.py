@@ -103,13 +103,16 @@ def process_inbox(root: Path, *, max_files: int = MAX_PER_PASS) -> dict:
     # Il lock esclude contemporaneamente altri import e batch di manutenzione.
     with maintenance_lock(root):
         existing = {}
+        previous_by_name = {}
         for path in incoming.iterdir():
             if path.suffix.lower() != ".pdf":
                 continue
             if path.is_symlink() or not path.is_file() or not _valid_name(path.name):
                 continue
             with path.open("rb") as stream:
-                existing[hashlib.file_digest(stream, "sha256").hexdigest()] = path.name
+                existing_sha = hashlib.file_digest(stream, "sha256").hexdigest()
+            existing[existing_sha] = path.name
+            previous_by_name[path.name] = existing_sha
         for path in candidates[:max_files]:
             if not _valid_name(path.name) or path.is_symlink() or not path.is_file():
                 report["rejected"].append({"pdf": path.name, "reason": "file non consentito"})
@@ -145,7 +148,20 @@ def process_inbox(root: Path, *, max_files: int = MAX_PER_PASS) -> dict:
                 # lettura con pypdf al successivo ingest_directory dell'app.
                 with open_registry(root / "data/archive.sqlite3") as connection:
                     save_result(connection, digest, extracted)
+                    # Solo i conflitti di nome identificano con certezza
+                    # una revisione della stessa edizione: niente associazioni
+                    # arbitrarie per data, nome della testata o similarità.
+                    parent = previous_by_name.get(path.name)
+                    if parent and destination.name != path.name:
+                        with connection:
+                            connection.execute(
+                                """INSERT OR IGNORE INTO edition_lineage
+                                (sha256, parent_sha256, original_filename)
+                                VALUES (?, ?, ?)""",
+                                (digest, parent, path.name),
+                            )
                 existing[digest] = destination.name
+                previous_by_name[destination.name] = digest
                 if destination.name != path.name:
                     report["renamed"][path.name] = destination.name
                 path.unlink()
