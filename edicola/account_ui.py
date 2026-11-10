@@ -216,16 +216,7 @@ def render_account_profile(root, archive=None):
                         st.text(document_label(archive, source["filename"], source["page"]))
                         source_button(source["filename"], source["page"], context=archive, chunk_id=source["chunk_id"], key=f"personal_audio_pdf_{source['id']}")
     except PersonalStoreError:
-        st.error("Il tuo spazio personale non è disponibile in questo momento. Nessun nuovo salvataggio è stato confermato.")
-        with st.expander("Verifica il collegamento al database", expanded=True):
-            st.caption("Controllo di sola lettura: non modifica preferenze, chat o password.")
-            if st.button("Controlla configurazione", key="account_database_check"):
-                from edicola.personal_diagnostics import inspect_personal_database
-                ok, message = inspect_personal_database()
-                if ok:
-                    st.success(message)
-                else:
-                    st.warning(message)
+        st.error("Il tuo spazio personale non è disponibile in questo momento. Riprova più tardi: nessun nuovo salvataggio è stato confermato.")
     except (PermissionDenied, RagError, PodcastError) as exc:
         st.error(friendly_error(exc))
     except ValueError as exc:
