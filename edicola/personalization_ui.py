@@ -184,7 +184,7 @@ def render_demo_readings(root, archive, profile, catalog):
         existing = cached_audio(scope, selected, voice)
         if existing:
             data, manifest = existing
-                st.audio(data, format="audio/wav")
+            st.audio(data, format="audio/wav")
             st.download_button("Scarica podcast personale WAV", data, file_name="briefing-personale.wav", mime="audio/wav", key="personal_download")
             with st.expander("Testo letto e fonti del podcast personale"):
                 st.text(manifest["script"]["text"])
