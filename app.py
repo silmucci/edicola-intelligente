@@ -12,6 +12,7 @@ if sqlite3.sqlite_version_info < (3, 35, 0):
     st.stop()
 
 from edicola.ingestion import ingest_directory
+from edicola.pdf_intake import process_inbox
 from edicola.chunking import prepare_documents
 from edicola.pdf_viewer import archive_context, render_archive
 from edicola.archive_ui import diagnostics_enabled
@@ -38,6 +39,17 @@ if setting("EDICOLA_CLOUD_DEMO", "0") == "1":
     except (OSError, ValueError, RuntimeError, sqlite3.Error, KeyError, TypeError):
         st.error("L’archivio non è disponibile in questo momento. Riprova più tardi.")
         st.stop()
+
+# La versione pubblicata usa uno snapshot immutabile: la inbox è solo locale.
+# Una copia PDF depositata in data/inbox viene preparata senza Gemini al reload.
+if setting("EDICOLA_CLOUD_DEMO", "0") != "1":
+    try:
+        intake_report = process_inbox(ROOT)
+        if intake_report["added"]:
+            logging.getLogger("edicola").info(
+                "Nuove edizioni locali preparate: %d", len(intake_report["added"]))
+    except (OSError, ValueError, RuntimeError):
+        logging.getLogger("edicola").warning("Inbox PDF non disponibile; archivio precedente conservato.")
 
 try:
     with st.spinner("Apro le edizioni disponibili…"):
