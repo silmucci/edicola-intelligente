@@ -23,8 +23,8 @@ RUN python -m pip install --no-cache-dir -r requirements.txt
 COPY --chown=edicola:edicola app.py ./app.py
 COPY --chown=edicola:edicola edicola/ ./edicola/
 COPY --chown=edicola:edicola .streamlit/config.toml ./.streamlit/config.toml
-RUN mkdir -p /app/data/incoming /home/edicola/.streamlit \
-    && chown -R edicola:edicola /app/data /home/edicola
+RUN mkdir -p /app/data/incoming /app/.cloud-runtime /home/edicola/.streamlit \
+    && chown -R edicola:edicola /app/data /app/.cloud-runtime /home/edicola
 
 USER edicola
 EXPOSE 8501
