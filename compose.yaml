@@ -1,0 +1,27 @@
+name: edicola-intelligente
+
+services:
+  edicola:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8501:8501"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Never silently start the published snapshot mode on local Docker.
+      EDICOLA_CLOUD_DEMO: "0"
+      # Account access requires explicit OIDC configuration; no demo identity.
+      EDICOLA_PROFILE_MODE: "accounts"
+    volumes:
+      # SQLite, Chroma, and caches persist independently of the container.
+      - edicola_data:/app/data
+      # Local PDFs are readable, but are never copied into the image.
+      - ./data/incoming:/app/data/incoming:ro
+    init: true
+    stop_grace_period: 20s
+
+volumes:
+  edicola_data:
