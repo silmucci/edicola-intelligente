@@ -2,6 +2,13 @@
 
 Leggi i quotidiani disponibili, esplora le notizie e ritrova le pagine originali.
 
+**Anteprima frontend (branch Docker):** intestazione testuale essenziale,
+barra di navigazione compatta e scorrevole, menu Streamlit ridotto e
+impaginazione adatta anche al tablet. Le funzioni dei prodotti e i dati
+non cambiano. Per visualizzarla online con i quotidiani del corpus gia
+presente nel repository, vedi [Docker e anteprima Codespaces](DOCKER.md).
+
+
 Sotto l’intestazione, tutte le sezioni mostrano le sette card dei prodotti, ciascuna
 con icona, titolo e descrizione. L’intera scheda è cliccabile e quella attiva è
 evidenziata in blu. La griglia si adatta agli schermi piccoli senza duplicarsi
