@@ -117,7 +117,7 @@ def prepare_send(question):
 def save_completed(chat, turn):
     chat["updated_at"] = now()
     if not chat["saved"]:
-        return
+        return False
     try:
         backend = store()
         if backend is None:
@@ -125,8 +125,43 @@ def save_completed(chat, turn):
         backend.append_turn(chat["id"], turn)
         turn.pop("save_error", None)
         st.session_state.pop("account_export", None)
+        return True
     except (PersonalStoreError, ValueError):
         turn["save_error"] = True
+        return False
+
+
+def retry_saved_turn(chat_id, turn_id):
+    """Riprova solo il salvataggio originale, mai la generazione AI."""
+    chats = st.session_state.get("rag_chats", {})
+    chat = chats.get(chat_id)
+    if not chat or not chat["saved"]:
+        raise PersonalStoreError("Conversazione salvata non disponibile.")
+    turn = next((t for t in chat["turns"] if t.get("id") == turn_id), None)
+    if turn is None or not turn.get("save_error") or (
+            turn.get("result") is None and not turn.get("error")):
+        raise PersonalStoreError("Non ci sono messaggi da recuperare.")
+    return save_completed(chat, turn)
+
+
+def retry_unsaved():
+    """Riprende in ordine i soli turni già destinati al DB e non confermati."""
+    saved = 0
+    for chat in st.session_state.get("rag_chats", {}).values():
+        if not chat.get("saved"):
+            continue
+        for turn in chat["turns"]:
+            if turn.get("save_error"):
+                if retry_saved_turn(chat["id"], turn["id"]):
+                    saved += 1
+                else:
+                    break
+    remaining = sum(
+        bool(turn.get("save_error"))
+        for chat in st.session_state.get("rag_chats", {}).values() if chat.get("saved")
+        for turn in chat["turns"]
+    )
+    return {"saved": saved, "remaining": remaining}
 
 
 def set_saving(enabled):

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -12,7 +13,7 @@ from edicola.rag import RagError, Source, response_schema, validate_response
 from edicola.context_selection import fit_context, included_coverage, COMPARISON_INSTRUCTION
 
 
-STRATEGY_VERSION = "briefing-v2"
+STRATEGY_VERSION = "briefing-v3"
 logger = logging.getLogger(__name__)
 SYSTEM_INSTRUCTION = """Sei un redattore che prepara un briefing in italiano dai passaggi forniti.
 Non devi rispondere a una domanda: individua le notizie documentate nei testi disponibili.
@@ -23,7 +24,7 @@ Produci da tre a otto notizie SE documentate; se ce ne sono solo una o due, rest
 Non c'è un numero minimo obbligatorio. sufficient=false e news=[] solo se non emerge
 alcuna notizia verificabile. Puoi ignorare passaggi inutili e unire più passaggi pertinenti.
 I gruppi locali sono suggerimenti, non obbligano a produrre notizie né limitano le fonti.
-Accorpa ripetizioni della stessa notizia senza confondere fatti diversi. Ogni notizia ha
+Accorpa ripetizioni della stessa notizia senza confondere fatti diversi.\nUsa article_title e article_pages soltanto per riconoscere passaggi collegati;\nle evidenze devono sempre citare il testo del passaggio, non il solo titolo. Ogni notizia ha
 title e summary, ciascuno con text ed evidence contenenti source_id e quote letterale
 di almeno 20 caratteri quando disponibili. Usa solo ID ricevuti. Non inserire rimandi o
 identificativi in text: li aggiungerà il programma. Mantieni sintesi brevi e autonome.
@@ -63,22 +64,55 @@ def briefing_schema(sources: list[Source]) -> dict:
                 }}}}
 
 
-def build_briefing_prompt(sources: list[Source], coverage: dict, hints: list[list[str]]) -> str:
+def build_briefing_prompt(sources: list[Source], coverage: dict, hints: list[list[str]], *, articles=None) -> str:
     included = {source.id for source in sources}
     hints = [[identity for identity in group if identity in included] for group in hints]
-    return json.dumps({"task": "briefing", "coverage": included_coverage(coverage, sources), "topic_hints": [group for group in hints if group],
-                       "sources": [{"source_id": item.id, "pdf": item.filename, "page": item.page,
-                                    "text": item.text} for item in sources]}, ensure_ascii=False)
+    records = []
+    for item in sources:
+        record = {"source_id": item.id, "pdf": item.filename, "page": item.page, "text": item.text}
+        article = (articles or {}).get(item.id)
+        if article:
+            record["article_title"] = article["title"]
+            if article.get("pages"):
+                record["article_pages"] = article["pages"]
+        records.append(record)
+    return json.dumps({"task": "briefing", "coverage": included_coverage(coverage, sources),
+                       "topic_hints": [group for group in hints if group],
+                       "sources": records}, ensure_ascii=False)
 
 
-def fit_briefing_prompt(sources: list[Source], coverage: dict, hints: list[list[str]], budget: int, *, source_budget=None):
+def fit_briefing_prompt(sources: list[Source], coverage: dict, hints: list[list[str]], budget: int, *, source_budget=None, articles=None):
     """Passaggi interi da ogni edizione pertinente, entro un budget complessivo."""
     fitted, _ = fit_context(sources,
-        lambda selected: SYSTEM_INSTRUCTION + build_briefing_prompt(selected, coverage, hints),
+        lambda selected: SYSTEM_INSTRUCTION + build_briefing_prompt(selected, coverage, hints, articles=articles),
         budget, text_budget=source_budget)
     if not fitted:
         raise ValueError("prompt_budget_exceeded")
-    return fitted, build_briefing_prompt(fitted, coverage, hints)
+    return fitted, build_briefing_prompt(fitted, coverage, hints, articles=articles)
+
+
+def _repeated_news(title: str, summary: str, previous: list[tuple[str, str]]) -> bool:
+    """Elimina solo notizie con titolo e sintesi sostanzialmente coincidenti."""
+    tokens = lambda value: re.findall(r"\w+", value.casefold())
+    headline = tokens(title)
+    body = tokens(summary)
+    if not headline or not body:
+        return False
+    for old_title, old_summary in previous:
+        other_title, other_body = tokens(old_title), tokens(old_summary)
+        if (re.findall(r"\d+(?:[.,]\d+)*", title + summary)
+                != re.findall(r"\d+(?:[.,]\d+)*", old_title + old_summary)):
+            continue
+        if (headline == other_title and body == other_body):
+            return True
+        title_words, old_words = set(headline), set(other_title)
+        summary_words, old_summary_words = set(body), set(other_body)
+        if (len(title_words) >= 4 and len(summary_words) >= 10
+                and len(old_words) >= 4 and len(old_summary_words) >= 10
+                and len(title_words & old_words) / len(title_words | old_words) >= .92
+                and len(summary_words & old_summary_words) / len(summary_words | old_summary_words) >= .90):
+            return True
+    return False
 
 
 def validate_briefing(raw: str, sources: list[Source], *, request_id="-") -> BriefingDraft:
@@ -101,6 +135,7 @@ def validate_briefing(raw: str, sources: list[Source], *, request_id="-") -> Bri
     if not data["news"]:
         return rejected("invalid_structure")
     sections, used, seen = [], [], set()
+    news_seen = []
     invalid_citations = invalid_structure = duplicates = 0
     for item in data["news"]:
         if not isinstance(item, dict) or set(item) != {"title", "summary"}:
@@ -112,10 +147,11 @@ def validate_briefing(raw: str, sources: list[Source], *, request_id="-") -> Bri
             invalid_citations += 1
             continue
         identity = " ".join(item["summary"]["text"].casefold().split())
-        if identity in seen:
+        if identity in seen or _repeated_news(item["title"]["text"], item["summary"]["text"], news_seen):
             duplicates += 1
             continue
         seen.add(identity)
+        news_seen.append((item["title"]["text"], item["summary"]["text"]))
         parts = [validate_response(json.dumps({"sufficient": True, "claims": [item[key]]}), sources).answer
                  for key in ("title", "summary")]
         sections.append({"heading": parts[0], "text": parts[1]})

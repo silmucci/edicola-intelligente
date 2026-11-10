@@ -89,7 +89,6 @@ def review_controls(root, catalog=None):
         st.session_state["editorial_review_scope"] = ""
     scope = st.selectbox("Ambito delle edizioni", options, key="editorial_review_scope",
                          format_func=lambda value: value.capitalize() if value else "Tutti gli ambiti")
-    st.caption("L’ambito riguarda l’edizione, non i singoli articoli. Alcune edizioni non hanno un ambito indicato.")
     # Vecchie bozze non devono mantenere filtri che non sono più visibili.
     for key in ("editorial_review_from", "editorial_review_to"):
         st.session_state.pop(key, None)
@@ -97,7 +96,6 @@ def review_controls(root, catalog=None):
                           format_func=lambda value: "Solo le più recenti della selezione" if value else "Tutte le edizioni selezionate")
     selection = ReviewSelection(keyword=keyword.strip(), filenames=tuple(sorted(selected)), scope=scope, latest=latest)
     filtered = filter_catalog(catalog, selection)
-    st.caption("La ricerca include i testi che contengono tutte le parole chiave indicate.")
     return filtered, selection
 
 
