@@ -206,3 +206,28 @@ def test_retry_rejects_changed_sources_without_regenerating_text(standalone):
     with pytest.raises(PodcastError, match='fonti'):
         generate(standalone, retry_key=failure.value.draft.key)
     assert standalone.text.models.generate_content.call_count == standalone.audio.models.generate_content.call_count == 1
+
+
+def test_topic_podcast_keeps_strong_semantic_match_without_exact_keyword(standalone):
+    """Un articolo può trattare il tema senza ripeterne la parola letterale."""
+    from edicola.podcast_draft import select_chunks
+    source = standalone.catalog.chunks[0]
+    strong_hit = {"id": source.id, "text": source.text, "distance": 0.23}
+    with patch("edicola.podcast_draft.require_permission"), patch(
+        "edicola.podcast_draft.semantic_search", return_value=[strong_hit]
+    ), patch("edicola.podcast_draft.ranked_chunks", return_value=[]):
+        selected = select_chunks(standalone.root, standalone.catalog, SimpleNamespace(),
+                                 "corruzione in abruzzo", "fake", embedder=Mock())
+    assert [item.id for item in selected] == [source.id]
+
+
+def test_topic_podcast_does_not_accept_weak_semantic_match_alone(standalone):
+    from edicola.podcast_draft import select_chunks
+    source = standalone.catalog.chunks[0]
+    weak_hit = {"id": source.id, "text": source.text, "distance": 0.58}
+    with patch("edicola.podcast_draft.require_permission"), patch(
+        "edicola.podcast_draft.semantic_search", return_value=[weak_hit]
+    ), patch("edicola.podcast_draft.ranked_chunks", return_value=[]):
+        selected = select_chunks(standalone.root, standalone.catalog, SimpleNamespace(),
+                                 "corruzione in abruzzo", "fake", embedder=Mock())
+    assert selected == []
