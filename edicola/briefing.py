@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -90,6 +91,30 @@ def fit_briefing_prompt(sources: list[Source], coverage: dict, hints: list[list[
     return fitted, build_briefing_prompt(fitted, coverage, hints, articles=articles)
 
 
+def _repeated_news(title: str, summary: str, previous: list[tuple[str, str]]) -> bool:
+    """Elimina solo notizie con titolo e sintesi sostanzialmente coincidenti."""
+    tokens = lambda value: re.findall(r"\w+", value.casefold())
+    headline = tokens(title)
+    body = tokens(summary)
+    if not headline or not body:
+        return False
+    for old_title, old_summary in previous:
+        other_title, other_body = tokens(old_title), tokens(old_summary)
+        if (re.findall(r"\d+(?:[.,]\d+)*", title + summary)
+                != re.findall(r"\d+(?:[.,]\d+)*", old_title + old_summary)):
+            continue
+        if (headline == other_title and body == other_body):
+            return True
+        title_words, old_words = set(headline), set(other_title)
+        summary_words, old_summary_words = set(body), set(other_body)
+        if (len(title_words) >= 4 and len(summary_words) >= 10
+                and len(old_words) >= 4 and len(old_summary_words) >= 10
+                and len(title_words & old_words) / len(title_words | old_words) >= .92
+                and len(summary_words & old_summary_words) / len(summary_words | old_summary_words) >= .90):
+            return True
+    return False
+
+
 def validate_briefing(raw: str, sources: list[Source], *, request_id="-") -> BriefingDraft:
     def rejected(status, **counts):
         logger.warning("request_id=%s phase=briefing_validation status=%s counts=%s", request_id, status, counts)
@@ -110,6 +135,7 @@ def validate_briefing(raw: str, sources: list[Source], *, request_id="-") -> Bri
     if not data["news"]:
         return rejected("invalid_structure")
     sections, used, seen = [], [], set()
+    news_seen = []
     invalid_citations = invalid_structure = duplicates = 0
     for item in data["news"]:
         if not isinstance(item, dict) or set(item) != {"title", "summary"}:
@@ -121,10 +147,11 @@ def validate_briefing(raw: str, sources: list[Source], *, request_id="-") -> Bri
             invalid_citations += 1
             continue
         identity = " ".join(item["summary"]["text"].casefold().split())
-        if identity in seen:
+        if identity in seen or _repeated_news(item["title"]["text"], item["summary"]["text"], news_seen):
             duplicates += 1
             continue
         seen.add(identity)
+        news_seen.append((item["title"]["text"], item["summary"]["text"]))
         parts = [validate_response(json.dumps({"sufficient": True, "claims": [item[key]]}), sources).answer
                  for key in ("title", "summary")]
         sections.append({"heading": parts[0], "text": parts[1]})
