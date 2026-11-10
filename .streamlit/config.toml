@@ -1,16 +1,20 @@
 [browser]
 gatherUsageStats = false
 
+[client]
+# Menu essenziale: evita strumenti da sviluppatore nell'interfaccia lettore.
+toolbarMode = "minimal"
+
 [theme]
 base = "light"
-primaryColor = "#0866D9"
+primaryColor = "#275D9B"
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F2F7FD"
-textColor = "#082654"
+secondaryBackgroundColor = "#F5F7FA"
+textColor = "#1C2938"
 font = "sans-serif"
 headingFont = "serif"
 baseRadius = "medium"
 buttonRadius = "medium"
-borderColor = "#E2E8F0"
+borderColor = "#E3E8ED"
 showWidgetBorder = true
 
