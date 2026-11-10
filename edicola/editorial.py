@@ -16,6 +16,7 @@ from edicola.briefing import (MESSAGES, STRATEGY_VERSION, BriefingDraft,
                              SYSTEM_INSTRUCTION as BRIEFING_INSTRUCTION, fit_briefing_prompt,
                              generate_briefing_response, validate_briefing)
 from edicola.editorial_selection import Catalog, balanced_briefing, read_catalog, topic_clusters
+from edicola.article_evidence import source_articles
 from edicola.embeddings import api_key
 from edicola.indexing import ROOT
 from edicola.rag import (DEFAULT_MODEL, INSUFFICIENT, RagError, Source, build_prompt,
@@ -70,6 +71,7 @@ class EditorialResult:
     message: str = ""
     from_cache: bool = False
     diagnostics: dict = field(default_factory=dict)
+    source_articles: dict = field(default_factory=dict)
 
 
 def cache_read(path: Path, key: str) -> EditorialResult | None:
@@ -110,14 +112,15 @@ def cache_key(kind: str, topic: str, model: str, config: EditorialConfig, catalo
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
-def briefing_result(draft: BriefingDraft, sources: list[Source], coverage: dict) -> EditorialResult:
+def briefing_result(draft: BriefingDraft, sources: list[Source], coverage: dict, *, articles=None) -> EditorialResult:
     message = MESSAGES.get(draft.status, "")
     if draft.status == "partial_validation":
         rejected = draft.diagnostics.get("invalid_citations", 0) + draft.diagnostics.get("invalid_structure", 0)
         message = f"Briefing parziale: {rejected} notizie scartate per errori di formato o citazioni non valide."
     return EditorialResult("briefing", "Briefing delle notizie disponibili" if draft.sections else "Briefing non generato",
                            draft.sections, sources, draft.used_source_ids, coverage, bool(draft.sections), message,
-                           diagnostics={"strategy": STRATEGY_VERSION, "status": draft.status, **draft.diagnostics})
+                           diagnostics={"strategy": STRATEGY_VERSION, "status": draft.status, **draft.diagnostics},
+                           source_articles=articles or {})
 
 
 def render_product(kind: str, raw: str, sources: list[Source], coverage: dict, groups: list[list[str]]) -> EditorialResult:
@@ -207,6 +210,9 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
         sources = [Source(f"S{index + 1}", chunk.id, chunk.metadata["filename"], chunk.metadata["page"],
                           chunk.text, distances.get(chunk.id, 0.0))
                    for index, chunk in enumerate(selected)]
+        article_details = source_articles(
+            sources, {chunk.id: chunk.metadata for chunk in selected}
+        )
         if kind == "briefing":
             logger.info("request_id=%s phase=briefing_selection indexed=%d total=%d selected=%d pdfs=%d pages=%d chars=%d groups=%d",
                         request_id, catalog.coverage["indexed"], catalog.coverage["total"], len(sources),
@@ -249,7 +255,7 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
             candidates = sources
             try:
                 sources, prompt = fit_briefing_prompt(sources, catalog.coverage, groups, prompt_budget,
-                                                      source_budget=config.max_source_chars)
+                                                      source_budget=config.max_source_chars, articles=article_details)
             except ValueError:
                 logger.warning("request_id=%s phase=briefing_context status=prompt_budget_exceeded budget=%d", request_id, prompt_budget)
                 return briefing_result(BriefingDraft(status="prompt_budget_exceeded"), [],
@@ -257,7 +263,9 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
             prompt_chars = len(BRIEFING_INSTRUCTION) + len(prompt)
             logger.info("request_id=%s phase=briefing_context prompt_chars=%d budget=%d", request_id, prompt_chars, prompt_budget)
             draft = generate_briefing_response(client, model, prompt, sources, request_id=request_id)
-            result = briefing_result(draft, sources, selection_coverage(catalog.coverage, candidates, sources))
+            result = briefing_result(draft, sources, selection_coverage(catalog.coverage, candidates, sources),
+                                     articles={source.id: article_details[source.id] for source in sources
+                                               if source.id in article_details})
             result.diagnostics.update({"selected_passages": len(sources), "selected_pdfs": len({s.filename for s in sources}),
                                        "source_chars": sum(len(s.text) for s in sources), "prompt_chars": prompt_chars,
                                        "prompt_budget": prompt_budget})
