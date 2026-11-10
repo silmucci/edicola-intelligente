@@ -110,6 +110,8 @@ Per sviluppo e manutenzione consultare [il diario tecnico](DEVELOPMENT_HISTORY.m
 [la guida archivio](GESTIONE_ARCHIVIO.md), [gli account](ACCOUNTS.md),
 [la cronologia chat](CHAT_HISTORY.md), [il deployment](DEPLOYMENT.md)
 e [la valutazione sperimentale](evaluation/README.md).
+Per eseguire l'applicazione localmente in un container, consultare la [guida Docker](DOCKER.md).
+L'avvio abituale con Streamlit rimane disponibile; Docker non include PDF, indici o segreti.
 Il [resoconto dell’unificazione](CONSUMER_APP.md) confronta i prodotti,
 indica i file e i test pertinenti e descrive la compatibilità dei risultati salvati.
 Nessun aggiornamento dei dati o pubblicazione avviene tramite queste istruzioni.
