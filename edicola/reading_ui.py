@@ -111,7 +111,7 @@ def _render_save_status(turn):
 
 def render_chat(root, context):
     synchronize_identity()
-    section_intro("Chat AI", "Riprendi un argomento, approfondisci le notizie, ritrova le fonti. Nessuna ricerca web.")
+    section_intro("Chat AI", "Riprendi un argomento, approfondisci le notizie, ritrova le fonti.")
     try:
         from edicola.editorial_selection import read_catalog
         if read_catalog(root).coverage.get("partial"):
@@ -135,8 +135,6 @@ def render_chat(root, context):
             st.caption("Da dove vuoi iniziare? Chiedi un fatto o un approfondimento sulle edizioni disponibili.")
         for index, turn in enumerate(history):
             _render_chat_turn(turn, index, index == len(history) - 1, root, context)
-    if not chat["saved"]:
-        st.caption("Chat temporanea · disponibile solo in questa sessione.")
     st.chat_input("Chiedi ai quotidiani…", key="rag_input", max_chars=2000,
                   on_submit=_queue_chat_question, disabled=bool(st.session_state.get("rag_pending")),
                   submit_mode="disable", accept_file=False, accept_audio=False)
