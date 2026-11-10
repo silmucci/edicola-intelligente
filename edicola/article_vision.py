@@ -10,7 +10,7 @@ from pathlib import Path
 from edicola.chunking import clean_text
 
 VISION_VERSION = "editorial-vision-v1"
-PAGE_REFERENCE = re.compile(r"(?i)\\b(?:pag(?:ina|ine|\\.)?|p\\.)\\s*(\\d{1,3})\\b")
+PAGE_REFERENCE = re.compile(r"(?i)\b(?:pag(?:ina|ine|\.)?|p\.)\s*(\d{1,3})\b")
 SECTION_WORDS = ("politica", "economia", "esteri", "sport", "cultura",
                  "tecnologia", "cronaca", "finanza", "salute", "scienza")
 PRIORITY = {"apertura", "spalla", "taglio basso", "breve", "altro"}
@@ -36,7 +36,7 @@ def _unique_heading(text: str, title: str):
     normalized = clean_text(title)
     if len(normalized) < 8 or len(normalized) > 220:
         return None
-    pattern = re.compile(r"(?<!\\w)" + re.escape(normalized.casefold()) + r"(?!\\w)")
+    pattern = re.compile(r"(?<!\w)" + re.escape(normalized.casefold()) + r"(?!\w)")
     positions = list(pattern.finditer(text.casefold()))
     return positions[0].span() if len(positions) == 1 else None
 
