@@ -75,7 +75,7 @@ def ingest_directory(incoming: Path, registry: Path) -> list[Document]:
     documents = []
     with open_registry(Path(registry)) as connection:
         for path in sorted(incoming.iterdir(), key=lambda item: item.name.casefold()):
-            if path.suffix.lower() != ".pdf" or not path.is_file():
+            if path.suffix.lower() != ".pdf" or not path.is_file() or path.is_symlink():
                 continue
             try:
                 # Hash ed estrazione usano la medesima istantanea del file.

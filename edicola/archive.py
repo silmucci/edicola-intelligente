@@ -21,7 +21,7 @@ class IndexChunk:
     def prompt(self):
         # Titolo stabile anche dopo una rinomina o l'aggiunta di copie identiche.
         return document_prompt(
-            f"Quotidiano {self.metadata['pdf_sha256']} - pagina {self.metadata['page']}", self.text
+            f"Quotidiano {self.metadata.get('embedding_source_sha256', self.metadata['pdf_sha256'])} - pagina {self.metadata['page']}", self.text
         )
 
     @property
@@ -46,7 +46,7 @@ def read_active_chunks(registry: Path, incoming: Path) -> tuple[list[IndexChunk]
             aliases = {}
             warnings = []
             for path in sorted(incoming.iterdir(), key=lambda item: item.name):
-                if not path.is_file() or path.suffix.lower() != ".pdf":
+                if not path.is_file() or path.is_symlink() or path.suffix.lower() != ".pdf":
                     continue
                 with path.open("rb") as stream:
                     digest = hashlib.file_digest(stream, "sha256").hexdigest()
@@ -85,6 +85,29 @@ def read_active_chunks(registry: Path, incoming: Path) -> tuple[list[IndexChunk]
                         "chunk_config": config[0],
                         **chunk_annotation(digest, row["page"], row["start"], row["end"], annotations),
                     }))
+            # Per le versioni esplicitamente collegate dalla inbox, un chunk
+            # identico a quello della precedente edizione (stessa pagina,
+            # coordinate testuali e testo) usa esattamente il vecchio prompt
+            # di embedding. Nessun trasferimento è previsto fra PDF diversi.
+            has_lineage = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='edition_lineage'"
+            ).fetchone()
+            if has_lineage:
+                parents = dict(connection.execute(
+                    "SELECT sha256,parent_sha256 FROM edition_lineage"
+                ))
+                originals = {}
+                for chunk in chunks:
+                    sha = chunk.metadata["pdf_sha256"]
+                    originals.setdefault(sha, set()).add((
+                        chunk.metadata["page"], chunk.metadata["start"],
+                        chunk.metadata["end"], chunk.text
+                    ))
+                for chunk in chunks:
+                    parent = parents.get(chunk.metadata["pdf_sha256"])
+                    if parent and (chunk.metadata["page"], chunk.metadata["start"],
+                                   chunk.metadata["end"], chunk.text) in originals.get(parent, set()):
+                        chunk.metadata["embedding_source_sha256"] = parent
             return chunks, warnings
     except sqlite3.Error:
         raise RuntimeError("SQLite non leggibile o schema incompleto: verificare i Task 1 e 2.") from None

@@ -18,8 +18,10 @@ services:
     volumes:
       # SQLite, Chroma, and caches persist independently of the container.
       - edicola_data:/app/data
-      # Local PDFs are readable, but are never copied into the image.
-      - ./data/incoming:/app/data/incoming:ro
+      # Nuovi PDF privati: file del computer, mai inclusi nell'immagine.
+      # La inbox deve essere scrivibile per spostare e deduplicare i file.
+      - ./data/incoming:/app/data/incoming
+      - ./data/inbox:/app/data/inbox
     init: true
     stop_grace_period: 20s
 
