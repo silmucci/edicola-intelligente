@@ -5,7 +5,6 @@ import json
 import streamlit as st
 
 from edicola.archive_ui import edition_metadata
-from edicola.editorial_selection import read_catalog
 from edicola.embeddings import api_key
 from edicola.identity import current_identity, synchronize_identity
 from edicola.personal_audio import audio_scope, prepare_audio, remove_audio
@@ -49,8 +48,7 @@ def privacy_notice():
 
 
 def render_account_profile(root, archive=None):
-    from edicola.experience_ui import INTERESTS, excerpt, passage_card, readable
-    from edicola.personalization_ui import cached_audio, show_product
+    from edicola.experience_ui import INTERESTS
     synchronize_identity()
     section_intro("Il mio profilo", "Il tuo tempo, i tuoi interessi, le tue letture. Preferenze e privacy in un unico spazio.", "La tua edicola")
     if current_identity() is None:
@@ -70,10 +68,10 @@ def render_account_profile(root, archive=None):
         if not profile.interests:
             st.subheader("Cominciamo dai tuoi interessi")
             st.caption("Scegli qualche tema e il tempo che hai: troverai qui letture dedicate ai tuoi interessi.")
-        areas = st.tabs(["Raccolta", "I miei briefing", "Preferenze", "Privacy"],
+        areas = st.tabs(["Preferenze", "Privacy"],
                         default="Preferenze",
                         key="personal_area", on_change="rerun")
-        with areas[3]:
+        with areas[1]:
             if st.session_state.get("personal_area") == "Privacy":
                 privacy_controls()
             privacy_notice()
@@ -104,9 +102,9 @@ def render_account_profile(root, archive=None):
                     else:
                         st.session_state["account_notice"] = "I tuoi dati personali sono stati cancellati."
                     st.rerun()
-        with areas[2]:
+        with areas[0]:
             st.subheader("I miei interessi")
-            st.caption("Seleziona gli argomenti che desideri seguire. Le modifiche vengono salvate automaticamente.")
+            st.caption("Scegli gli argomenti che ti interessano.")
             options = list(dict.fromkeys(profile.interests + INTERESTS))
             selected = st.pills("Argomenti", options, selection_mode="multi",
                                 default=profile.interests, key="account_interest_chips",
@@ -152,82 +150,84 @@ def render_account_profile(root, archive=None):
                 st.session_state.pop("account_export", None)
                 st.toast("Preferenze salvate")
                 st.rerun()
-        try:
-            catalog = read_catalog(root)
-        except Exception:
-            catalog = None
-            st.info("Le letture consigliate non sono disponibili in questo momento.")
-        with areas[0]:
-            with st.expander(f"Notizie salvate ({len(profile.saved)})"):
-                current = {c.id: c for c in catalog.chunks} if catalog else {}
-                if not profile.saved:
-                    st.info("Usa Salva lettura per ritrovare qui i riferimenti ai quotidiani originali.")
-                for key, item in profile.saved.items():
-                    ref = item["metadata"]
-                    with st.container(border=True):
-                        st.text(document_label(archive, ref["filename"], ref["page"]))
-                        chunk = current.get(key)
-                        if chunk and chunk.metadata.get("pdf_sha256") == ref.get("pdf_sha256"):
-                            st.markdown(readable("«" + excerpt(chunk.text, 230) + "»"))
-                            with st.expander("Leggi il passaggio salvato"):
-                                st.text(chunk.text)
-                            source_button(ref["filename"], ref["page"], context=archive, chunk_id=key, key=f"personal_saved_pdf_{key}")
-                        else:
-                            st.caption("Il riferimento è conservato nel tuo account; questa versione del passaggio non è disponibile nell’archivio attuale.")
-                        if st.button("Rimuovi dai salvati", key=f"personal_remove_{key}"):
-                            store.remove_passage(key)
-                            st.session_state.pop("account_export", None)
-                            st.session_state["account_notice"] = "Lettura rimossa dai salvati."
-                            st.rerun()
-        with areas[1]:
-            st.subheader("Il mio briefing")
-            generate = st.button("Genera il mio briefing", key="personal_briefing_submit", type="primary", disabled=not profile.interests)
-            if authorize_action("personal_text", "personal_briefing", generate, [profile.interests, profile.minutes, profile.feedback]):
-                with st.spinner("Preparazione e salvataggio del briefing personale…"):
-                    key, result = perform("personal_text", generate_personal_briefing, root, profile, authorize_external=True, catalog=catalog, store=store)
-                if result.sufficient:
-                    st.session_state["personal_product"] = key
-                    st.success("Briefing disponibile nel tuo account.")
-                else:
-                    st.info(product_notice(result))
-            products = store.list_products()
-            if not products:
-                st.info("Non hai ancora briefing salvati. La generazione richiede il tuo consenso esplicito.")
-                return
-            available = {p.key: p for p in products}
-            if st.session_state.get("personal_product") not in available:
-                st.session_state.pop("personal_product", None)
-            selected = st.selectbox("I miei briefing già disponibili", list(available), key="personal_product",
-                                    format_func=lambda key: citation_text(available[key].result.title, available[key].result.used_source_ids) + " — " + available[key].created_at)
-            product = available[selected]
-            if profile.format == "audio":
-                with st.expander("Leggi il briefing personale (preferenza audio)"):
-                    show_product(product.result, archive)
-            else:
-                show_product(product.result, archive)
-            st.caption("Il testo e le fonti sono salvati nel tuo account. Gli audio sono temporanei e possono andare persi al riavvio.")
-            with st.expander("Ascolta questo briefing"):
-                voice = st.selectbox("Voce del podcast personale", VOICES, key="personal_voice")
-                audio_submit = st.button("Genera podcast del mio briefing", key="personal_audio_submit")
-            if authorize_action("audio", "personal_audio", audio_submit, [selected, voice]):
-                api_key(root)
-                with st.spinner("Generazione del podcast personale…"):
-                    scope = prepare_audio(root, store, selected)
-                    perform("audio", generate_podcast, selected, voice=voice, authorize_external=True, root=scope)
-            existing = cached_audio(audio_scope(root, store), selected, voice)
-            if existing:
-                data, manifest = existing
-                if manifest["script"]["selected_sections"] < manifest["script"]["total_sections"]:
-                    st.info("L’audio legge un estratto del briefing, composto da sezioni complete.")
-                private_download(data, label="Scarica podcast personale WAV", filename="briefing-personale.wav", mime="audio/wav", key="personal_download", play=True)
-                with st.expander("Testo letto e fonti del podcast personale"):
-                    st.text(manifest["script"]["text"])
-                    for source in manifest["script"]["sources"]:
-                        st.text(document_label(archive, source["filename"], source["page"]))
-                        source_button(source["filename"], source["page"], context=archive, chunk_id=source["chunk_id"], key=f"personal_audio_pdf_{source['id']}")
     except PersonalStoreError:
         st.error("Il tuo spazio personale non è disponibile in questo momento. Riprova più tardi: nessun nuovo salvataggio è stato confermato.")
     except (PermissionDenied, RagError, PodcastError) as exc:
         st.error(friendly_error(exc))
     except ValueError as exc:
+        st.error(friendly_error(exc))
+
+
+def render_account_readings(root, archive, store, profile, catalog):
+    """Letture e briefing personali presentati in Per te, fuori dalle impostazioni."""
+    from edicola.experience_ui import excerpt, readable
+    from edicola.personalization_ui import cached_audio, show_product
+    try:
+        with st.expander(f"Le mie letture salvate ({len(profile.saved)})"):
+            current = {c.id: c for c in catalog.chunks} if catalog else {}
+            if not profile.saved:
+                st.info("Usa Salva lettura per ritrovare qui i riferimenti ai quotidiani originali.")
+            for key, item in profile.saved.items():
+                ref = item["metadata"]
+                with st.container(border=True):
+                    st.text(document_label(archive, ref["filename"], ref["page"]))
+                    chunk = current.get(key)
+                    if chunk and chunk.metadata.get("pdf_sha256") == ref.get("pdf_sha256"):
+                        st.markdown(readable("«" + excerpt(chunk.text, 230) + "»"))
+                        with st.expander("Leggi il passaggio salvato"):
+                            st.text(chunk.text)
+                        source_button(ref["filename"], ref["page"], context=archive, chunk_id=key, key=f"personal_saved_pdf_{key}")
+                    else:
+                        st.caption("Il riferimento è conservato nel tuo account; questa versione del passaggio non è disponibile nell’archivio attuale.")
+                    if st.button("Rimuovi dai salvati", key=f"personal_remove_{key}"):
+                        store.remove_passage(key)
+                        st.session_state.pop("account_export", None)
+                        st.session_state["account_notice"] = "Lettura rimossa dai salvati."
+                        st.rerun()
+        st.subheader("Il mio briefing")
+        generate = st.button("Genera il mio briefing", key="personal_briefing_submit", type="primary", disabled=not profile.interests)
+        if authorize_action("personal_text", "personal_briefing", generate, [profile.interests, profile.minutes, profile.feedback]):
+            with st.spinner("Preparazione e salvataggio del briefing personale…"):
+                key, result = perform("personal_text", generate_personal_briefing, root, profile, authorize_external=True, catalog=catalog, store=store)
+            if result.sufficient:
+                st.session_state["personal_product"] = key
+                st.success("Briefing disponibile nel tuo account.")
+            else:
+                st.info(product_notice(result))
+        products = store.list_products()
+        if not products:
+            st.info("Non hai ancora briefing salvati. La generazione richiede il tuo consenso esplicito.")
+            return
+        available = {p.key: p for p in products}
+        if st.session_state.get("personal_product") not in available:
+            st.session_state.pop("personal_product", None)
+        selected = st.selectbox("I miei briefing già disponibili", list(available), key="personal_product",
+                                format_func=lambda key: citation_text(available[key].result.title, available[key].result.used_source_ids) + " — " + available[key].created_at)
+        product = available[selected]
+        if profile.format == "audio":
+            with st.expander("Leggi il briefing personale (preferenza audio)"):
+                show_product(product.result, archive)
+        else:
+            show_product(product.result, archive)
+        
+        with st.expander("Ascolta questo briefing"):
+            voice = st.selectbox("Voce del podcast personale", VOICES, key="personal_voice")
+            audio_submit = st.button("Genera podcast del mio briefing", key="personal_audio_submit")
+        if authorize_action("audio", "personal_audio", audio_submit, [selected, voice]):
+            api_key(root)
+            with st.spinner("Generazione del podcast personale…"):
+                scope = prepare_audio(root, store, selected)
+                perform("audio", generate_podcast, selected, voice=voice, authorize_external=True, root=scope)
+        existing = cached_audio(audio_scope(root, store), selected, voice)
+        if existing:
+            data, manifest = existing
+            if manifest["script"]["selected_sections"] < manifest["script"]["total_sections"]:
+                st.info("L’audio legge un estratto del briefing, composto da sezioni complete.")
+            private_download(data, label="Scarica podcast personale WAV", filename="briefing-personale.wav", mime="audio/wav", key="personal_download", play=True)
+            with st.expander("Testo letto e fonti del podcast personale"):
+                st.text(manifest["script"]["text"])
+                for source in manifest["script"]["sources"]:
+                    st.text(document_label(archive, source["filename"], source["page"]))
+                    source_button(source["filename"], source["page"], context=archive, chunk_id=source["chunk_id"], key=f"personal_audio_pdf_{source['id']}")
+    except (PersonalStoreError, PermissionDenied, RagError, PodcastError, ValueError) as exc:
         st.error(friendly_error(exc))
