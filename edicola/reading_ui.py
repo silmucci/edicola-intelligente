@@ -97,9 +97,15 @@ def _render_chat_turn(turn, index, last, root, context):
 
 def _render_save_status(turn):
     if turn.get("save_error"):
-        st.warning("Questo scambio è disponibile soltanto in questa sessione: il salvataggio non è riuscito.")
+        st.warning("Messaggio non ancora salvato nel tuo account. Rimane disponibile in questa sessione.")
         if st.button("Riprova salvataggio", key=f"rag_retry_save_{turn['id']}"):
-            chat_sessions.save_completed(chat_sessions.active(), turn)
+            original = next((chat for chat in st.session_state.get("rag_chats", {}).values()
+                             if any(t.get("id") == turn["id"] for t in chat["turns"])), None)
+            if original is not None:
+                try:
+                    chat_sessions.retry_saved_turn(original["id"], turn["id"])
+                except PersonalStoreError:
+                    pass
             st.rerun()
 
 
@@ -129,7 +135,8 @@ def render_chat(root, context):
             st.caption("Da dove vuoi iniziare? Chiedi un fatto o un approfondimento sulle edizioni disponibili.")
         for index, turn in enumerate(history):
             _render_chat_turn(turn, index, index == len(history) - 1, root, context)
-    st.caption("Cronologia account · gli scambi completati vengono salvati; eventuali errori sono segnalati." if chat["saved"] else "Chat temporanea · disponibile soltanto in questa sessione.")
+    if not chat["saved"]:
+        st.caption("Chat temporanea · disponibile solo in questa sessione.")
     st.chat_input("Chiedi ai quotidiani…", key="rag_input", max_chars=2000,
                   on_submit=_queue_chat_question, disabled=bool(st.session_state.get("rag_pending")),
                   submit_mode="disable", accept_file=False, accept_audio=False)
