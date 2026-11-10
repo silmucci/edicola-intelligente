@@ -55,6 +55,40 @@ non include automaticamente i PDF nuovi presenti soltanto sul PC. La modalita
 account continua a richiedere i Secrets OIDC e PostgreSQL; senza di essi si
 consulta come ospite e non si utilizza il profilo Google.
 
+## Vedere il restyling dal tablet, senza il PC
+
+Il branch `feat/docker-local-runtime-2026-11-10` contiene un'interfaccia
+piu essenziale: menu tecnico Streamlit ridotto, intestazione sobria,
+navigazione editoriale compatta e scorrevole su schermi piccoli.
+Il codice del frontend e la configurazione Streamlit sono montati
+nel container in sola lettura: dopo il primo avvio, gli aggiornamenti
+del codice nel Codespace possono apparire con il reload automatico,
+senza ricreare ogni volta il container.
+
+Se il Codespace e gia sul branch corretto e il container e avviato:
+
+```bash
+git pull
+```
+
+Aprire o ricaricare la porta **8501** nel browser del tablet.
+Se l'interfaccia non si aggiorna, eseguire:
+
+```bash
+docker compose -f compose.yaml -f compose.snapshot.yaml restart edicola
+```
+
+Se invece Docker non e ancora partito con i sorgenti montati, lanciare
+**una volta** il comando completo:
+
+```bash
+git pull
+docker compose -f compose.yaml -f compose.snapshot.yaml up --build -d
+```
+
+I componenti interni v2 rimangono protetti dal proprio CSS isolato.
+Non si toccano le fonti, i consensi, le API e i database.
+
 ## Avviare l'app in modalita locale, senza snapshot
 
 Aprire PowerShell nella cartella principale del repository ed eseguire:
