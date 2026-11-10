@@ -17,8 +17,12 @@ def safe_action(callback, *args):
 
 def render_navigation():
     backend = sessions.store()
-    enabled = backend.history_enabled() if backend else False
-    saved = backend.list_chats() if backend else []
+    unavailable = False
+    try:
+        enabled = backend.history_enabled() if backend else False
+        saved = backend.list_chats() if backend else []
+    except PersonalStoreError:
+        backend, saved, enabled, unavailable = None, [], False, True
     chat = sessions.active()
     # Niente dati personali globali; elenco di soli metadati, messaggi caricati su apertura.
     entries = {item["id"]: item for item in saved}
@@ -28,6 +32,8 @@ def render_navigation():
         return chat
     with st.sidebar:
         st.subheader("Le tue conversazioni")
+        if unavailable:
+            st.warning("Il salvataggio delle chat non è disponibile. Puoi continuare con una chat temporanea.")
         st.button("Nuova chat", key="rag_new_chat", type="primary", on_click=safe_action, args=(sessions.start_new, backend))
         st.session_state["rag_chat_selector"] = chat["id"]
         def select():
@@ -55,14 +61,30 @@ def render_navigation():
                 def change():
                     safe_action(sessions.set_saving, st.session_state["rag_save_history"])
                 st.toggle("Salva le nuove chat nel mio account", key="rag_save_history", on_change=change)
-                st.caption("Scelta distinta dall’AI. Disattivare blocca nuovi salvataggi; le vecchie chat non vengono eliminate. Le chat temporanee non vengono importate automaticamente.")
+                st.caption("Le chat temporanee non vengono salvate automaticamente. Le chat già salvate restano disponibili se disattivi l'opzione.")
             else:
                 st.caption("Ospite: le conversazioni durano solo per questa sessione. Accedi per scegliere il salvataggio nel tuo account; nessuna importazione automatica.")
             confirmed_all = st.checkbox("Confermo la cancellazione di tutta la cronologia", key="rag_delete_all_confirm")
             st.button("Cancella tutta la cronologia", key="rag_delete_all", disabled=not confirmed_all,
                       on_click=safe_action, args=(sessions.delete_all, backend))
-        if st.session_state.pop("rag_notice", None):
-            st.caption("Modifica completata.")
+        failed_saves = [
+            turn for cached in st.session_state.get("rag_chats", {}).values()
+            if cached.get("saved")
+            for turn in cached.get("turns", []) if turn.get("save_error")
+        ]
+        if failed_saves and backend:
+            st.warning(f"{len(failed_saves)} messaggi ancora da salvare.")
+            if st.button("Riprova salvataggi", key="rag_retry_all"):
+                report = sessions.retry_unsaved()
+                st.session_state["rag_notice"] = (
+                    f"{report['saved']} messaggi salvati."
+                    if report["remaining"] == 0 else
+                    f"{report['saved']} messaggi salvati; {report['remaining']} ancora in attesa."
+                )
+                st.rerun()
+        notice = st.session_state.pop("rag_notice", None)
+        if notice:
+            st.caption(notice)
         error = st.session_state.pop("rag_navigation_error", None)
         if error:
             st.error(error)
