@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from edicola.embeddings import document_prompt
+from edicola.article_vision import read_annotations, chunk_annotation
 
 
 @dataclass(frozen=True)
@@ -63,7 +64,10 @@ def read_active_chunks(registry: Path, incoming: Path) -> tuple[list[IndexChunk]
                 extraction = connection.execute(
                     "SELECT result_json FROM extractions WHERE sha256 = ?", (digest,)
                 ).fetchone()
-                total_pages = json.loads(extraction[0])["total_pages"] if extraction else 0
+                source_result = json.loads(extraction[0]) if extraction else {}
+                total_pages = source_result.get("total_pages", 0)
+                annotations = read_annotations(registry.parent / "editorial_pages.sqlite3", digest,
+                    {item["number"]: item["text"] for item in source_result.get("pages", [])})
                 for row in connection.execute(
                     "SELECT * FROM chunks WHERE pdf_sha256 = ? ORDER BY position", (digest,)
                 ):
@@ -72,6 +76,7 @@ def read_active_chunks(registry: Path, incoming: Path) -> tuple[list[IndexChunk]
                         "pdf_sha256": digest, "page": row["page"], "total_pages": total_pages,
                         "position": row["position"], "start": row["start"], "end": row["end"],
                         "chunk_config": config[0],
+                        **chunk_annotation(digest, row["page"], row["start"], row["end"], annotations),
                     }))
             return chunks, warnings
     except sqlite3.Error:
