@@ -142,43 +142,59 @@ def render_home(root, context):
     render_press_review(catalog, context, metadata)
 
 def render_for_you(root, context):
-    """Letture consigliate accessibili dalla card Per te, senza invii AI."""
+    """Notizie personalizzate, letture salvate e briefing senza pannelli tecnici."""
     identity.synchronize_identity()
-    section_intro("Per te", "Le notizie più vicine agli argomenti che segui.", "La tua edicola")
-    if not authenticated():
-        st.info("Accedi con Google dal menu Profilo per consultare le tue letture consigliate."
-                if not identity.local_demo() else
-                "Per vedere le letture consigliate, accedi e imposta i tuoi interessi.")
-        return
-    try:
-        store = None
-        if identity.local_demo():
-            profile = load_profile(root)
-        else:
-            from edicola.account_ui import personal_context
-            store, profile = personal_context()
+    section_intro("Per te", "Le notizie più vicine ai tuoi interessi.", "La tua edicola")
+
+    store, profile = None, None
+    if authenticated():
         try:
-            catalog = read_catalog(root)
+            if identity.local_demo():
+                profile = load_profile(root)
+            else:
+                from edicola.account_ui import personal_context
+                store, profile = personal_context()
         except (OSError, ValueError, RuntimeError, sqlite3.Error):
-            catalog = None
-        items = recommend(catalog, profile) if catalog and profile.interests else []
-        if not profile.interests:
-            st.info("Scegli i tuoi interessi nel Profilo per ricevere letture personalizzate.")
-        elif catalog is None:
-            st.info("Le letture consigliate non sono disponibili in questo momento.")
-        elif not items:
-            st.info("Non ci sono ancora letture pertinenti agli argomenti scelti.")
-        if items:
-            metadata = edition_metadata(root, context.documents)
-            with st.container(horizontal=True, gap="medium"):
-                for index, item in enumerate(items):
-                    passage_card(item.chunk, context=context, editions=metadata, key=f"for_you_{index}",
-                                 root=root, profile=profile, store=store)
-        if identity.local_demo():
-            from edicola.personalization_ui import render_demo_readings
-            render_demo_readings(root, context, profile, catalog)
-        else:
-            from edicola.account_ui import render_account_readings
-            render_account_readings(root, context, store, profile, catalog)
+            st.info("Le tue preferenze non sono disponibili in questo momento.")
+
+    try:
+        catalog = read_catalog(root)
     except (OSError, ValueError, RuntimeError, sqlite3.Error):
-        st.info("La tua raccolta non è disponibile in questo momento.")
+        catalog = None
+
+    if catalog and catalog.chunks:
+        personalized = recommend(catalog, profile, limit=6) if profile and profile.interests else []
+        selected = [item.chunk for item in personalized]
+        used = {chunk.id for chunk in selected}
+        # Completa le proposte con notizie di varie edizioni, senza
+        # sostituire o nascondere quelle in linea con gli interessi.
+        for chunk in home_selection(catalog, limit=8):
+            if len(selected) >= 6:
+                break
+            if chunk.id not in used:
+                selected.append(chunk)
+                used.add(chunk.id)
+        if personalized:
+            st.subheader("Scelte per i tuoi interessi")
+        else:
+            st.subheader("Da scoprire")
+            if not profile:
+                st.caption("Accedi dal Profilo per ricevere consigli più vicini ai tuoi interessi.")
+            elif not profile.interests:
+                st.caption("Scegli i tuoi interessi nel Profilo per personalizzare le letture.")
+        metadata = edition_metadata(root, context.documents)
+        with st.container(horizontal=True, gap="medium"):
+            for index, chunk in enumerate(selected):
+                passage_card(chunk, context=context, editions=metadata, key=f"for_you_{index}",
+                             root=root if profile else None, profile=profile, store=store)
+    else:
+        st.info("Le letture non sono disponibili in questo momento.")
+
+    if profile is None:
+        return
+    if identity.local_demo():
+        from edicola.personalization_ui import render_demo_readings
+        render_demo_readings(root, context, profile, catalog)
+    else:
+        from edicola.account_ui import render_account_readings
+        render_account_readings(root, context, store, profile, catalog)
