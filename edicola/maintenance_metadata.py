@@ -55,6 +55,10 @@ def confirm_metadata(root, filename, publication, published, *, confirmed=False)
         if not isinstance(previous, dict):
             raise ValueError("Voce dei metadati non valida.")
         item = {**previous, "publication": publication, "date": published}
+        if published:
+            item["date_source"] = "confirmed"
+        else:
+            item.pop("date_source", None)
         if item == previous:
             return False
         backup = private_directory(root) / ("editions-before-" + uuid4().hex + ".json")
