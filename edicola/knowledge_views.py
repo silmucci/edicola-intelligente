@@ -12,7 +12,7 @@ from edicola.knowledge_components import event_card, event_text, timeline_story,
 from edicola.knowledge_presentation import undated_order, empty_knowledge_message, theme_title, short_text
 from edicola.knowledge_validation import compact_map
 from edicola.map_presentation import GROUPS, node_captions, node_groups
-from edicola.chat_sources import render_contributions, render_context_limit
+from edicola.chat_sources import render_context_limit
 from edicola.map_relations import relation_category
 from edicola.map_component import render_graph
 
@@ -57,7 +57,6 @@ def render_knowledge(result, archive=None):
         st.caption(theme_title(result.topic))
         st.info(empty_knowledge_message(result))
         render_context_limit(result.coverage)
-        render_contributions(result.sources, [], archive.root if archive else Path(__file__).resolve().parents[1], compact=True)
         if technical:
             with st.expander("Diagnostica · sviluppo"):
                 st.json(result.diagnostics)
@@ -84,7 +83,6 @@ def render_knowledge(result, archive=None):
     items = (data.get("events", []) + data.get("undated_events", []) if result.kind == "timeline" else
              data.get("nodes", []) + data.get("edges", []) + data.get("context_edges", []))
     used_ids = {identity for item in items for identity in item.get("source_ids", [])}
-    render_contributions(result.sources, used_ids, archive.root if archive else Path(__file__).resolve().parents[1], compact=True)
     if technical:
         with st.expander("Diagnostica · sviluppo"):
             st.json(result.diagnostics)
