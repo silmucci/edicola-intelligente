@@ -90,10 +90,7 @@ def start_new(backend=None):
 def prepare_send(question):
     chat = active()
     backend = store()
-    try:
-        enabled = backend.history_enabled() if backend else False
-    except PersonalStoreError:
-        enabled = False
+    enabled = backend.history_enabled() if backend else False
     if chat["saved"] and (not enabled or any(t.get("save_error") for t in chat["turns"])):
         # La parte già salvata resta intatta. Nessun messaggio aggiunto dopo la
         # disattivazione viene importato implicitamente riattivando l'opzione.
