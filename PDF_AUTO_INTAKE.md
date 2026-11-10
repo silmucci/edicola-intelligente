@@ -41,9 +41,13 @@ direttamente in `data/incoming` può sovrascrivere la versione precedente.
   articoli e delle continuazioni disponibile in modo automatico sulle
   estrazioni PyMuPDF adatte. Non vengono eseguiti OCR o modelli locali.
 - Il vecchio archivio e gli embedding **non vengono sostituiti**.
-  I nuovi chunk restano `pending` per Gemini, come già previsto dalla
-  piattaforma. Solo una autorizzazione esplicita può inviarli per
-  l'indicizzazione semantica. Nessun invio parte dalla inbox.
+  In una nuova versione dello stesso nome, ogni chunk con **testo, pagina
+  e intervallo identici** conserva esattamente il prompt della precedente
+  versione. Se il suo vettore è già indicizzato, viene copiato localmente
+  senza chiamate Gemini; i passaggi cambiati rimangono `pending`.
+  Senza un vettore originale valido, anche il passaggio identico rimane
+  `pending`. Solo un'autorizzazione esplicita può generare gli embedding
+  mancanti: nessun invio parte dalla inbox.
 - I quotidiani fisicamente rimossi da `incoming` non compaiono più
   nell'app, anche se lo storico SQLite resta intatto. Per conservare le
   edizioni storiche non spostarle o eliminarle da `incoming`.
