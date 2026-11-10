@@ -1,7 +1,7 @@
 """Token editoriali condivisi dai componenti locali; nessun font o asset remoto."""
 
 COLORS = dict(paper="#FFFFFF", ink="#1C2938", primary="#275D9B", accent="#B26A55",
-              surface="#F5F7FA", border="#E3E8ED", muted="#5E6B78")
+              surface="#F2F7FD", border="#E3E8ED", muted="#5E6B78")
 TOKENS = {**COLORS, "sans": "system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
           "serif": "Georgia,'Times New Roman',serif", "radius": "12px", "space": "20px",
           "shadow": "0 2px 14px #1C293808", "focus": "0 0 0 3px #275D9B40"}
