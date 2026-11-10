@@ -46,56 +46,38 @@ def render_context_limit(coverage):
 
 
 def render_sources(result, *, index, last, root, context, formatter, namespace="rag"):
+    """Elenca soltanto le fonti citate, con link diretto al PDF e alla pagina."""
     editions = getattr(result, "source_editions", {}) or source_editions(root, result.sources)
-    render_contributions(result.sources, result.used_source_ids, root, editions=editions)
-    references = getattr(result, "source_references", {})
+    references = getattr(result, "source_references", {}) or {}
     articles = getattr(result, "source_articles", {}) or {}
+    used = set(result.used_source_ids)
     groups = OrderedDict()
     for source in result.sources:
-        if source.id in result.used_source_ids:
-            sha = references.get(source.id, {}).get("pdf_sha256")
-            groups.setdefault((source.filename, source.page, sha), []).append(source)
-    if groups:
-        st.caption("Fonti")
-        with st.container(horizontal=True, gap="small"):
-            for (filename, page, sha), sources in groups.items():
-                source = sources[0]
-                if context:
-                    for candidate in sources:
-                        try:
-                            resolve_reference(context, filename, page, candidate.chunk_id, pdf_sha256=sha)
-                            source = candidate
-                            break
-                        except PdfViewError:
-                            pass
-                info = editions.get(source.id, {})
-                name = info.get("publication")
-                numbers = {identity: str(i) for i, identity in enumerate(dict.fromkeys(result.used_source_ids), 1)}
-                ids = "/".join(numbers[s.id] for s in sources)
-                published = info.get("publication_date") or "Data non disponibile"
-                article = articles.get(source.id)
-                label = f"{ids} · {name or 'Documento dell’archivio'} · {published} · pagina {page}"
-                if article:
-                    label += " · " + article["title"]
-                description = name or "Documento dell’archivio"
-                if info.get("publication_date"):
-                    description += " · " + info["publication_date"]
-                if article:
-                    description += " · " + article_reference(article)
-                key = f"{namespace}_pdf_{source.id}" if last else f"{namespace}_history_{index}_{source.id}"
-                source_button(filename, page, context=context, chunk_id=source.chunk_id, pdf_sha256=sha,
-                              key=key, label=formatter(label), help_text=description)
-    if result.sources:
-        with st.popover("Leggi la fonte", type="tertiary"):
-            for source in result.sources:
-                if source.id not in result.used_source_ids:
-                    continue
-                name = editions.get(source.id, {}).get("publication") or "Documento dell’archivio"
-                number = list(dict.fromkeys(result.used_source_ids)).index(source.id) + 1
-                published = editions.get(source.id, {}).get("publication_date") or "Data non disponibile"
-                article = articles.get(source.id)
-                heading = f"[{number}] {name} · {published} · pagina {source.page}"
-                if article:
-                    heading += " · " + article_reference(article)
-                st.caption(formatter(heading))
-                st.text(source.text)
+        if source.id not in used:
+            continue
+        sha = references.get(source.id, {}).get("pdf_sha256")
+        groups.setdefault((source.filename, source.page, sha), []).append(source)
+    if not groups:
+        return
+    st.markdown("**Fonti**")
+    with st.container(horizontal=True, gap="small"):
+        for (filename, page, sha), members in groups.items():
+            source = members[0]
+            if context:
+                for candidate in members:
+                    try:
+                        resolve_reference(context, filename, page, candidate.chunk_id, pdf_sha256=sha)
+                        source = candidate
+                        break
+                    except PdfViewError:
+                        pass
+            info = editions.get(source.id, {})
+            name = info.get("publication") or "Quotidiano"
+            published = info.get("publication_date")
+            label = name + (f" · {published}" if published else "") + f" · pagina {page}"
+            article = articles.get(source.id)
+            if article and article.get("title"):
+                label += " · " + article["title"]
+            key = f"{namespace}_pdf_{source.id}" if last else f"{namespace}_history_{index}_{source.id}"
+            source_button(filename, page, context=context, chunk_id=source.chunk_id, pdf_sha256=sha,
+                          key=key, label=formatter(label), help_text="Apri la pagina del quotidiano")
