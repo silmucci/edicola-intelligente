@@ -18,7 +18,7 @@ from edicola.indexing import ROOT
 from edicola.search import semantic_search
 from edicola.rag_context import source_editions, temporal_context, temporal_notice
 from edicola.chat_data import bounded_context
-from edicola.article_evidence import verified_article, duplicate_article_hit
+from edicola.article_evidence import verified_article, duplicate_article_hit, evidence_source_record
 from edicola.conversation_context import retrieval_query
 from edicola.context_selection import fit_context, COMPARISON_INSTRUCTION
 
@@ -127,19 +127,12 @@ def response_schema(sources: list[Source]) -> dict:
 def build_prompt(question: str, sources: list[Source], *, editions=None, temporal=None, conversation=None, articles=None) -> str:
     # JSON impedisce ai testi di chiudere delimitatori e creare nuovi ruoli chat.
     data = {"question": question, "sources": [
-        {"source_id": source.id, "pdf": source.filename, "page": source.page, "text": source.text}
+        evidence_source_record(source, (articles or {}).get(source.id))
         for source in sources
     ]}
     if editions is not None:
         for source in data["sources"]:
             source.update(editions.get(source["source_id"], {}))
-    if articles:
-        for source in data["sources"]:
-            article = articles.get(source["source_id"])
-            if article:
-                source["article_title"] = article["title"]
-                if article["pages"]:
-                    source["article_pages"] = article["pages"]
     if temporal is not None:
         data["temporal_context"] = temporal
     if conversation:

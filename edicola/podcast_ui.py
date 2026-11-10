@@ -14,6 +14,7 @@ from edicola.podcast import VOICES
 from edicola.podcast_text import PodcastError
 from edicola.standalone_podcast import generate_standalone_podcast, list_episodes, PodcastAudioError
 from edicola.chat_sources import document_label, render_contributions
+from edicola.article_evidence import article_reference
 from edicola.pdf_viewer import source_button
 
 
@@ -85,7 +86,8 @@ def render_podcast_ui(root: Path, archive=None):
     if draft:
         with st.expander("Copione pronto", expanded=True):
             st.text(draft.script.text)
-            render_episode_sources(draft.script, draft.sources, root, archive, "podcast_draft")
+            render_episode_sources(draft.script, draft.sources, root, archive, "podcast_draft",
+                                   articles=draft.source_articles)
             retry = st.button("Riprova solo l’audio", key="podcast_retry")
             if authorize_episode("podcast_retry", retry, {"voice": voice, "draft": draft.key}):
                 run_episode(root, voice, retry_key=draft.key)
@@ -117,12 +119,17 @@ def render_podcast_ui(root: Path, archive=None):
         st.info("Questo audio non è disponibile in questo momento. Gli altri episodi restano consultabili.")
     with st.expander("Testo e fonti"):
         st.text(episode.script.text)
-        render_episode_sources(episode.script, episode.sources, root, archive, "podcast_episode")
+        render_episode_sources(episode.script, episode.sources, root, archive, "podcast_episode",
+                               articles=episode.source_articles)
 
 
-def render_episode_sources(script, sources, root, archive, key):
+def render_episode_sources(script, sources, root, archive, key, *, articles=None):
     used = [s["id"] for s in script.sources]
     render_contributions(sources, used, root, compact=True)
     for source in script.sources:
+        article = (articles or {}).get(source["id"])
+        label = document_label(archive, source["filename"], source["page"])
+        if article:
+            label += " · " + article_reference(article)
         source_button(source["filename"], source["page"], context=archive, chunk_id=source["chunk_id"],
-                      key=key + "_" + source["id"], label=document_label(archive, source["filename"], source["page"]))
+                      key=key + "_" + source["id"], label=label)

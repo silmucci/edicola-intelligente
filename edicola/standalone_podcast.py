@@ -2,14 +2,14 @@
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 from edicola.api_guard import PermissionDenied, permission_scope
 from edicola.indexing import ROOT
 from edicola.podcast import generate_script_audio, wav_duration, atomic_write, audio_identity
-from edicola.podcast_draft import prepare_draft, load_draft, digest, VERSION
+from edicola.podcast_draft import prepare_draft, load_draft, digest, VERSION, TOPIC_VERSION
 from edicola.podcast_text import PodcastError, Script, list_products
 from edicola.rag import Source
 from edicola.personal_store import PersonalStoreError
@@ -17,7 +17,7 @@ from edicola.personal_store import PersonalStoreError
 
 def draft_context(draft):
     context = {"strategy": draft.strategy, "corpus": draft.source_identity, "script_model": draft.model, "draft": draft.key}
-    if draft.strategy == VERSION:
+    if draft.strategy in {VERSION, TOPIC_VERSION}:
         context["topic"] = draft.topic
     return context
 
@@ -33,6 +33,7 @@ class Episode:
     seconds: float
     voice: str
     from_cache: bool = True
+    source_articles: dict = field(default_factory=dict)
 
 
 class PodcastAudioError(PodcastError):
@@ -82,7 +83,7 @@ def generate_standalone_podcast(*, root=ROOT, voice=None, authorize_text=False, 
     except (OSError, ValueError, KeyError):
         raise PodcastAudioError("L’episodio non è stato salvato correttamente. Puoi riprovare senza rigenerare il copione.", draft) from None
     return Episode(key, draft.title, created, audio.audio_path, draft.script, draft.sources,
-                   audio.seconds, audio.voice, audio.from_cache)
+                   audio.seconds, audio.voice, audio.from_cache, draft.source_articles)
 
 
 def _audio_file(root, filename, sha):
@@ -109,7 +110,8 @@ def list_episodes(root):
             if saved["audio_file"] != audio_identity(draft.script.text, saved["model"], saved["voice"], context) + ".wav":
                 raise ValueError
             audio, seconds = _audio_file(root, saved["audio_file"], saved["audio_sha256"])
-            episodes.append(Episode(path.stem, draft.title, saved["created_at"], audio, draft.script, draft.sources, seconds, saved["voice"]))
+            episodes.append(Episode(path.stem, draft.title, saved["created_at"], audio, draft.script,
+                                    draft.sources, seconds, saved["voice"], source_articles=draft.source_articles))
         except (OSError, ValueError, TypeError, KeyError, PodcastError):
             continue
     products = {}
@@ -129,13 +131,16 @@ def list_episodes(root):
             product = products.get(saved.get("product_key"))
             title = "Podcast dell’archivio"
             sources = [Source(s["id"], s["chunk_id"], s["filename"], s["page"], "", 0.) for s in script.sources]
+            articles = {}
             if product:
                 from edicola.design import reading_title
                 from edicola.podcast_text import spoken_text
                 title = spoken_text(reading_title(product.result), [s.filename for s in product.result.sources])
                 sources = product.result.sources
-            episodes.append(Episode("historical:" + path.stem, title, product.created_at if product else "Data non disponibile",
-                audio, script, sources, seconds, saved["voice"]))
+                articles = getattr(product.result, "source_articles", {}) or {}
+            episodes.append(Episode("historical:" + path.stem, title,
+                product.created_at if product else "Data non disponibile",
+                audio, script, sources, seconds, saved["voice"], source_articles=articles))
         except (OSError, ValueError, TypeError, KeyError, PodcastError):
             continue
     return sorted(episodes, key=lambda e: e.created_at, reverse=True)
