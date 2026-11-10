@@ -231,3 +231,21 @@ def test_topic_podcast_does_not_accept_weak_semantic_match_alone(standalone):
         selected = select_chunks(standalone.root, standalone.catalog, SimpleNamespace(),
                                  "corruzione in abruzzo", "fake", embedder=Mock())
     assert selected == []
+
+
+def test_new_podcast_targets_two_to_three_minutes_without_padding():
+    from edicola.podcast_draft import INSTRUCTION, V3_INSTRUCTION, VERSION, V3_VERSION
+    assert VERSION != V3_VERSION
+    assert "280-330" in INSTRUCTION
+    assert "180-210" not in INSTRUCTION
+    assert "180-210" in V3_INSTRUCTION
+    assert "non ripetere frasi" in INSTRUCTION
+
+
+def test_previous_podcast_strategy_retains_topic_audio_identity():
+    from edicola.standalone_podcast import draft_context
+    from edicola.podcast_draft import V3_VERSION, VERSION
+    for strategy in (V3_VERSION, VERSION):
+        draft = SimpleNamespace(strategy=strategy, source_identity="test",
+                                model="fake-model", key="test-key", topic="ambiente")
+        assert draft_context(draft)["topic"] == "ambiente"
