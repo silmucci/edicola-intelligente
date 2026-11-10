@@ -301,3 +301,29 @@ def test_personal_audio_requires_consent_reuses_cache_and_is_deleted(tmp_path, o
         app.button(key="personal_delete").click().run()
         assert not app.exception and not scope.exists()
         assert not app.get("audio") and load_profile(tmp_path).interests == []
+
+
+def test_personal_briefing_balances_interests_with_general_news(offline):
+    from edicola.personalization import balanced_briefing_selection
+    catalog = make_catalog()
+    catalog.chunks[0] = replace(catalog.chunks[0], text="Economia e mercati finanziari in crescita.")
+    catalog.chunks[1] = replace(catalog.chunks[1], text="Tecnologia e innovazione nelle imprese.")
+    catalog.chunks[2] = replace(catalog.chunks[2], text="Cultura, musei e mostre nella città.")
+    profile = Profile(interests=["Economia", "Tecnologia"])
+    selected = balanced_briefing_selection(catalog, profile)
+    ids = [chunk.id for chunk in selected]
+    assert catalog.chunks[0].id in ids[:2]
+    assert catalog.chunks[1].id in ids[:2]
+    assert catalog.chunks[2].id in ids
+    assert len(ids) == len(set(ids))
+
+
+def test_personal_briefing_excluded_topic_stays_excluded(offline):
+    from edicola.personalization import balanced_briefing_selection
+    catalog = make_catalog()
+    catalog.chunks[0] = replace(catalog.chunks[0], text="Economia, imprese e crescita.")
+    catalog.chunks[1] = replace(catalog.chunks[1], text="Politica e governo.")
+    profile = Profile(interests=["Economia", "Politica"], feedback={"Politica": -1})
+    selected = balanced_briefing_selection(catalog, profile)
+    assert catalog.chunks[0].id in [chunk.id for chunk in selected]
+    assert catalog.chunks[1].id not in [chunk.id for chunk in selected]
