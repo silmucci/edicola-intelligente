@@ -11,7 +11,7 @@ PRODUCTS = [
     dict(id="timeline", title="Timeline", description="Segui l'evoluzione degli eventi.", kind="Timeline", icon="clock"),
     dict(id="map", title="Mappe concettuali", description="Scopri collegamenti tra persone e argomenti.", kind="Mappa", icon="map"),
     dict(id="podcast", title="Podcast", description="Ascolta le notizie.", icon="audio"),
-    dict(id="profile", title="Il mio profilo", description="Interessi, letture e privacy.", icon="person"),
+    dict(id="profile", title="Il mio profilo", description="Preferenze di lettura e privacy.", icon="person"),
 ]
 # Alias derivato per i componenti esistenti: il nome ha un'unica definizione.
 for product in PRODUCTS:
