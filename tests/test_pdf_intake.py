@@ -115,3 +115,69 @@ def test_refuses_untrusted_inbox_and_oversize(inbox, monkeypatch):
 def test_no_inbox_no_mutations(tmp_path):
     assert process_inbox(tmp_path)["added"] == []
     assert not (tmp_path / "data").exists()
+
+
+def test_identical_chunk_reuses_exact_embedding_without_external_api(inbox):
+    """Nuova edizione: una pagina identica e una corretta non reindicizzata."""
+    from unittest.mock import Mock
+    from edicola.archive import read_active_chunks
+    from edicola.indexing import apply_plan, plan_index
+    from edicola.vector_reuse import reuse_unchanged_vectors
+    from edicola.vectorstore import open_collection
+
+    old = make_pdf(("Il testo della prima pagina resta invariato.", "Notizia prima della correzione."))
+    modified = make_pdf(("Il testo della prima pagina resta invariato.", "Notizia dopo la correzione."))
+    target = inbox / "data/incoming/giornale.pdf"
+    target.write_bytes(old)
+    registry = inbox / "data/archive.sqlite3"
+    prepare_documents(ingest_directory(target.parent, registry), registry)
+    old_chunks, warnings = read_active_chunks(registry, target.parent)
+    assert not warnings and len(old_chunks) == 2
+    collection = open_collection(inbox / "data/chroma", create=True)
+    vector = [1.0] + [0.0] * 767
+    embedder = Mock(embed=Mock(return_value=vector))
+    apply_plan(plan_index(old_chunks, collection), collection, embedder, 2)
+    assert embedder.embed.call_count == 2
+
+    (inbox / "data/inbox/giornale.pdf").write_bytes(modified)
+    result = process_inbox(inbox)
+    assert len(result["added"]) == 1
+    prepare_documents(ingest_directory(target.parent, registry), registry)
+    all_chunks, warnings = read_active_chunks(registry, target.parent)
+    assert not warnings and len(all_chunks) == 4
+    changed_sha = hashlib.sha256(modified).hexdigest()
+    new_chunks = [c for c in all_chunks if c.metadata["pdf_sha256"] == changed_sha]
+    assert len(new_chunks) == 2
+    new_same = next(c for c in new_chunks if c.metadata["page"] == 1)
+    new_modified = next(c for c in new_chunks if c.metadata["page"] == 2)
+    assert new_same.metadata["embedding_source_sha256"] == hashlib.sha256(old).hexdigest()
+    assert new_same.fingerprint == old_chunks[0].fingerprint
+    assert "embedding_source_sha256" not in new_modified.metadata
+    assert reuse_unchanged_vectors(inbox) == 1
+    assert reuse_unchanged_vectors(inbox) == 0
+    assert collection.count() == 3
+    after = plan_index(all_chunks, collection)
+    assert [c.id for c in after.pending] == [new_modified.id]
+    assert collection.get(ids=[new_same.id], include=["embeddings"])["embeddings"][0].tolist() == vector
+    embedder.embed.assert_called_with(old_chunks[1].prompt)
+    assert embedder.embed.call_count == 2
+
+
+def test_no_prior_vector_means_no_fake_reuse(inbox):
+    from edicola.archive import read_active_chunks
+    from edicola.indexing import plan_index
+    from edicola.vector_reuse import reuse_unchanged_vectors
+    from edicola.vectorstore import open_collection
+
+    original = make_pdf(("Identico", "Altra notizia"))
+    newer = make_pdf(("Identico", "Nuova notizia"))
+    root = inbox / "data/incoming"
+    (root / "giornale.pdf").write_bytes(original)
+    (inbox / "data/inbox/giornale.pdf").write_bytes(newer)
+    assert process_inbox(inbox)["added"]
+    prepare_documents(ingest_directory(root, inbox / "data/archive.sqlite3"),
+                      inbox / "data/archive.sqlite3")
+    collection = open_collection(inbox / "data/chroma", create=True)
+    assert reuse_unchanged_vectors(inbox) == 0
+    chunks, _ = read_active_chunks(inbox / "data/archive.sqlite3", root)
+    assert len(plan_index(chunks, collection).pending) == len(chunks)
