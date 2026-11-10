@@ -167,8 +167,6 @@ def render_account_readings(root, archive, store, profile, catalog):
     try:
         with st.expander(f"Le mie letture salvate ({len(profile.saved)})"):
             current = {c.id: c for c in catalog.chunks} if catalog else {}
-            if not profile.saved:
-                st.info("Usa Salva lettura per ritrovare qui i riferimenti ai quotidiani originali.")
             for key, item in profile.saved.items():
                 ref = item["metadata"]
                 with st.container(border=True):
@@ -176,8 +174,6 @@ def render_account_readings(root, archive, store, profile, catalog):
                     chunk = current.get(key)
                     if chunk and chunk.metadata.get("pdf_sha256") == ref.get("pdf_sha256"):
                         st.markdown(readable("«" + excerpt(chunk.text, 230) + "»"))
-                        with st.expander("Leggi il passaggio salvato"):
-                            st.text(chunk.text)
                         source_button(ref["filename"], ref["page"], context=archive, chunk_id=key, key=f"personal_saved_pdf_{key}")
                     else:
                         st.caption("Il riferimento è conservato nel tuo account; questa versione del passaggio non è disponibile nell’archivio attuale.")
