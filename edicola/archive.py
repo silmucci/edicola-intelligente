@@ -46,7 +46,7 @@ def read_active_chunks(registry: Path, incoming: Path) -> tuple[list[IndexChunk]
             aliases = {}
             warnings = []
             for path in sorted(incoming.iterdir(), key=lambda item: item.name):
-                if not path.is_file() or path.suffix.lower() != ".pdf":
+                if not path.is_file() or path.is_symlink() or path.suffix.lower() != ".pdf":
                     continue
                 with path.open("rb") as stream:
                     digest = hashlib.file_digest(stream, "sha256").hexdigest()
