@@ -239,10 +239,17 @@ def select_chunks(root, catalog, config, topic, key_value, embedder):
         hits = semantic_search(topic, root=root, authorize_external=True, embedder=embedder,
             corpus_wide=True, allowed_ids={c.id for c in catalog.chunks},
             filenames={c.metadata["filename"] for c in catalog.chunks})
-        # Il ranking esistente combina pertinenza semantica e lessicale e alterna le edizioni.
+        # Integra le corrispondenze testuali con le evidenze semantiche forti.
+        # Un testo pertinente può usare sinonimi invece delle parole esatte del tema.
         from edicola.editorial_selection import near_duplicate
+        by_id = {chunk.id: chunk for chunk in catalog.chunks}
+        semantic = [
+            by_id[hit["id"]] for hit in hits
+            if hit.get("id") in by_id and hit.get("distance", 1.0) <= 0.35
+        ]
+        lexical = ranked_chunks(catalog.chunks, topic, hits)
         selected = []
-        for chunk in ranked_chunks(catalog.chunks, topic, hits):
+        for chunk in semantic + lexical:
             if not any(c.metadata["filename"] == chunk.metadata["filename"] and near_duplicate(c.text, chunk.text) for c in selected):
                 selected.append(chunk)
         return selected
