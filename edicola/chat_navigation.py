@@ -17,12 +17,8 @@ def safe_action(callback, *args):
 
 def render_navigation():
     backend = sessions.store()
-    unavailable = False
-    try:
-        enabled = backend.history_enabled() if backend else False
-        saved = backend.list_chats() if backend else []
-    except PersonalStoreError:
-        backend, saved, enabled, unavailable = None, [], False, True
+    enabled = backend.history_enabled() if backend else False
+    saved = backend.list_chats() if backend else []
     chat = sessions.active()
     # Niente dati personali globali; elenco di soli metadati, messaggi caricati su apertura.
     entries = {item["id"]: item for item in saved}
@@ -32,8 +28,6 @@ def render_navigation():
         return chat
     with st.sidebar:
         st.subheader("Le tue conversazioni")
-        if unavailable:
-            st.warning("Il salvataggio delle chat non è disponibile. Puoi continuare con una chat temporanea.")
         st.button("Nuova chat", key="rag_new_chat", type="primary", on_click=safe_action, args=(sessions.start_new, backend))
         st.session_state["rag_chat_selector"] = chat["id"]
         def select():
@@ -63,7 +57,7 @@ def render_navigation():
                 st.toggle("Salva le nuove chat nel mio account", key="rag_save_history", on_change=change)
                 st.caption("Le chat temporanee non vengono salvate automaticamente. Le chat già salvate restano disponibili se disattivi l'opzione.")
             else:
-                st.caption("Salvataggio non disponibile al momento: questa chat è temporanea." if unavailable else "Chat temporanee: per salvarle nel tuo account, accedi e attiva la cronologia.")
+                st.caption("Chat temporanee: per salvarle nel tuo account, accedi e attiva la cronologia.")
             confirmed_all = st.checkbox("Confermo la cancellazione di tutta la cronologia", key="rag_delete_all_confirm")
             st.button("Cancella tutta la cronologia", key="rag_delete_all", disabled=not confirmed_all,
                       on_click=safe_action, args=(sessions.delete_all, backend))
