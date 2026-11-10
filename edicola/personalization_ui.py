@@ -139,30 +139,11 @@ def render_personalization_ui(root, archive=None):
     if st.session_state.pop("profile_deleted_notice", False):
         st.success("Preferenze e storico demo cancellati.")
 
-    st.subheader("Consigliati per te")
-    st.caption("Letture vicine ai tuoi interessi, alternate tra le edizioni disponibili. La selezione è locale e non invia dati a Gemini.")
     catalog = None
-    recommendations = []
-    if profile.interests:
-        try:
-            catalog = read_catalog(root)
-            recommendations = recommend(catalog, profile)
-        except Exception:
-            st.info("I consigli non sono disponibili in questo momento. Puoi continuare a sfogliare l’Archivio.")
-        if catalog and catalog.coverage.get("partial"):
-            st.warning("Archivio parziale: i consigli coprono solo i contenuti disponibili alla ricerca.")
-    if not recommendations:
-        st.info("Non ci sono letture pertinenti per le preferenze attive. Scegli o modifica gli interessi in Preferenze e impostazioni.")
-    if profile.format == "visuale" and recommendations:
-        counts = Counter(t for r in recommendations for t in r.topics)
-        with st.expander("I tuoi interessi nelle letture consigliate"):
-            st.bar_chart({"Passaggi pertinenti": counts})
-            st.caption("Distribuzione delle corrispondenze agli interessi: non rappresenta relazioni causali.")
-    metadata = edition_metadata(root, archive.documents) if archive is not None else {}
-    with st.container(horizontal=True, gap="medium"):
-        for item in recommendations:
-            passage_card(item.chunk, context=archive, editions=metadata, key=f"personal_recommended_{item.chunk.id}",
-                         reason=item.reason, root=root, profile=profile)
+    try:
+        catalog = read_catalog(root)
+    except Exception:
+        pass
     with st.expander(f"Notizie salvate ({len(profile.saved)})"):
         if not profile.saved:
             st.info("Ritrova qui le letture che vuoi conservare. Usa Salva lettura nelle schede consigliate.")
