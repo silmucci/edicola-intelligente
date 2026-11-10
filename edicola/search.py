@@ -85,6 +85,17 @@ def semantic_search(question: str, *, authorize_external=False, root: Path = ROO
             relevant = [hit for hit in hits if topic.semantic_allowed(hit["text"], strong=hit["distance"] <= min(cutoff, .35)) and
                         (hit["distance"] <= cutoff or topic.focus and lexical[hit["id"]] > 0 and lexical[hit["id"]] >= lexical_floor)]
             relevant.sort(key=lambda hit: (-topic.score(hit["text"]), hit["distance"], hit["id"]))
+            # Un risultato pertinente può richiamare altri passaggi del medesimo
+            # articolo verificato, senza nuove embedding né PDF interi.
+            # Il budget del prodotto decide quanti passaggi utilizzare.
+            article_ids = {hit.get("article_id") for hit in relevant if hit.get("article_id")}
+            if article_ids:
+                present = {hit["id"] for hit in relevant}
+                neighbors = [hit for hit in hits if hit["id"] not in present
+                             and hit.get("article_id") in article_ids]
+                neighbors.sort(key=lambda hit: (hit["filename"], hit["page"],
+                                                 hit.get("start", 0), hit["id"]))
+                relevant.extend(neighbors)
             logger.info("request_id=%s phase=corpus_ranking candidates=%d accepted=%d discarded=%d reason=relevance",
                         request_id, len(hits), len(relevant), len(hits) - len(relevant))
             return list(edition_order(relevant, filename=lambda hit: hit["filename"]))

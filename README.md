@@ -111,6 +111,15 @@ Usare risultati già disponibili senza nuovi invii:
    espansioni, navigazione e lettore PDF. Verificare i flussi di errore senza
    esporre dettagli tecnici o attribuire all’utente problemi del servizio.
 
+## Acquisizione intelligente dei PDF (opzionale)
+
+PyMuPDF migliora l'estrazione strutturata dei nuovi PDF; una CLI separata può
+analizzare con Gemini Vision le prime pagine e i richiami, verificare i titoli
+contro il testo originale e associare i chunk agli articoli quando possibile.
+Nessuna chiamata Vision durante la navigazione; l'analisi richiede una
+specifica autorizzazione da CLI. I PDF già presenti possono essere rielaborati
+localmente solo con comando esplicito e backup. [Guida e comandi](PDF_INTELLIGENT_RETRIEVAL.md).
+
 ## Documentazione del progetto
 
 Per sviluppo e manutenzione consultare [il diario tecnico](DEVELOPMENT_HISTORY.md),
