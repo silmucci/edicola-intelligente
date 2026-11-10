@@ -33,16 +33,16 @@ SYSTEM_INSTRUCTION += COMPARISON_INSTRUCTION
 
 
 MESSAGES = {
-    "empty_index": "Non sono disponibili chunk attualmente indicizzati da cui preparare il briefing.",
-    "selection_empty": "La selezione non contiene passaggi utilizzabili dopo i filtri di lunghezza e duplicazione.",
-    "model_abstention": "Il modello non ha individuato notizie sufficientemente documentate nei passaggi selezionati.",
-    "invalid_json": "Risposta del modello non leggibile come JSON: il briefing non è stato pubblicato.",
-    "invalid_structure": "Formato della risposta non valido: il briefing non è stato pubblicato.",
-    "citation_validation_failed": "Verifica delle citazioni fallita: nessuna notizia non validata viene mostrata.",
-    "output_truncated": "La risposta Gemini è stata troncata prima di completare il briefing. Il risultato non è stato salvato in cache.",
-    "output_blocked": "Gemini non ha completato la risposta: briefing non pubblicato e non salvato in cache.",
-    "empty_response": "Gemini ha restituito una risposta vuota, non un giudizio sull'insufficienza delle fonti.",
-    "prompt_budget_exceeded": "Budget del prompt troppo basso per metadati, istruzioni e passaggi selezionati. Aumentare EDITORIAL_BRIEFING_MAX_PROMPT_CHARS.",
+    "empty_index": "Non ci sono ancora notizie disponibili per il briefing.",
+    "selection_empty": "Nessuna notizia corrisponde alla selezione.",
+    "model_abstention": "Non ci sono informazioni sufficienti per preparare il briefing.",
+    "invalid_json": "Il briefing non è disponibile. Riprova.",
+    "invalid_structure": "Il briefing non è disponibile. Riprova.",
+    "citation_validation_failed": "Non è stato possibile verificare le fonti del briefing.",
+    "output_truncated": "Il briefing non è stato completato. Riprova.",
+    "output_blocked": "Il briefing non è disponibile in questo momento.",
+    "empty_response": "Non è stato possibile preparare il briefing. Riprova.",
+    "prompt_budget_exceeded": "Le informazioni selezionate sono troppo estese per questa lettura. Riduci le fonti.",
 }
 
 
