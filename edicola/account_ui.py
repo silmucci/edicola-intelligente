@@ -1,7 +1,6 @@
 """Area personale persistente: usa il CRUD server-side, mai il vecchio profilo demo."""
 
 import json
-from collections import Counter
 
 import streamlit as st
 
@@ -71,10 +70,10 @@ def render_account_profile(root, archive=None):
         if not profile.interests:
             st.subheader("Cominciamo dai tuoi interessi")
             st.caption("Scegli qualche tema e il tempo che hai: troverai qui letture dedicate ai tuoi interessi.")
-        areas = st.tabs(["Per te", "Raccolta", "I miei briefing", "Preferenze", "Privacy"],
-                        default="Preferenze" if not profile.interests else "Per te",
+        areas = st.tabs(["Raccolta", "I miei briefing", "Preferenze", "Privacy"],
+                        default="Preferenze",
                         key="personal_area", on_change="rerun")
-        with areas[4]:
+        with areas[3]:
             if st.session_state.get("personal_area") == "Privacy":
                 privacy_controls()
             privacy_notice()
@@ -105,7 +104,7 @@ def render_account_profile(root, archive=None):
                     else:
                         st.session_state["account_notice"] = "I tuoi dati personali sono stati cancellati."
                     st.rerun()
-        with areas[3]:
+        with areas[2]:
             st.subheader("I miei interessi")
             st.caption("Seleziona gli argomenti che desideri seguire. Le modifiche vengono salvate automaticamente.")
             options = list(dict.fromkeys(profile.interests + INTERESTS))
@@ -159,21 +158,6 @@ def render_account_profile(root, archive=None):
             catalog = None
             st.info("Le letture consigliate non sono disponibili in questo momento.")
         with areas[0]:
-            st.subheader("Consigliati per te")
-            recommendations = recommend(catalog, profile) if catalog else []
-            if catalog and catalog.coverage.get("partial"):
-                st.caption("La selezione copre soltanto i contenuti attualmente disponibili alla ricerca.")
-            if not recommendations:
-                st.info("Scegli o modifica gli interessi per trovare letture pertinenti nell’archivio disponibile.")
-            metadata = edition_metadata(root, archive.documents) if archive else {}
-            if profile.format == "visuale" and recommendations:
-                with st.expander("I tuoi interessi nelle letture consigliate"):
-                    st.bar_chart({"Passaggi pertinenti": Counter(topic for item in recommendations for topic in item.topics)})
-            with st.container(horizontal=True, gap="medium"):
-                for item in recommendations:
-                    passage_card(item.chunk, context=archive, editions=metadata, key=f"personal_recommended_{item.chunk.id}",
-                                 reason=item.reason, root=root, profile=profile, store=store)
-        with areas[1]:
             with st.expander(f"Notizie salvate ({len(profile.saved)})"):
                 current = {c.id: c for c in catalog.chunks} if catalog else {}
                 if not profile.saved:
@@ -195,7 +179,7 @@ def render_account_profile(root, archive=None):
                             st.session_state.pop("account_export", None)
                             st.session_state["account_notice"] = "Lettura rimossa dai salvati."
                             st.rerun()
-        with areas[2]:
+        with areas[1]:
             st.subheader("Il mio briefing")
             generate = st.button("Genera il mio briefing", key="personal_briefing_submit", type="primary", disabled=not profile.interests)
             if authorize_action("personal_text", "personal_briefing", generate, [profile.interests, profile.minutes, profile.feedback]):
