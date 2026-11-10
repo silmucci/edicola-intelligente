@@ -174,12 +174,23 @@ def chunk_annotation(pdf_sha256: str, page: int, start: int, end: int,
             continue  # Non attribuire a un articolo chunk che attraversano confini.
         linked = item.get("linked_page")
         pages = sorted({page, linked} - {None})
+        explicit_pages = item.get("article_pages")
+        if (isinstance(explicit_pages, list) and explicit_pages
+                and all(type(n) is int and n >= 1 for n in explicit_pages)):
+            pages = sorted(set(explicit_pages))
         identity = clean_text(item["title"]).casefold() if linked else f"{page}:{item['start']}:{item['title']}"
         article_id = hashlib.sha256(f"{pdf_sha256}:{identity}".encode()).hexdigest()
+        local_id = item.get("article_id")
+        if isinstance(local_id, str) and re.fullmatch(r"[a-f0-9]{64}", local_id):
+            article_id = local_id
         result = {"article_id": article_id, "article_title": item["title"],
                   "article_title_verified": True,
                   "article_importance": item["importance"],
                   "article_pages_json": json.dumps(pages)}
+        if item.get("origin"):
+            result["article_origin"] = item["origin"]
+        if item.get("role") in {"body", "continuation"}:
+            result["article_role"] = item["role"]
         if item.get("section"):
             result["article_section"] = item["section"]
         return result
