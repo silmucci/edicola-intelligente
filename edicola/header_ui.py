@@ -8,8 +8,6 @@ from edicola.product_navigation import PRODUCTS, open_product_id, destination, c
 from edicola.archive_ui import edition_metadata
 from edicola.pdf_viewer import source_button
 
-LOGO = '<svg viewBox="0 0 48 48" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 8h15l4 4 4-4h15v31H28l-4 3-4-3H5zM24 12v30M10 15h8M10 21h8M10 27h8M10 33h8M30 15h8M30 21h8M30 27h8M30 33h8"/></svg>'
-
 
 def local_matches(query, documents, metadata, chunks=()):
     terms = re.findall(r"\w+", query.casefold())
@@ -34,9 +32,9 @@ def render_header(root, context):
     identity.synchronize_identity()
     with st.container(horizontal=True, vertical_alignment="center", gap="small"):
         with st.container(width="stretch"):
-            st.html(f'<style>{page_css()}</style><header class="edi-brand">{LOGO}<div>'
-                    '<h1>Edicola Digitale <strong>Intelligente</strong></h1>'
-                    '<p>Quotidiani, analisi e fonti per capire il mondo.</p></div></header>')
+            st.html(f'<style>{page_css()}</style><header class="edi-brand"><div>'
+                    '<h1>Edicola <strong>Intelligente</strong></h1>'
+                    '<p>Quotidiani e approfondimenti, sempre con le fonti.</p></div></header>')
         with st.container(width="content"):
             with st.popover("", icon=":material/search:", help="Cerca nell’Edicola", type="tertiary", key="header_search_menu"):
                 query = st.text_input("Cerca nell'Edicola", max_chars=120, key="account_header_search",
