@@ -13,6 +13,7 @@ if sqlite3.sqlite_version_info < (3, 35, 0):
 
 from edicola.ingestion import ingest_directory
 from edicola.pdf_intake import process_inbox
+from edicola.edition_dates import sync_filename_dates
 from edicola.vector_reuse import reuse_unchanged_vectors
 from edicola.chunking import prepare_documents
 from edicola.pdf_viewer import archive_context, render_archive
@@ -60,6 +61,16 @@ try:
 except (OSError, RuntimeError):
     st.error("L’archivio non è disponibile in questo momento. Riprova più tardi.")
     st.stop()
+
+# Completa le date dei quotidiani locali usando il nome del PDF.
+# Aggiorna anche le edizioni già caricate, senza toccare lo snapshot cloud.
+if setting("EDICOLA_CLOUD_DEMO", "0") != "1":
+    try:
+        updated_dates = sync_filename_dates(ROOT, documents)
+        if updated_dates:
+            logging.getLogger("edicola").info("Date edizioni aggiunte: %d", len(updated_dates))
+    except (OSError, RuntimeError, ValueError):
+        logging.getLogger("edicola").warning("Date edizioni non aggiornate; archivio conservato.")
 
 # Stessa pagina, testo e prompt di embedding: riutilizzare il vettore
 # precedente, ma solo per edizioni esplicitamente collegate dalla inbox.
