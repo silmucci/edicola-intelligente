@@ -10,6 +10,7 @@ from edicola.api_guard import PermissionDenied
 from edicola.consent_ui import authorize_action
 from edicola.design import friendly_error, section_intro
 from edicola.personal_store import PersonalStoreError
+from edicola.account_recovery import offer_guest_access
 from edicola.podcast import VOICES
 from edicola.podcast_text import PodcastError
 from edicola.standalone_podcast import generate_standalone_podcast, list_episodes, PodcastAudioError
@@ -43,7 +44,8 @@ def authorize_episode(action, submitted, payload):
         if consent.allowed(other):
             return True
     except PersonalStoreError:
-        st.error("Le autorizzazioni non sono disponibili in questo momento. Nessun contenuto è stato inviato.")
+        st.error("Le autorizzazioni dell'account non sono disponibili. Nessun contenuto è stato inviato.")
+        offer_guest_access(key="podcast_guest_recovery")
         return False
     return authorize_action(other, action, True, payload)
 
