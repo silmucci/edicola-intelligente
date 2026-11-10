@@ -145,3 +145,41 @@ def test_union_rejects_missing_local_registry(tmp_path):
     (root / "data/incoming").mkdir(parents=True)
     with pytest.raises(ValueError, match="registro"):
         plan_union(root)
+
+
+def test_resume_after_copy_before_registry_swap(archives):
+    """Un crash prima del commit lascia solo PDF non registrati: il retry riparte."""
+    from edicola.snapshot_union import _publish_pdf
+    root = archives
+    source = root / "deployment/seed/data/incoming/historic.pdf"
+    target = root / "data/incoming/historic.pdf"
+    assert _publish_pdf(source, target)
+    first = plan_union(root)
+    assert first["new_files_to_copy"] == 0
+    assert first["vectors_to_reuse"] == 1
+    resumed = apply_union(root)
+    assert resumed["active_chunks"] == 2
+    assert resumed["already_indexed"] == 1
+    assert resumed["pending"] == 1
+
+
+def test_real_bundled_seed_vectors_match_original_prompts():
+    """Controllo del pacchetto distribuito: sola lettura e nessun SDK."""
+    from edicola.snapshot_union import _inspect
+    from edicola.archive import read_active_chunks
+    from edicola.cloud import validate_seed
+    root = Path(__file__).resolve().parents[1]
+    seed = root / "deployment/seed"
+    if not (seed / "manifest.json").is_file():
+        pytest.skip("Snapshot dimostrativo non disponibile in questo checkout.")
+    manifest = validate_seed(seed)
+    chunks, warnings = read_active_chunks(seed / "data/archive.sqlite3", seed / "data/incoming")
+    assert not warnings and len(chunks) == manifest["chunks"]
+    by_id = {chunk.id: chunk for chunk in chunks}
+    records = json.loads((seed / "vectors.json").read_text(encoding="utf-8"))
+    assert len(records) == manifest["indexed"]
+    assert all(
+        record["id"] in by_id and record["text"] == by_id[record["id"]].text
+        and record["metadata"].get("input_sha256") == by_id[record["id"]].fingerprint
+        for record in records
+    )
