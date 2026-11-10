@@ -1,12 +1,21 @@
 """CRUD PostgreSQL server-side: identità obbligatoria, transazioni e ownership."""
 
 import json
+import logging
 from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
 
 from edicola.identity import Identity, current_identity, secret_section
 from edicola.profiles import Profile, validate
+
+_LOG = logging.getLogger("edicola.personal.database")
+
+
+def _report_failure(stage: str) -> None:
+    """Codici nei log privati: mai eccezioni grezze, Secrets, SQL o dati utenti."""
+    _LOG.warning("EDICOLA_DB_FAILED stage=%s", stage)
+
 
 
 class PersonalStoreError(RuntimeError):
@@ -16,6 +25,7 @@ class PersonalStoreError(RuntimeError):
 def connect_database():
     config = secret_section("personal_database")
     if not all(config.get(k) for k in ("host", "dbname", "user", "password")):
+        _report_failure("missing_configuration")
         raise PersonalStoreError("Database personale non configurato. Nessun dato è stato salvato.")
     try:
         import psycopg
@@ -27,6 +37,7 @@ def connect_database():
                                sslmode="verify-full", sslrootcert=certificate,
                                connect_timeout=8, prepare_threshold=None)
     except Exception:
+        _report_failure("connection_failed")
         raise PersonalStoreError("Database personale non raggiungibile o configurazione non valida. Nessun salvataggio confermato.") from None
 
 
@@ -57,14 +68,17 @@ class PostgresPersonalStore:
         return actor.owner_id
 
     @contextmanager
-    def transaction(self, *, repeatable=False):
+    def transaction(self, *, repeatable=False, operation="personal_data"):
         owner = self.assert_owner()
+        stage = "open_transaction"
         try:
             # Psycopg committa solo all'uscita senza errori; altrimenti rollback e close.
             with self.connect() as connection:
+                stage = "transaction_setup"
                 if repeatable:
                     connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
                 connection.execute("SELECT set_config('statement_timeout', %s, true)", ("8000",))
+                stage = "role_read"
                 role = connection.execute("SELECT current_user, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb, "
                     "(rolreplication OR rolinherit OR NOT rolcanlogin OR "
                     "EXISTS(SELECT 1 FROM pg_auth_members WHERE member=pg_roles.oid) OR "
@@ -73,21 +87,28 @@ class PostgresPersonalStore:
                     "WHERE nspname='edicola_private' AND relowner=pg_roles.oid)) "
                     "FROM pg_roles WHERE rolname=current_user").fetchone()
                 if not role or role[0] != "edicola_app" or any(role[1:]):
+                    _report_failure("role_invalid")
                     raise PersonalStoreError("Ruolo database non consentito: usare il ruolo applicativo a privilegi minimi.")
+                stage = "migration_read"
                 try:
                     version = connection.execute("SELECT version FROM edicola_private.schema_migrations WHERE version=1").fetchone()
                 except Exception as error:
                     if getattr(error, "sqlstate", None) == "42501":
+                        _report_failure("migration_permission_denied")
                         raise PersonalStoreError("Permessi dello schema personale incompleti: il gestore deve verificare la migrazione 002. Nessun salvataggio confermato.") from None
                     raise
                 if version != (1,):
+                    _report_failure("migration_001_missing")
                     raise PersonalStoreError("Schema personale non aggiornato.")
+                stage = "identity_scope"
                 connection.execute("SELECT set_config('edicola.owner_id', %s, true)", (owner,))
+                stage = operation
                 yield connection, owner
                 self.assert_owner(owner)  # Nessuna conferma se la sessione ha cambiato identità.
         except PersonalStoreError:
             raise
         except Exception:
+            _report_failure(stage)
             raise PersonalStoreError("Operazione personale non completata. Nessun salvataggio confermato; riprovare più tardi.") from None
 
     @staticmethod
@@ -95,7 +116,7 @@ class PostgresPersonalStore:
         db.execute("INSERT INTO edicola_private.profiles(owner_id) VALUES (%s) ON CONFLICT(owner_id) DO NOTHING", (owner,))
 
     def load_profile(self):
-        with self.transaction() as (db, owner):
+        with self.transaction(operation="profile_read") as (db, owner):
             row = db.execute("SELECT interests, minutes, preferred_format, feedback FROM edicola_private.profiles WHERE owner_id=%s", (owner,)).fetchone()
             saved = db.execute("SELECT chunk_id, reference FROM edicola_private.saved_passages WHERE owner_id=%s ORDER BY created_at,chunk_id", (owner,)).fetchall()
         profile = Profile(user_id=owner) if row is None else Profile(owner, row[0], row[1], row[2], row[3])
@@ -167,7 +188,7 @@ class PostgresPersonalStore:
             db.execute("DELETE FROM edicola_private.profiles WHERE owner_id=%s", (owner,))
 
     def get_consent(self, purpose, version):
-        with self.transaction() as (db, owner):
+        with self.transaction(operation="consent_read") as (db, owner):
             row = db.execute("SELECT granted FROM edicola_private.ai_consents WHERE owner_id=%s AND purpose=%s AND version=%s",
                              (owner, purpose, version)).fetchone()
         return row[0] if row else None
