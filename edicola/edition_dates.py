@@ -22,6 +22,15 @@ _DATE_IN_NAME = re.compile(
 )
 
 
+def read_edition_metadata(root: Path) -> dict:
+    """Carica i metadati curati per la consultazione, senza mantenere copie obsolete."""
+    try:
+        value = json.loads((Path(root) / "data/editions.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
 def date_from_filename(filename: str) -> str | None:
     """Restituisce YYYY-MM-DD solo per date reali nel formato concordato."""
     if not isinstance(filename, str) or Path(filename).name != filename:

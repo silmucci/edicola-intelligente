@@ -1,7 +1,6 @@
 """Presentazione editoriale e homepage: sole letture locali, nessuna generazione."""
 
 import html
-import json
 import re
 import sqlite3
 from collections import defaultdict, deque
@@ -10,6 +9,7 @@ from datetime import date
 import streamlit as st
 
 from edicola.archive_ui import edition_metadata
+from edicola.edition_dates import read_edition_metadata
 from edicola.editorial_selection import headline_priority, read_catalog
 from edicola.pdf_viewer import source_button
 from edicola.personalization import recommend
@@ -114,10 +114,7 @@ def home_selection(catalog, limit=4):
 
 
 def recent_editions(context, limit=3):
-    try:
-        raw = json.loads((context.root / "data/editions.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        raw = {}
+    raw = read_edition_metadata(context.root)
     def published(document):
         try:
             return date.fromisoformat(raw[document.filename]["date"])

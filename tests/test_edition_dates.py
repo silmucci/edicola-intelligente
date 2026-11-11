@@ -1,5 +1,7 @@
 """Date dal nome dei PDF: archivi già importati, futuri PDF e metadati curati."""
 import json
+
+from edicola.edition_dates import read_edition_metadata
 from pathlib import Path
 from unittest.mock import patch
 
@@ -113,3 +115,18 @@ def test_invalid_catalog_or_symlink_rejected_without_overwrite(tmp_path):
     with pytest.raises(ValueError, match="non consentiti"):
         sync_filename_dates(tmp_path, documents)
     assert external.read_text() == "{}"
+
+
+def test_edition_metadata_loader_uses_current_file_without_stale_cache(tmp_path):
+    folder = tmp_path / "data"
+    folder.mkdir()
+    target = folder / "editions.json"
+    assert read_edition_metadata(tmp_path) == {}
+    target.write_text("not-json", encoding="utf-8")
+    assert read_edition_metadata(tmp_path) == {}
+    target.write_text("[]", encoding="utf-8")
+    assert read_edition_metadata(tmp_path) == {}
+    target.write_text('{"a.pdf": {"date": "2026-11-01"}}', encoding="utf-8")
+    assert read_edition_metadata(tmp_path)["a.pdf"]["date"] == "2026-11-01"
+    target.write_text('{"a.pdf": {"date": "2026-11-02"}}', encoding="utf-8")
+    assert read_edition_metadata(tmp_path)["a.pdf"]["date"] == "2026-11-02"

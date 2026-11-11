@@ -2,7 +2,6 @@
 
 import base64
 import io
-import json
 import os
 from datetime import date
 
@@ -13,6 +12,7 @@ import streamlit as st
 from edicola.archive_components import gallery_component, reader_component
 from edicola.pdf_viewer import PdfViewError, open_reference, read_original, render_page, resolve_reference
 from edicola.design import section_intro
+from edicola.edition_dates import read_edition_metadata
 
 
 def diagnostics_enabled(root):
@@ -24,10 +24,7 @@ def diagnostics_enabled(root):
 
 
 def edition_metadata(root, documents):
-    try:
-        raw = json.loads((root / "data/editions.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        raw = {}
+    raw = read_edition_metadata(root)
     result = {}
     for index, document in enumerate(documents, 1):
         item = raw.get(document.filename, {}) if isinstance(raw, dict) else {}
@@ -67,10 +64,7 @@ def edition_filter(documents, metadata, *, key):
 
 def latest_first(root, documents):
     """Solo date curate: edizioni senza data verificabile in fondo, ordine stabile."""
-    try:
-        raw = json.loads((root / "data/editions.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        raw = {}
+    raw = read_edition_metadata(root)
     def published(document):
         try:
             return date.fromisoformat(raw[document.filename]["date"])

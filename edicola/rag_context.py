@@ -1,11 +1,11 @@
 """Contesto temporale del solo chatbot, da metadati locali curati, senza rete."""
 
-import json
 import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from edicola.timeline_dates import publication_date
+from edicola.edition_dates import read_edition_metadata
 
 
 def reference_day():
@@ -16,12 +16,7 @@ def reference_day():
 
 
 def source_editions(root, sources):
-    try:
-        editions = json.loads((root / "data/editions.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        editions = {}
-    if not isinstance(editions, dict):
-        editions = {}
+    editions = read_edition_metadata(root)
     result = {}
     for source in sources:
         item = editions.get(source.filename, {})
