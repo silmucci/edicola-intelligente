@@ -100,7 +100,8 @@ def test_cards_save_remove_and_preferences_feedback(archive):
         app = AppTest.from_string(script(root), default_timeout=15).run()
         navigate_to(app, "Per te")
         save = next(button for button in app.button if button.label == "Salva lettura")
-    app.button(key=save.key).click().run()
+        # L'identità autenticata deve rimanere presente anche al momento del click.
+        app.button(key=save.key).click().run()
     assert not app.exception
     assert len(load_profile(root).saved) == 1
     assert any("Lettura salvata" in success.value for success in app.success)
