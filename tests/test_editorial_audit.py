@@ -8,7 +8,7 @@ from streamlit.testing.v1 import AppTest
 
 from edicola.editorial import generate_product
 from edicola.press_review import ReviewSelection, filter_catalog, review_groups
-from edicola.map_exploration import focused_map
+from edicola.map_presentation import focused_map
 from edicola.podcast_text import CachedProduct, prepare_script
 from test_editorial import make_catalog, setup_editorial
 from test_podcast import editorial_product, fake_client, podcast_archive
