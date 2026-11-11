@@ -12,8 +12,7 @@ from pathlib import Path
 
 from edicola.archive import read_active_chunks
 from edicola.chunking import ChunkConfig, prepare_documents
-from edicola.corpus_cache import audit_caches
-from edicola.corpus_versions import source_version
+from edicola.corpus_cache import audit_caches, source_version
 from edicola.indexing import plan_index
 from edicola.ingestion import ingest_directory
 from edicola.vectorstore import open_collection, stored_records
