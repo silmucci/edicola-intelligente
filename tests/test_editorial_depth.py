@@ -9,7 +9,7 @@ from edicola.briefing import (
 )
 from edicola.context_selection import EDITORIAL_DEPTH_INSTRUCTION
 from edicola.knowledge import MAP_INSTRUCTIONS, VERSION as KNOWLEDGE_VERSION
-from edicola.rag import CHAT_INSTRUCTION, Source, response_schema, validate_response
+from edicola.rag import CHAT_INSTRUCTION, Source, chat_response_schema, response_schema, validate_response
 
 
 def sources(count):
@@ -57,7 +57,8 @@ def test_chat_accepts_ten_paragraphs_with_original_evidence():
     assert answer.sufficient
     assert len(answer.answer.split("\n\n")) == 10
     assert len(answer.used_source_ids) == 10
-    assert response_schema(original)["properties"]["claims"]["maxItems"] == 12
+    assert chat_response_schema(original)["properties"]["claims"]["maxItems"] == 12
+    assert response_schema(original)["properties"]["claims"]["maxItems"] == 8
 
 
 def test_shared_editorial_depth_is_document_based():
@@ -65,5 +66,5 @@ def test_shared_editorial_depth_is_document_based():
     assert "non dedurre causalità" in EDITORIAL_DEPTH_INSTRUCTION
     assert EDITORIAL_DEPTH_INSTRUCTION in BRIEFING_INSTRUCTION
     assert EDITORIAL_DEPTH_INSTRUCTION in CHAT_INSTRUCTION
-    assert "numero prefissato" in MAP_INSTRUCTIONS
+    assert "numero minimo" in MAP_INSTRUCTIONS
     assert KNOWLEDGE_VERSION == "knowledge-v4"
