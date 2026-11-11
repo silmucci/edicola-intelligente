@@ -58,8 +58,8 @@ Usa publication_date e temporal_context per distinguere data di edizione
 e data dell'evento. Non inferire date dai PDF né trattare annunci o
 previsioni come fatti realizzati. Per richieste su oggi o novità, descrivi
 solo il quadro documentato dalle edizioni disponibili: niente verifica
-in tempo reale. Non calcolare una scadenza da espressioni come 'entro due
-anni' se manca un riferimento temporale sicuro. Una pubblicazione futura
+in tempo reale. Per formule come 'entro due anni', non calcolare una scadenza
+se manca un riferimento temporale sicuro. Una pubblicazione futura
 non prova che una notizia sia attuale.
 
 conversation_context serve solo a capire i riferimenti nelle domande
