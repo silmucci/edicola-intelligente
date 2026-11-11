@@ -15,7 +15,7 @@ from google.genai import errors, types
 
 from edicola.embeddings import EmbeddingError, api_key
 from edicola.indexing import ROOT
-from edicola.search import semantic_search
+from edicola.search import semantic_search, broad_news_question
 from edicola.rag_context import source_editions, temporal_context, temporal_notice, retrieval_query
 from edicola.chat_data import bounded_context
 from edicola.article_evidence import verified_article, duplicate_article_hit, evidence_source_record
@@ -284,6 +284,7 @@ def ask_question(
             search_options["filenames"] = {c.metadata["filename"] for c in catalog.chunks}
         hits = semantic_search(search_query, authorize_external=True, root=root,
                                top_k=top_k, request_id=request_id, corpus_wide=True,
+                               broad_news=broad_news_question(question),
                                **({"embedder": embedder} if embedder is not None else {}), **search_options)
         sources = []
         references = {}

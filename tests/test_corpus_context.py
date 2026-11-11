@@ -213,3 +213,61 @@ def test_chat_history_accepts_wider_context_without_changing_serialized_format()
     data = asdict(result)
     answer = data.pop("answer")
     assert decode_result(answer, {"result": data}) == result
+
+
+
+def test_chat_general_news_can_find_economic_stories_without_word_economiche():
+    """Un nome preciso resta restrittivo, ma una rassegna non richiede un aggettivo letterale."""
+    from edicola.search import broad_news_question
+    question = "Quali sono le principali notizie economiche di novembre 2026?"
+    assert broad_news_question(question)
+    assert broad_news_question("Quali sono le principali notizie di novembre 2026?")
+    assert not broad_news_question("Che cosa succede alla Isringhausen di San Salvo?")
+    assert not broad_news_question("Quali sono le notizie su Isringhausen?")
+
+    value = catalog(3)
+    texts = [
+        "Lo stabilimento rischia di perdere la commessa per i sedili, sindacati preoccupati.",
+        "Le aziende annunciano nuovi investimenti nel settore industriale.",
+        "La squadra di calcio ha disputato un incontro amichevole."
+    ]
+    value.chunks = [replace(chunk, text=text) for chunk, text in zip(value.chunks, texts)]
+    by_id = {c.id: c for c in value.chunks}
+    similarities = [.52, .46, .05]
+
+    collection = Mock()
+    def get(**kwargs):
+        chosen = [by_id[identity] for identity in kwargs["ids"]]
+        return {"ids": [c.id for c in chosen],
+                "documents": [c.text for c in chosen],
+                "metadatas": [c.chroma_metadata for c in chosen],
+                "embeddings": [[similarities[int(c.id[1:])],
+                                math.sqrt(1-similarities[int(c.id[1:])] ** 2)] for c in chosen]}
+    collection.get.side_effect = get
+    embedder = Mock()
+    embedder.embed.return_value = [1., 0.]
+    with patch("edicola.search.read_active_chunks", return_value=(value.chunks, [])), patch(
+        "edicola.search.open_collection", return_value=collection), patch(
+        "edicola.search.plan_index", return_value=SimpleNamespace(stale_ids=[], pending=[])):
+        restrictive = semantic_search(question, root=ROOT, authorize_external=True,
+                                      embedder=embedder, corpus_wide=True, broad_news=False)
+        broad = semantic_search(question, root=ROOT, authorize_external=True,
+                                embedder=embedder, corpus_wide=True, broad_news=True)
+    assert restrictive == []  # Riproduce la regressione segnalata con il vecchio filtro.
+    assert {hit["id"] for hit in broad} == {"c0", "c1"}
+    assert "c2" not in {hit["id"] for hit in broad}
+
+
+def test_chat_passes_broad_mode_only_for_editorial_overview():
+    from edicola.search import broad_news_question
+    value = catalog(1)
+    with patch("edicola.rag.api_key", return_value="mock"), patch(
+        "edicola.rag.semantic_search", return_value=hits_for(value)) as search, patch(
+        "edicola.rag.source_editions", return_value={}), patch(
+        "edicola.rag.generate_response", return_value='{"sufficient":false,"claims":[]}'):
+        ask_question("Quali sono le principali notizie economiche di novembre 2026?",
+                     root=ROOT, authorize_external=True, client=Mock())
+        assert search.call_args.kwargs["broad_news"] is True
+        ask_question("Che cosa succede alla Isringhausen di San Salvo?",
+                     root=ROOT, authorize_external=True, client=Mock())
+        assert search.call_args.kwargs["broad_news"] is False

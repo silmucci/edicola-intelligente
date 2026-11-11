@@ -11,15 +11,31 @@ from edicola.embeddings import MODEL, EmbeddingError, GeminiEmbedder, api_key, q
 from edicola.indexing import ROOT, plan_index
 from edicola.vectorstore import open_collection
 from edicola.context_selection import MAX_DISTANCE, DISTANCE_WINDOW, edition_order
-from edicola.knowledge_relevance import Topic
+from edicola.knowledge_relevance import Topic, terms, INTENT, GENERIC_TARGET
 
 
 logger = logging.getLogger(__name__)
 
+# Queste sono categorie generali di notizie, non nomi di eventi specifici.
+_BROAD_NEWS_TOPICS = (
+    "econom", "politic", "sport", "lavor", "occupazion", "cultur",
+    "sanit", "ambient", "tecnolog", "istruzion", "finanz", "industr",
+    "important", "rilevant",
+)
+
+
+def broad_news_question(question: str) -> bool:
+    """Riconosce una rassegna generale senza indebolire le domande specifiche."""
+    words = terms(question)
+    if "notizi" not in words:
+        return False
+    subjects = words - INTENT - GENERIC_TARGET
+    return not subjects or all(word.startswith(_BROAD_NEWS_TOPICS) for word in subjects)
+
 
 def semantic_search(question: str, *, authorize_external=False, root: Path = ROOT, embedder=None,
                     top_k: int = 5, request_id: str | None = None, diversify_by_pdf=False,
-                    corpus_wide=False, filenames=None, allowed_ids=None) -> list[dict]:
+                    corpus_wide=False, filenames=None, allowed_ids=None, broad_news=False) -> list[dict]:
     """Una embedding; i prodotti usano corpus_wide, il top-k resta per CLI/eval."""
     if not question.strip():
         raise ValueError("Inserire una domanda non vuota.")
@@ -82,9 +98,16 @@ def semantic_search(question: str, *, authorize_external=False, root: Path = ROO
             topic = Topic(question, eligible)
             lexical = {hit["id"]: topic.score(hit["text"]) for hit in hits}
             lexical_floor = max(lexical.values(), default=0) * .55
-            relevant = [hit for hit in hits if topic.semantic_allowed(hit["text"], strong=hit["distance"] <= min(cutoff, .35)) and
-                        (hit["distance"] <= cutoff or topic.focus and lexical[hit["id"]] > 0 and lexical[hit["id"]] >= lexical_floor)]
-            relevant.sort(key=lambda hit: (-topic.score(hit["text"]), hit["distance"], hit["id"]))
+            if broad_news and not topic.strict and not topic.location:
+                # Per una rassegna generale la parola della categoria può non
+                # comparire nel singolo articolo: usa la somiglianza semantica
+                # come criterio, senza abbassare la soglia di distanza.
+                relevant = [hit for hit in hits if hit["distance"] <= cutoff]
+                relevant.sort(key=lambda hit: (hit["distance"], hit["id"]))
+            else:
+                relevant = [hit for hit in hits if topic.semantic_allowed(hit["text"], strong=hit["distance"] <= min(cutoff, .35)) and
+                            (hit["distance"] <= cutoff or topic.focus and lexical[hit["id"]] > 0 and lexical[hit["id"]] >= lexical_floor)]
+                relevant.sort(key=lambda hit: (-topic.score(hit["text"]), hit["distance"], hit["id"]))
             # Un risultato pertinente può richiamare altri passaggi del medesimo
             # articolo verificato, senza nuove embedding né PDF interi.
             # Il budget del prodotto decide quanti passaggi utilizzare.
