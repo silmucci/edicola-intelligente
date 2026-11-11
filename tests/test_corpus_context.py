@@ -191,7 +191,7 @@ def test_budget_failure_does_not_claim_sources_were_included_or_call_generation(
         "edicola.editorial.generate_briefing_response") as generate:
         result = generate_product("briefing", root=ROOT, authorize_external=True, client=Mock())
     assert result.sources == [] and result.diagnostics["status"] == "prompt_budget_exceeded"
-    assert "Non è stato possibile" in product_notice(result)
+    assert "informazioni sufficienti" in product_notice(result)
     generate.assert_not_called()
     write.assert_not_called()
 
