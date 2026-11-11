@@ -381,7 +381,8 @@ def ui(root):
 def test_public_unconfigured_auth_never_reads_legacy_demo(tmp_path):
     with patch("streamlit.secrets", {}), patch("edicola.personalization_ui.load_profile", side_effect=AssertionError("Demo pubblica vietata")):
         app = AppTest.from_string(ui(tmp_path)).run()
-    assert not app.exception and app.button(key="account_login").disabled
+    assert not app.exception and not app.multiselect
+    assert any("Accedi con Google" in message.value for message in app.info)
     assert not app.multiselect and not list(tmp_path.iterdir())
 
 
@@ -400,8 +401,8 @@ def test_ui_reports_database_error_without_success(auth, backend, tmp_path):
         app = AppTest.from_string(ui(tmp_path)).run()
         assert not app.exception
         db.fail_commit = True
-        app.multiselect(key="personal_interests").set_value(["scuola"])
-        app.button(key="FormSubmitter:personal_preferences-Salva preferenze").click().run()
+        app.session_state["account_interest_chips"] = ["scuola"]
+        app.run()
         assert not app.exception and app.error and not app.success
         assert not db.profiles
 
@@ -412,34 +413,33 @@ def test_public_home_does_not_import_demo(auth, backend, tmp_path):
     context = ArchiveContext(tmp_path, [], {})
     with patch("edicola.account_ui.PostgresPersonalStore", side_effect=lambda _: store()), patch(
         "edicola.experience_ui.load_profile", side_effect=AssertionError("Lettura demo vietata")), patch(
-        "edicola.experience_ui.read_catalog", return_value=make_catalog()), patch("edicola.experience_ui.render_gallery"):
+        "edicola.experience_ui.read_catalog", return_value=make_catalog()), patch("edicola.press_review_ui.render_press_review") as review:
         # Le strutture vuote dell'archivio non richiedono dati reali o PDF.
         source = f"from pathlib import Path\nfrom edicola.pdf_viewer import ArchiveContext\nfrom edicola.experience_ui import render_home\nr=Path({str(tmp_path)!r})\nrender_home(r,ArchiveContext(r,[],{{}}))"
         app = AppTest.from_string(source).run()
     assert not app.exception and not db.profiles
-    assert any(h.value == "Consigliati per te" for h in app.subheader)
+    assert app.session_state["for_you_mode"] == "Tutte le notizie"
+    review.assert_called_once()
 
 
 def test_ui_two_new_sessions_recover_only_current_profile(auth, backend, tmp_path):
     db, actor, factory = backend
-    with patch("edicola.account_ui.PostgresPersonalStore", side_effect=lambda _: factory()), patch("edicola.account_ui.read_catalog", return_value=make_catalog()):
+    with patch("edicola.account_ui.PostgresPersonalStore", side_effect=lambda _: factory()), patch(
+        "edicola.account_ui.read_catalog", return_value=make_catalog()):
         first = AppTest.from_string(ui(tmp_path)).run()
-        first.multiselect(key="personal_interests").set_value(["scuola"])
-        first.button(key="FormSubmitter:personal_preferences-Salva preferenze").click().run()
-        assert not first.exception and first.success
-        with patch("streamlit.logout") as logout:
-            first.button(key="account_logout").click().run()
-            logout.assert_called_once()
+        first.session_state["account_interest_chips"] = ["scuola"]
+        first.run()
+        assert not first.exception and factory().load_profile().interests == ["scuola"]
         actor[0] = B
         with patch("streamlit.user", user(B)):
             second = AppTest.from_string(ui(tmp_path)).run()
-            assert not second.exception and second.multiselect(key="personal_interests").value == []
-            second.multiselect(key="personal_interests").set_value(["ambiente"])
-            second.button(key="FormSubmitter:personal_preferences-Salva preferenze").click().run()
-            assert not second.exception
+            assert not second.exception and factory().load_profile().interests == []
+            second.session_state["account_interest_chips"] = ["ambiente"]
+            second.run()
+            assert not second.exception and factory().load_profile().interests == ["ambiente"]
         actor[0] = A
         restored = AppTest.from_string(ui(tmp_path)).run()
-        assert not restored.exception and restored.multiselect(key="personal_interests").value == ["scuola"]
+        assert not restored.exception and factory().load_profile().interests == ["scuola"]
         assert set(db.profiles) == {A.owner_id, B.owner_id}
     assert not list(tmp_path.rglob("*.sqlite3"))
 
@@ -447,18 +447,22 @@ def test_ui_two_new_sessions_recover_only_current_profile(auth, backend, tmp_pat
 def test_ui_save_export_delete_and_no_shared_download_urls(auth, backend, tmp_path):
     db, _, factory = backend
     factory().save_preferences(Profile(A.owner_id, ["trasporti"]))
+    factory().save_passage(make_catalog().chunks[0])
     with patch("edicola.account_ui.PostgresPersonalStore", side_effect=lambda _: factory()), patch(
-        "edicola.account_ui.read_catalog", return_value=make_catalog()), patch("edicola.private_media._media") as media:
+        "edicola.account_ui.read_catalog", return_value=make_catalog()), patch(
+        "edicola.private_media._media") as media:
         app = AppTest.from_string(ui(tmp_path)).run()
-        save = next(button for button in app.button if button.label == "Salva lettura")
-        app.button(key=save.key).click().run()
+        app.session_state["personal_area"] = "Raccolta"
+        app.run()
         assert not app.exception and factory().load_profile().saved
+        app.session_state["personal_area"] = "Privacy"
+        app.run()
         app.button(key="account_export_prepare").click().run()
         assert not app.exception
         exported = json.loads(base64.b64decode(media.call_args.kwargs["data"]["bytes"]))
         assert exported["profile"]["interests"] == ["trasporti"]
         assert exported["saved"]
-        assert not app.get("download_button")  # Nessun endpoint media anonimo per i dati personali.
+        assert not app.get("download_button")
         app.checkbox(key="account_delete_confirm").check().run()
         app.button(key="account_delete").click().run()
         assert not app.exception and any("cancellati" in s.value for s in app.success)
@@ -512,6 +516,8 @@ def test_ui_loads_persistent_briefing_without_generation_or_local_sqlite(auth, b
         "edicola.account_ui.read_catalog", return_value=make_catalog()), patch(
         "edicola.account_ui.generate_personal_briefing", side_effect=AssertionError("Rigenerazione automatica vietata")):
         app = AppTest.from_string(ui(tmp_path)).run()
+    app.session_state["personal_area"] = "Raccolta"
+    app.run()
     assert not app.exception and app.selectbox(key="personal_product").value == key
     assert any("spazio personale" in caption.value for caption in app.caption)
     assert any("temporanei" in caption.value for caption in app.caption)
