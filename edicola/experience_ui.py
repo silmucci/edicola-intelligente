@@ -4,12 +4,10 @@ import html
 import re
 import sqlite3
 from collections import defaultdict, deque
-from datetime import date
 
 import streamlit as st
 
-from edicola.archive_ui import edition_metadata
-from edicola.edition_dates import read_edition_metadata
+from edicola.archive_ui import edition_metadata, latest_first
 from edicola.editorial_selection import headline_priority, read_catalog
 from edicola.pdf_viewer import source_button
 from edicola.personalization import recommend
@@ -114,13 +112,8 @@ def home_selection(catalog, limit=4):
 
 
 def recent_editions(context, limit=3):
-    raw = read_edition_metadata(context.root)
-    def published(document):
-        try:
-            return date.fromisoformat(raw[document.filename]["date"])
-        except (KeyError, TypeError, ValueError):
-            return date.min
-    return sorted(context.documents, key=published, reverse=True)[:limit]
+    """Condivide l'ordinamento dell'archivio senza duplicare la logica delle date."""
+    return latest_first(context.root, context.documents)[:limit]
 
 
 def render_home(root, context):
