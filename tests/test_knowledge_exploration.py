@@ -272,7 +272,7 @@ render_visuals(Path({str(tmp_path)!r}), None)
 '''
     with patch("edicola.knowledge.generate_knowledge", side_effect=[timeline, map_product]) as generate:
         app = AppTest.from_string(code).run()
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", "text-v3"): True}
         app.text_input(key="knowledge_topic").set_value("Pesca").run()
         app.button(key="timeline_submit").click().run()
         assert any(h.value == "Senza data" for h in app.subheader)
