@@ -22,7 +22,8 @@ from edicola.evaluation_data import (CRITERIA, RUBRICS, SCALE, dataset_template,
     snapshot, validate_dataset, validate_snapshot, write_json)
 from edicola.evaluation_metrics import rag_assessment, score_run, sources_from_hits
 from edicola.evaluation_judge import evaluate_run, judge_rows
-from edicola.evaluation_products import evaluate_products, report_products, validate_manifest
+from edicola.evaluation_products import (collect_product_manifest, evaluate_products,
+                                         report_products, validate_manifest)
 from edicola.evaluation_report import REVIEW_FIELDS, read_reviews, render_report, review_rows, write_csv
 from edicola.indexing import ROOT
 from edicola.personalization import recommend
@@ -283,6 +284,9 @@ def main(argv=None):
     batch = commands.add_parser("prepare-product-reviews", help="Schede comparative vuote per Briefing, Podcast, Timeline e mappe.")
     batch.add_argument("--manifest", type=Path, required=True, help="JSON con schema_version=1 e lista products: kind, item_id, origin.")
     batch.add_argument("--out", type=Path, required=True)
+    collect = commands.add_parser("collect-products", help="Esporta prodotti validi dalle cache esistenti, senza API.")
+    collect.add_argument("--out", type=Path, required=True)
+    collect.add_argument("--per-kind", type=int, default=10)
     auto = commands.add_parser("judge-products", help="LLM giudice dei quattro prodotti editoriali esportati.")
     auto.add_argument("--manifest", type=Path, required=True)
     auto.add_argument("--model", required=True)
@@ -364,6 +368,14 @@ def main(argv=None):
             write_csv(out / "human_review.csv", rows, REVIEW_FIELDS)
             write_json(out / "rubrics.json", {"scale": SCALE, "criteria": CRITERIA, "products": RUBRICS})
             print(f"Schede di valutazione: {len(rows)} criteri, nessun punteggio preassegnato.")
+        elif args.command == "collect-products":
+            if args.out.exists():
+                raise ValueError("Il manifest esiste già.")
+            manifest = collect_product_manifest(args.root, limit_per_kind=args.per_kind)
+            if not manifest["products"]:
+                raise ValueError("Nessun prodotto con cache e fonti correnti da esportare.")
+            write_json(args.out, manifest)
+            print(f"Esportati {len(manifest['products'])} prodotti dalle cache locali; nessuna API.")
         elif args.command == "judge-products":
             if not args.authorize_external:
                 raise ValueError("Autorizzare esplicitamente il giudice editoriale.")
