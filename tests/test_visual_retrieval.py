@@ -38,3 +38,45 @@ def test_visual_retrieval_has_no_unsupported_event_or_relation():
         selected = select_visual_evidence(kind, Topic(question, items), items, [], limit=5)
         assert [item.id for item in selected] == ["a"]
         # Il selettore non fabbrica eventi o archi: quelli sono prodotti e verificati a valle.
+
+
+def test_undated_news_are_ordered_by_publication_without_fabricating_event_date():
+    from edicola.knowledge_presentation import ordered_timeline
+    later = {"title": "Notizia di novembre", "event_date": None,
+             "publication_dates": [{"source_id": "S2", "date": "2026-11-10"}]}
+    earlier = {"title": "Notizia di ottobre", "event_date": None,
+               "publication_dates": [{"source_id": "S1", "date": "2026-10-23"}]}
+    ordered, missing = ordered_timeline([], [later, earlier])
+    assert not missing
+    assert ordered == [earlier, later]
+    assert all(item["event_date"] is None for item in ordered)
+
+
+def test_graph_candidates_have_literal_source_and_validated_relation():
+    from edicola.knowledge_fallback import graph_candidates
+    from edicola.knowledge_validation import validate_map
+    from edicola.rag import Source
+
+    text = "Dissesto idrogeologico in Abruzzo, Legnini attacca Marsilio: ai sindaci servono risposte."
+    source = Source("S1", "chunk", "edizione.pdf", 13, text, .1)
+    raw = graph_candidates({"nodes": [], "edges": []}, [source],
+                           "emergenza idrogeologica in Abruzzo")
+    assert len(raw["nodes"]) == 2 and len(raw["edges"]) == 1
+    checked, details = validate_map(raw, [source])
+    assert details["accepted_edges"] == 1
+    assert checked["edges"][0]["label"] == "attacca"
+    assert all(item["source_ids"] == ["S1"] for item in checked["nodes"])
+
+
+def test_local_news_fallback_remains_undated_until_render():
+    from edicola.knowledge_fallback import source_developments
+    from edicola.knowledge_validation import validate_timeline
+    from edicola.rag import Source
+    text = "Il dissesto idrogeologico in Abruzzo provoca danni alle infrastrutture secondo gli articoli pubblicati."
+    source = Source("S1", "chunk", "edizione.pdf", 13, text, .1)
+    proposals = source_developments([source], "dissesto idrogeologico in Abruzzo")
+    coverage = {"files": [{"pdf": "edizione.pdf", "date": "2026-11-10"}]}
+    assert proposals and proposals[0]["event_date"] is None
+    checked, _ = validate_timeline({"events": proposals}, [source], coverage)
+    assert len(checked["undated_events"]) == 1
+    assert checked["undated_events"][0]["event_date"] is None
