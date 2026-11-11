@@ -69,7 +69,6 @@ def render_knowledge(result, archive=None):
     if result.kind == "timeline":
         ordered, unplaced = ordered_timeline(data["events"], data["undated_events"])
         if ordered:
-            st.caption("Cronologia delle notizie · le date delle edizioni sono indicate quando manca una data dell'evento verificabile.")
             render_timeline(ordered, result.sources, archive, articles=articles)
         elif not unplaced:
             st.info("Non emergono sviluppi documentati sufficienti per costruire la timeline.")
@@ -92,7 +91,6 @@ def render_map(result, archive, technical):
     captions = node_captions(data["nodes"])
     view = compact_map(data)
     if not data["edges"]:
-        st.info("Non emergono relazioni verificabili fra i concetti. Puoi consultare le entità documentate e le loro fonti.")
         mode = "Elenco"
     else:
         mode = st.segmented_control("Vista della mappa", ["Grafo", "Elenco"], default="Grafo", key="knowledge_map_view") or "Grafo"
@@ -110,7 +108,6 @@ def render_map(result, archive, technical):
             legend += " · Concetti separati: nessun collegamento documentato"
         st.caption(legend)
     else:
-        st.caption("Concetti documentati sul tema. Le fonti di questa mappa non attestano collegamenti fra loro.")
     if mode == "Grafo":
         def choose(node_id):
             st.session_state["knowledge_map_focus"] = node_id
@@ -180,11 +177,9 @@ def render_timeline(events, sources, archive, *, articles=None):
         refs = []
         for source in selected:
             info = editions.get(source.id, {})
-            label = " · ".join([info.get("publication") or "Documento dell’archivio",
-                                info.get("publication_date") or "Data non disponibile", f"pagina {source.page}"])
+            label = " · ".join([info.get("publication") or "Quotidiano",
+                                info.get("publication_date") or "Edizione", f"p. {source.page}"])
             article = (articles or {}).get(source.id)
-            if article:
-                label += " · " + article_reference(article)
             available = archive is not None
             if available:
                 try:
@@ -195,10 +190,10 @@ def render_timeline(events, sources, archive, *, articles=None):
         description = event_text(event["description"])
         is_edition = not bool(event.get("event_date"))
         label = f"{date.day} {months[date.month-1]} {date.year}"
-        payload.append({"iso": display_iso, "date": ("Edizione del " if is_edition else "") + label,
+        payload.append({"iso": display_iso, "date": ("Edizione · " if is_edition else "") + label,
                         "edition_fallback": is_edition,
                         "title": event_text(event["title"]), "summary": short_text(description, 280),
-                        "description": description, "status": ("Data della notizia, non dell’evento · " if is_edition else "") + LABELS.get(event.get("development_kind"), "")
+                        "description": description, "status": ""
                         if event.get("development_kind") != "undetermined" else "", "sources": refs})
         references.append(selected)
     identity = hashlib.sha256(json.dumps([payload, [[s.chunk_id for s in refs] for refs in references]], sort_keys=True).encode()).hexdigest()[:16]
@@ -262,7 +257,8 @@ def render_event_details(event, sources):
     origin = {"explicit": "Data esplicita nel testo", "edition_metadata": "Data completata tramite metadati verificati",
               "undetermined": "Data non determinabile"}
     st.caption(origin.get(event.get("date_origin"), "Data non determinabile"))
-    st.caption("Data evento: " + (event["event_date"] or "non verificata; la posizione nell’asse usa la data di pubblicazione"))
+    if event.get("event_date"):
+        st.caption("Data dell’evento: " + event["event_date"])
     states = {"announced": "Annunciato / programmato; non attestato come avvenuto", "future": "Futuro rispetto all’edizione",
               "occurred": "Riferito come avvenuto nel passaggio originale", "conflicting": "Indizi temporali discordanti",
               "undetermined": "Svolgimento non determinabile"}
@@ -275,7 +271,6 @@ def render_event_details(event, sources):
     if event.get("date_anchor"):
         st.caption("Anno completato con l’edizione " + event["date_anchor"]["publication_date"])
     if event.get("date_reason"):
-        st.caption("La data dell’evento non è verificabile. La data editoriale serve esclusivamente a ordinare le notizie.")
     if event.get("temporal_quote"):
         st.text("Riferimento temporale originale: " + event["temporal_quote"])
     for evidence in event.get("evidence", []):
