@@ -16,10 +16,9 @@ from google.genai import errors, types
 from edicola.embeddings import EmbeddingError, api_key
 from edicola.indexing import ROOT
 from edicola.search import semantic_search
-from edicola.rag_context import source_editions, temporal_context, temporal_notice
+from edicola.rag_context import source_editions, temporal_context, temporal_notice, retrieval_query
 from edicola.chat_data import bounded_context
 from edicola.article_evidence import verified_article, duplicate_article_hit, evidence_source_record
-from edicola.conversation_context import retrieval_query
 from edicola.context_selection import fit_context, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION
 
 
