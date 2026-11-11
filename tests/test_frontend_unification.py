@@ -3,7 +3,6 @@
 from unittest.mock import patch
 
 from edicola import product_navigation as navigation
-from edicola.editorial_handoff import open_draft
 
 
 def test_six_visible_sections_and_profile_in_header():
@@ -62,16 +61,16 @@ def test_legacy_card_actions_do_not_generate_and_cancel_old_request():
     assert state["rag_pending"]["new"] is False
 
 
-def test_chat_handoff_prepares_common_explore_topic_without_generating():
-    state = {"nav_section": "Chat AI"}
+def test_legacy_map_navigation_opens_explore_without_generating():
+    """I riferimenti storici alle mappe rimangono navigabili senza API."""
+    state = {"nav_section": "Chat AI", "knowledge_topic": "Piano trasporti"}
     with patch.object(navigation.st, "session_state", state), patch(
         "google.genai.Client", side_effect=AssertionError("Nessuna API prevista")
     ):
-        open_draft("Mappa", "  Piano   trasporti  ")
+        assert navigation.open_product_id("map")
     assert state["nav_section"] == "Esplora"
     assert state["knowledge_kind"] == "Mappa"
     assert state["knowledge_topic"] == "Piano trasporti"
-    assert state["knowledge_topic_map"] == "Piano trasporti"
 
 
 def test_subview_inputs_are_preserved_across_navigation():
