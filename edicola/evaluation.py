@@ -22,6 +22,7 @@ from edicola.evaluation_data import (CRITERIA, RUBRICS, SCALE, dataset_template,
     snapshot, validate_dataset, validate_snapshot, write_json)
 from edicola.evaluation_metrics import rag_assessment, score_run, sources_from_hits
 from edicola.evaluation_judge import evaluate_run, judge_rows
+from edicola.evaluation_products import evaluate_products, report_products, validate_manifest
 from edicola.evaluation_report import REVIEW_FIELDS, read_reviews, render_report, review_rows, write_csv
 from edicola.indexing import ROOT
 from edicola.personalization import recommend
@@ -282,6 +283,11 @@ def main(argv=None):
     batch = commands.add_parser("prepare-product-reviews", help="Schede comparative vuote per Briefing, Podcast, Timeline e mappe.")
     batch.add_argument("--manifest", type=Path, required=True, help="JSON con schema_version=1 e lista products: kind, item_id, origin.")
     batch.add_argument("--out", type=Path, required=True)
+    auto = commands.add_parser("judge-products", help="LLM giudice dei quattro prodotti editoriali esportati.")
+    auto.add_argument("--manifest", type=Path, required=True)
+    auto.add_argument("--model", required=True)
+    auto.add_argument("--out", type=Path, required=True)
+    auto.add_argument("--authorize-external", action="store_true")
     human = commands.add_parser("reviews", help="Report delle sole valutazioni umane compilate.")
     human.add_argument("--sheet", type=Path, required=True)
     human.add_argument("--out", type=Path, required=True)
@@ -358,6 +364,22 @@ def main(argv=None):
             write_csv(out / "human_review.csv", rows, REVIEW_FIELDS)
             write_json(out / "rubrics.json", {"scale": SCALE, "criteria": CRITERIA, "products": RUBRICS})
             print(f"Schede di valutazione: {len(rows)} criteri, nessun punteggio preassegnato.")
+        elif args.command == "judge-products":
+            if not args.authorize_external:
+                raise ValueError("Autorizzare esplicitamente il giudice editoriale.")
+            manifest = read_json(args.manifest)
+            validate_manifest(manifest)
+            if any(item["origin"] != "real" for item in manifest["products"]):
+                raise ValueError("Non inviare dati simulati al servizio reale.")
+            if args.out.exists():
+                raise ValueError("Destinazione già esistente.")
+            result, rows = evaluate_products(manifest, root=args.root, model=args.model,
+                                             authorize_external=True)
+            out = new_directory(args.out)
+            write_json(out / "judge.json", result)
+            report_products(out, manifest, result, rows)
+            counts = Counter(item["status"] for item in result["records"])
+            print(f"Valutazione prodotti: {dict(counts)}. Report: {out / 'report.md'}")
         elif args.command == "reviews":
             rows = read_reviews(args.sheet)
             render_report(new_directory(args.out), rows, metadata={"source": args.sheet.name, "type": "human_review"})
