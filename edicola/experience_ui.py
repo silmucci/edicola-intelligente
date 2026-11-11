@@ -10,7 +10,7 @@ import streamlit as st
 from edicola.archive_ui import edition_metadata, latest_first
 from edicola.editorial_selection import headline_priority, read_catalog
 from edicola.pdf_viewer import source_button
-from edicola.personalization import recommend
+from edicola.for_you import select_feed
 from edicola.profiles import load_profile, save_passage
 from edicola import identity
 from edicola.design import section_intro
@@ -60,33 +60,38 @@ def readable(text):
     return re.sub(r"([\\`*_{}\[\]()#+.!|>~\-])", r"\\\1", html.escape(html.unescape(text), quote=False))
 
 
+def save_reading_button(chunk, *, key, root=None, profile=None, store=None):
+    """Salvataggio condiviso dal feed e dalle vecchie schede di lettura."""
+    if root is None or profile is None:
+        return
+    saved = chunk.id in profile.saved
+    if st.button("Salvato" if saved else "Salva lettura", key=f"{key}_save", disabled=saved):
+        try:
+            if store is not None:
+                store.assert_owner(profile.user_id)
+                store.save_passage(chunk)
+                st.session_state.pop("account_export", None)
+                st.session_state["account_notice"] = "Lettura salvata nel tuo account."
+            elif identity.local_demo():
+                save_passage(root, profile.user_id, chunk)
+                st.session_state["personal_notice"] = "Lettura salvata. La ritrovi nel profilo demo."
+            else:
+                raise RuntimeError("Profilo personale non disponibile.")
+            st.rerun()
+        except (OSError, ValueError, RuntimeError, sqlite3.Error):
+            st.error("Non è stato possibile salvare la lettura. Riprova tra poco.")
+
+
 def passage_card(chunk, *, context, editions, key, reason=None, root=None, profile=None, store=None):
+    """Scheda legacy usata anche da altre viste: mantiene azioni e riferimenti."""
     info = editions.get(chunk.metadata["filename"], {})
     with st.container(border=True, width=320):
         st.caption(info.get("title", "Dall’archivio") + " · " + info.get("date", "Data non disponibile"))
-        # Le virgolette indicano un estratto, non un titolo ricostruito dall'app.
         st.markdown("**Una lettura da scoprire**")
         st.markdown(readable("«" + excerpt(chunk.text, 230) + "»"))
-        # Fonte PDF e pagina sono disponibili dal collegamento qui sotto.
         source_button(chunk.metadata["filename"], chunk.metadata["page"], context=context,
                       chunk_id=chunk.id, key=f"{key}_pdf")
-        if root is not None and profile is not None:
-            saved = chunk.id in profile.saved
-            if st.button("Salvato" if saved else "Salva lettura", key=f"{key}_save", disabled=saved):
-                try:
-                    if store is not None:
-                        store.assert_owner(profile.user_id)
-                        store.save_passage(chunk)
-                        st.session_state.pop("account_export", None)
-                        st.session_state["account_notice"] = "Lettura salvata nel tuo account."
-                    elif identity.local_demo():
-                        save_passage(root, profile.user_id, chunk)
-                        st.session_state["personal_notice"] = "Lettura salvata. La ritrovi nel profilo demo."
-                    else:
-                        raise RuntimeError("Profilo personale non disponibile.")
-                    st.rerun()
-                except (OSError, ValueError, RuntimeError, sqlite3.Error):
-                    st.error("Non è stato possibile salvare la lettura. Riprova tra poco.")
+        save_reading_button(chunk, key=key, root=root, profile=profile, store=store)
 
 
 def home_selection(catalog, limit=4):
@@ -128,9 +133,9 @@ def render_home(root, context):
     render_press_review(catalog, context, metadata)
 
 def render_for_you(root, context):
-    """Notizie personalizzate, letture salvate e briefing senza pannelli tecnici."""
+    """Feed compatto: titoli verificati, preferenze e fonti originali."""
     identity.synchronize_identity()
-    section_intro("Per te", "Le notizie più vicine ai tuoi interessi.", "La tua edicola")
+    section_intro("Per te", "Le notizie delle tue edizioni, in un colpo d’occhio.", "La tua edicola")
 
     store, profile = None, None
     if authenticated():
@@ -149,38 +154,60 @@ def render_for_you(root, context):
         catalog = None
 
     if catalog and catalog.chunks:
-        personalized = recommend(catalog, profile, limit=6) if profile and profile.interests else []
-        selected = [item.chunk for item in personalized]
-        used = {chunk.id for chunk in selected}
-        # Completa le proposte con notizie di varie edizioni, senza
-        # sostituire o nascondere quelle in linea con gli interessi.
-        for chunk in home_selection(catalog, limit=8):
-            if len(selected) >= 6:
-                break
-            if chunk.id not in used:
-                selected.append(chunk)
-                used.add(chunk.id)
-        if personalized:
-            st.subheader("Scelte per i tuoi interessi")
+        interests = profile.interests if profile and profile.interests else []
+        st.subheader("Notizie per i tuoi interessi" if interests else "Notizie da esplorare")
+        if not interests:
+            st.caption("Scegli i tuoi interessi nel Profilo per personalizzare questa selezione.")
+        selected_topic = ""
+        if interests:
+            choice = st.selectbox("Argomento", ["Tutti gli interessi", *interests],
+                                  key="for_you_topic", width=270)
+            selected_topic = "" if choice == "Tutti gli interessi" else choice
+        if st.session_state.get("for_you_previous_topic") != selected_topic:
+            st.session_state["for_you_previous_topic"] = selected_topic
+            st.session_state["for_you_more"] = False
+
+        entries = select_feed(catalog, profile, topic=selected_topic, limit=17)
+        if entries:
+            metadata = edition_metadata(root, context.documents)
+            visible = entries if st.session_state.get("for_you_more") else entries[:8]
+            for index, entry in enumerate(visible):
+                chunk = entry.chunk
+                info = metadata.get(chunk.metadata["filename"], {})
+                details = [info.get("title") or "Dall’archivio",
+                           info.get("date") or "Data non disponibile",
+                           f"pagina {chunk.metadata['page']}"]
+                if entry.topics:
+                    details.append(", ".join(entry.topics[:2]))
+                elif not entry.verified_title:
+                    details.append("Estratto originale")
+                with st.container(border=True):
+                    st.caption(" · ".join(details))
+                    st.markdown("**" + readable(entry.title) + "**")
+                    if entry.preview:
+                        st.markdown(readable(entry.preview))
+                    with st.container(horizontal=True, gap="small"):
+                        source_button(chunk.metadata["filename"], chunk.metadata["page"],
+                                      context=context, chunk_id=chunk.id,
+                                      key=f"for_you_{index}_pdf", label="Leggi nel PDF")
+                        save_reading_button(chunk, key=f"for_you_{index}",
+                                            root=root if profile else None,
+                                            profile=profile, store=store)
+            if len(entries) > 8 and not st.session_state.get("for_you_more"):
+                if st.button("Mostra altre notizie", key="for_you_show_more"):
+                    st.session_state["for_you_more"] = True
+                    st.rerun()
         else:
-            st.subheader("Da scoprire")
-            if not profile:
-                st.caption("Accedi dal Profilo per ricevere consigli più vicini ai tuoi interessi.")
-            elif not profile.interests:
-                st.caption("Scegli i tuoi interessi nel Profilo per personalizzare le letture.")
-        metadata = edition_metadata(root, context.documents)
-        with st.container(horizontal=True, gap="medium"):
-            for index, chunk in enumerate(selected):
-                passage_card(chunk, context=context, editions=metadata, key=f"for_you_{index}",
-                             root=root if profile else None, profile=profile, store=store)
+            st.info("Non ci sono notizie leggibili per questa selezione. Prova un altro interesse oppure consulta la Rassegna stampa.")
     else:
         st.info("Le letture non sono disponibili in questo momento.")
 
     if profile is None:
         return
-    if identity.local_demo():
-        from edicola.personalization_ui import render_demo_readings
-        render_demo_readings(root, context, profile, catalog)
-    else:
-        from edicola.account_ui import render_account_readings
-        render_account_readings(root, context, store, profile, catalog)
+    with st.expander("Le tue letture salvate e i briefing", expanded=False):
+        if identity.local_demo():
+            from edicola.personalization_ui import render_demo_readings
+            render_demo_readings(root, context, profile, catalog)
+        else:
+            from edicola.account_ui import render_account_readings
+            render_account_readings(root, context, store, profile, catalog)
