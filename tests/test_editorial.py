@@ -361,3 +361,13 @@ def test_duplicate_generated_news_is_not_repeated():
 def test_invalid_configs(kwargs):
     with pytest.raises(ValueError):
         EditorialConfig(**kwargs)
+
+
+def test_balanced_briefing_preserves_same_text_across_distinct_editions():
+    catalog = make_catalog()
+    text = "Lo stesso articolo viene riportato in più edizioni, con una frase sufficientemente lunga per la selezione."
+    catalog.chunks = [replace(chunk, text=text) for chunk in catalog.chunks]
+    selected = balanced_briefing(catalog, 8, 0.82, preserve_editions=True)
+    assert len(selected) == 4
+    assert {chunk.metadata["filename"] for chunk in selected} == {item["pdf"] for item in catalog.coverage["files"]}
+    assert len(balanced_briefing(catalog, 8, 0.82, preserve_editions=False)) == 1

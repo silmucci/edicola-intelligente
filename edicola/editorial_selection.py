@@ -129,17 +129,23 @@ def balanced_briefing(catalog: Catalog, limit: int, similarity: float, *, preser
             for _, items in sorted(edition_pools.items())
         )
     selected, seen_topics, seen_pages = [], set(), set()
+    seen_text_by_edition = defaultdict(set)
+
+    def usable(chunk):
+        if len(chunk.text.strip()) < 40:
+            return False
+        if preserve_editions:
+            normalized = " ".join(chunk.text.split())
+            return normalized not in seen_text_by_edition[chunk.metadata["filename"]]
+        return not any(near_duplicate(chunk.text, other.text) for other in selected)
+
     while queues and len(selected) < limit:
         for publication in list(queues):
             editions_queue = queues[publication]
             chosen = None
             while editions_queue and chosen is None:
                 candidates = editions_queue.popleft()
-                candidates[:] = [chunk for chunk in candidates
-                                 if len(chunk.text.strip()) >= 40
-                                 and not any((" ".join(chunk.text.split()) == " ".join(other.text.split())
-                                              if preserve_editions else near_duplicate(chunk.text, other.text)) for other in selected
-                                             if not preserve_editions or chunk.metadata["filename"] == other.metadata["filename"])]
+                candidates[:] = [chunk for chunk in candidates if usable(chunk)]
                 if candidates:
                     index = max(range(len(candidates)), key=lambda i: (
                         (candidates[i].metadata["filename"], candidates[i].metadata["page"]) not in seen_pages,
@@ -153,6 +159,8 @@ def balanced_briefing(catalog: Catalog, limit: int, similarity: float, *, preser
                 del queues[publication]
             if chosen is not None:
                 selected.append(chosen)
+                if preserve_editions:
+                    seen_text_by_edition[chosen.metadata["filename"]].add(" ".join(chosen.text.split()))
                 seen_topics.add(topics[chosen.id])
                 seen_pages.add((chosen.metadata["filename"], chosen.metadata["page"]))
             if len(selected) == limit:

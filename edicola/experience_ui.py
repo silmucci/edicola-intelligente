@@ -96,12 +96,14 @@ def home_selection(catalog, limit=4):
     for chunk in sorted(catalog.chunks, key=lambda c: (-headline_priority(c), c.metadata["position"], c.id)):
         pools[chunk.metadata["filename"]].append(chunk)
     selected = []
+    seen_text = defaultdict(set)
     while pools and len(selected) < limit:
         for name in list(pools):
             while pools[name]:
                 candidate = pools[name].popleft()
-                if not any(candidate.metadata["filename"] == previous.metadata["filename"]
-                           and " ".join(candidate.text.split()) == " ".join(previous.text.split()) for previous in selected):
+                normalized = " ".join(candidate.text.split())
+                if normalized not in seen_text[name]:
+                    seen_text[name].add(normalized)
                     selected.append(candidate)
                     break
             if not pools[name]:

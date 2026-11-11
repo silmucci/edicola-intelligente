@@ -222,3 +222,14 @@ def test_untrusted_session_flags_do_not_authenticate(archive):
         assert app.button(key="account_logout").disabled
         assert any("condivis" in c.value for c in app.caption)
         logout.assert_not_called()
+
+
+def test_home_selection_whitespace_duplicates_are_per_edition(archive):
+    _, _, catalog = archive
+    original = catalog.chunks[0]
+    duplicate = replace(original, id="copy-whitespace", text="  " + "   ".join(original.text.split()) + " ")
+    catalog.chunks.append(duplicate)
+    selected = home_selection(catalog, limit=20)
+    from_original = [chunk for chunk in selected if chunk.metadata["filename"] == original.metadata["filename"]
+                     and " ".join(chunk.text.split()) == " ".join(original.text.split())]
+    assert len(from_original) == 1
