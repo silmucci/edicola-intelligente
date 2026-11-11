@@ -401,7 +401,7 @@ def test_ui_reports_database_error_without_success(auth, backend, tmp_path):
         app = AppTest.from_string(ui(tmp_path)).run()
         assert not app.exception
         db.fail_commit = True
-        app.session_state["account_interest_chips"] = ["scuola"]
+        app.session_state["account_interest_chips"] = ["Scuola"]
         app.run()
         assert not app.exception and app.error and not app.success
         assert not db.profiles
@@ -429,17 +429,17 @@ def test_ui_two_new_sessions_recover_only_current_profile(auth, backend, tmp_pat
         first = AppTest.from_string(ui(tmp_path)).run()
         first.session_state["account_interest_chips"] = ["scuola"]
         first.run()
-        assert not first.exception and factory().load_profile().interests == ["scuola"]
+        assert not first.exception and factory().load_profile().interests == ["Scuola"]
         actor[0] = B
         with patch("streamlit.user", user(B)):
             second = AppTest.from_string(ui(tmp_path)).run()
             assert not second.exception and factory().load_profile().interests == []
-            second.session_state["account_interest_chips"] = ["ambiente"]
+            second.session_state["account_interest_chips"] = ["Ambiente"]
             second.run()
-            assert not second.exception and factory().load_profile().interests == ["ambiente"]
+            assert not second.exception and factory().load_profile().interests == ["Ambiente"]
         actor[0] = A
         restored = AppTest.from_string(ui(tmp_path)).run()
-        assert not restored.exception and factory().load_profile().interests == ["scuola"]
+        assert not restored.exception and factory().load_profile().interests == ["Scuola"]
         assert set(db.profiles) == {A.owner_id, B.owner_id}
     assert not list(tmp_path.rglob("*.sqlite3"))
 
@@ -516,9 +516,10 @@ def test_ui_loads_persistent_briefing_without_generation_or_local_sqlite(auth, b
         "edicola.account_ui.read_catalog", return_value=make_catalog()), patch(
         "edicola.account_ui.generate_personal_briefing", side_effect=AssertionError("Rigenerazione automatica vietata")):
         app = AppTest.from_string(ui(tmp_path)).run()
-    app.session_state["personal_area"] = "Raccolta"
-    app.run()
-    assert not app.exception and app.selectbox(key="personal_product").value == key
+        # Il backend simulato deve restare collegato anche durante il rerun.
+        app.session_state["personal_area"] = "Raccolta"
+        app.run()
+        assert not app.exception and app.selectbox(key="personal_product").value == key
     assert any("spazio personale" in caption.value for caption in app.caption)
     assert any("temporanei" in caption.value for caption in app.caption)
     assert not list(tmp_path.rglob("*.sqlite3"))
@@ -562,7 +563,7 @@ def test_owner_is_transaction_local_on_commit_rollback_and_user_switch(backend):
     actor[0] = B
     assert factory().load_profile().interests == []
     actor[0] = A
-    assert factory().load_profile().interests == ["scuola"]
+    assert factory().load_profile().interests == ["Scuola"]
     assert all(c.owner is None for c in db.connections)
     guc = [(sql, params) for sql, params in db.calls if "set_config('edicola.owner_id'" in sql]
     assert all("%s, true)" in sql for sql, _ in guc)
