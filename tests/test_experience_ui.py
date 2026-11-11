@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from editorial_adapter import navigate_to
 from edicola.archive import read_active_chunks
 from edicola.chunking import prepare_documents
 from edicola.editorial_selection import Catalog
@@ -60,7 +61,7 @@ def test_identity_home_and_logout_are_not_fake_authentication(archive, logged_in
         app = AppTest.from_string(script(root), default_timeout=15).run()
         assert not app.exception
         assert ("Consigliati per te" in [h.value for h in app.subheader]) is logged_in
-        app.selectbox(key="nav_section").set_value("Il mio profilo").run()
+        navigate_to(app, "Il mio profilo")
         assert app.button(key="account_logout").disabled is (not logged_in)
         # La homepage personalizzata usa SOLO la sessione nativa verificata.
         home_headers = [h.value for h in app.subheader]
@@ -99,7 +100,7 @@ def test_cards_save_remove_and_preferences_feedback(archive):
     root, _, catalog = archive
     save_profile(root, Profile(interests=["trasporti"]))
     app = AppTest.from_string(script(root), default_timeout=15).run()
-    app.selectbox(key="nav_section").set_value("Il mio profilo").run()
+    navigate_to(app, "Il mio profilo")
     save = next(button for button in app.button if button.label == "Salva lettura")
     app.button(key=save.key).click().run()
     assert not app.exception
@@ -153,21 +154,21 @@ def test_conversational_history_does_not_repeat_requests_and_handles_failure(arc
     result = RagResult("Risposta documentata. [S1]", [Source("S1", chunk.id, chunk.metadata["filename"], chunk.metadata["page"], chunk.text, .2)], ["S1"], True)
     with patch("edicola.rag.ask_question", return_value=result) as ask:
         app = AppTest.from_string(script(root), default_timeout=15).run()
-        app.selectbox(key="nav_section").set_value("Chat AI").run()
+        navigate_to(app, "Chat AI")
         app.chat_input(key="rag_input").set_value("Prima domanda")
         app.session_state["consent_choices"] = {("text", "text-v2"): True}
         app.run()
         assert not app.exception and len(app.chat_message) == 2
         assert app.chat_message[0].name == "user" and app.chat_message[1].name == "assistant"
-        app.selectbox(key="nav_section").set_value("Podcast").run()
-        app.selectbox(key="nav_section").set_value("Chat AI").run()
+        navigate_to(app, "Podcast")
+        navigate_to(app, "Chat AI")
         assert ask.call_count == 1
         app.chat_input(key="rag_input").set_value("Seconda domanda")
         app.run()
         assert not app.exception and len(app.chat_message) == 4 and ask.call_count == 2
         app.button(key="rag_pdf_S1").click().run()
         assert ask.call_count == 2
-        app.selectbox(key="nav_section").set_value("Chat AI").run()
+        navigate_to(app, "Chat AI")
         ask.side_effect = RagError("Servizio momentaneamente non disponibile.")
         app.chat_input(key="rag_input").set_value("Terza domanda").run()
         assert not app.exception and app.error and len(app.chat_message) == 6
@@ -218,7 +219,7 @@ def test_untrusted_session_flags_do_not_authenticate(archive):
         app.run()
         assert not app.exception
         assert not any(h.value == "Consigliati per te" for h in app.subheader)
-        app.selectbox(key="nav_section").set_value("Il mio profilo").run()
+        navigate_to(app, "Il mio profilo")
         assert app.button(key="account_logout").disabled
         assert any("condivis" in c.value for c in app.caption)
         logout.assert_not_called()
