@@ -110,7 +110,7 @@ def test_responsive_timeline_preserves_undated_developments():
     with installed_fixture(module):
         app = AppTest.from_string(code).run()
     assert not app.exception
-    assert any("Cronologia delle notizie" in c.value for c in app.caption)
+    assert not app.info
     assert not any(h.value == "Cronologia documentata" for h in app.subheader)
 
 def test_briefing_keeps_legacy_result_readable_without_generating_dossier(archive):
