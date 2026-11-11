@@ -101,14 +101,17 @@ def recommend(catalog, profile: Profile, limit=None):
         name = item.chunk.metadata["filename"]
         groups[editions.get(name, (name, "")) + (name,)].append(item)
     result = []
+    seen_text_by_edition = defaultdict(set)
     while any(groups.values()) and len(result) < limit:
         # Primo candidato migliore di ciascuna edizione, poi giro successivo.
         order = sorted((key for key in groups if groups[key]), key=lambda k: -groups[k][0].score)
         for edition in order:
             while groups[edition]:
                 item = groups[edition].popleft()
-                if not any(item.chunk.metadata["filename"] == previous.chunk.metadata["filename"]
-                           and " ".join(item.chunk.text.split()) == " ".join(previous.chunk.text.split()) for previous in result):
+                filename = item.chunk.metadata["filename"]
+                normalized = " ".join(item.chunk.text.split())
+                if normalized not in seen_text_by_edition[filename]:
+                    seen_text_by_edition[filename].add(normalized)
                     result.append(item)
                     break
             if len(result) >= limit:

@@ -336,3 +336,15 @@ def test_recommend_normalizes_interests_once_for_whole_catalog(offline):
     with patch("edicola.personalization.tokens", wraps=tokens) as normalize:
         recommend(catalog, profile)
     assert normalize.call_count == len(profile.interests) + len(catalog.chunks)
+
+
+def test_recommend_deduplicates_within_editions_but_not_across_them(offline):
+    catalog = make_catalog()
+    for index, chunk in enumerate(catalog.chunks):
+        catalog.chunks[index] = replace(
+            chunk, text="Notizia sui trasporti del territorio comunale e sui nuovi servizi pubblici.")
+    selected = recommend(catalog, Profile(interests=["trasporti"]), limit=20)
+    assert len(selected) == 4
+    assert {item.chunk.metadata["filename"] for item in selected} == {
+        chunk.metadata["filename"] for chunk in catalog.chunks
+    }
