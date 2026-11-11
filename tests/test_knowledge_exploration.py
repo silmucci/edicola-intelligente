@@ -66,7 +66,7 @@ def render_script(result, context=None):
     module = types.ModuleType("edicola.exploration_fixture")
     module.result, module.context = result, context
     code = '''from edicola.exploration_fixture import result, context
-from edicola.knowledge_ui import render_knowledge
+from edicola.knowledge_views import render_knowledge
 render_knowledge(result, context)
 '''
     return module, code
