@@ -1,7 +1,8 @@
 """Contesto temporale del solo chatbot, da metadati locali curati, senza rete."""
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from calendar import monthrange
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from edicola.timeline_dates import publication_date, MONTHS
@@ -58,12 +59,30 @@ def temporal_notice(context):
 
 
 
-def requested_publication_month(question: str) -> str | None:
-    """Mese richiesto esplicitamente, per limitare solo le rassegne generali."""
-    match = re.search(r"\b(" + "|".join(MONTHS) + r")\s+(\d{4})\b", question, re.I)
-    if match is None:
+def requested_publication_period(question: str):
+    """Intervallo di edizioni esplicito; nessuna data ricavata dai nomi PDF."""
+    month_names = "|".join(MONTHS)
+    interval = re.search(
+        rf"\bdal\s+(\d{{1,2}})(?:[°º])?\s+al\s+(\d{{1,2}})(?:[°º])?\s+"
+        rf"({month_names})\s+(\d{{4}})\b", question, re.I
+    )
+    if interval:
+        try:
+            year, month = int(interval[4]), MONTHS[interval[3].lower()]
+            start, end = date(year, month, int(interval[1])), date(year, month, int(interval[2]))
+            return (start.isoformat(), end.isoformat()) if start <= end else None
+        except (ValueError, KeyError):
+            return None
+    month = re.search(r"\b(" + month_names + r")\s+(\d{4})\b", question, re.I)
+    if not month:
         return None
-    return f"{match[2]}-{MONTHS[match[1].lower()]:02d}"
+    try:
+        year, number = int(month[2]), MONTHS[month[1].lower()]
+        return date(year, number, 1).isoformat(), date(
+            year, number, monthrange(year, number)[1]
+        ).isoformat()
+    except (ValueError, KeyError):
+        return None
 
 
 def retrieval_query(question, context):

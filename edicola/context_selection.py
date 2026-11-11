@@ -43,11 +43,11 @@ def edition_order(items, *, filename=lambda item: item.filename):
                 del groups[name]
 
 
-def fit_context(items, render, budget, *, text_budget=None, max_source_chars=None):
+def fit_context(items, render, budget, *, text_budget=None, max_source_chars=None, balance_editions=True):
     """Non tagliare i passaggi; saltare quelli grandi e provare anche i successivi."""
     items = list(items)
     kept, identities, chars, reasons = [], set(), 0, Counter()
-    for item in edition_order(items):
+    for item in (edition_order(items) if balance_editions else items):
         identity = (item.filename, item.chunk_id)
         if identity in identities or not item.text.strip():
             reasons["duplicate_or_empty"] += 1

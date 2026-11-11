@@ -15,8 +15,8 @@ from google.genai import errors, types
 
 from edicola.embeddings import EmbeddingError, api_key
 from edicola.indexing import ROOT
-from edicola.search import semantic_search, broad_news_question
-from edicola.rag_context import source_editions, temporal_context, temporal_notice, retrieval_query, requested_publication_month
+from edicola.search import semantic_search
+from edicola.rag_context import source_editions, temporal_context, temporal_notice, retrieval_query, requested_publication_period
 from edicola.edition_dates import read_edition_metadata
 from edicola.chat_data import bounded_context
 from edicola.article_evidence import verified_article, duplicate_article_hit, evidence_source_record
@@ -72,18 +72,13 @@ Il titolo verificato dell’articolo è un aiuto per riconoscere i passaggi coll
 non prova autonoma del fatto: cita sempre il testo originale della fonte.
 Gli identificativi delle fonti valgono solo per la risposta corrente, non per lo storico.
 """
-CHAT_INSTRUCTION += COMPARISON_INSTRUCTION + EDITORIAL_DEPTH_INSTRUCTION
-
-BROAD_NEWS_INSTRUCTION = """
-Per una domanda sulle principali notizie di un periodo, non pretendere che i
-passaggi coprano ogni fatto pubblicato: offri una selezione di vicende realmente
-documentate nelle fonti disponibili. Non inventare graduatorie o importanza.
-Se almeno una notizia pertinente è sostenuta dai passaggi e verificabile con
-una citazione letterale, fornisci la risposta, anche se non esaustiva.
-Usa sufficient=false solo se nessuna notizia pertinente è documentabile.
-Conserva la forma sintetica e non aggiungere fatti per allungare la risposta.
+CHAT_INSTRUCTION += COMPARISON_INSTRUCTION + EDITORIAL_DEPTH_INSTRUCTION + """
+Rispondi anche quando le fonti consentono solo una parte pertinente della risposta,
+indicando chiaramente il limite della copertura. Non pretendere di esaurire tutte le
+notizie o tutte le cause richieste. Imposta sufficient=false soltanto quando nessuna
+informazione pertinente è realmente verificabile nei passaggi disponibili.
+Una risposta parziale deve citare letteralmente ogni fatto e non diventare un'ipotesi.
 """
-
 
 class RagError(RuntimeError):
     """Messaggio sicuro per l'interfaccia, privo degli errori SDK grezzi."""
@@ -210,6 +205,28 @@ def validate_response(raw: str, sources: list[Source]) -> RagResult:
 
 
 
+def prioritize_chat_hits(hits: list[dict], *, limit=64) -> list[dict]:
+    """Passaggi rilevanti e distinti, indipendentemente dal tema richiesto.
+
+    Riceve candidati già ordinati per pertinenza. Evita che un singolo articolo
+    o un unico PDF occupino tutto il contesto, ma permette di recuperarne altri
+    passaggi se il corpus contiene poche alternative.
+    """
+    if len(hits) <= 12:
+        return hits
+    priority, deferred, by_edition, seen_articles = [], [], {}, set()
+    for hit in hits:
+        name = hit["filename"]
+        article = (name, hit.get("article_id") or ("page", hit["page"]))
+        if len(priority) < 24 and by_edition.get(name, 0) < 3 and article not in seen_articles:
+            priority.append(hit)
+            by_edition[name] = by_edition.get(name, 0) + 1
+            seen_articles.add(article)
+        else:
+            deferred.append(hit)
+    return (priority + deferred)[:limit]
+
+
 def validate_chat_response(raw: str, sources: list[Source], *, request_id="-") -> RagResult:
     """Verifica le evidenze per affermazione, senza pubblicare frasi non provate.
 
@@ -329,7 +346,6 @@ def ask_question(
         # Uno storico con risposte insufficienti non deve contaminare nuove domande.
         prompt_context = context if search_query != question else []
         temporal_question = search_query
-        broad_news = broad_news_question(question)
         search_options = {}
         if selection is not None:
             from edicola.editorial_selection import read_catalog
@@ -337,23 +353,28 @@ def ask_question(
             catalog = filter_catalog(read_catalog(root), selection)
             search_options["allowed_ids"] = {c.id for c in catalog.chunks}
             search_options["filenames"] = {c.metadata["filename"] for c in catalog.chunks}
-        if broad_news and selection is None:
-            month = requested_publication_month(question)
-            if month:
+        if selection is None:
+            period = requested_publication_period(question)
+            if period:
                 metadata = read_edition_metadata(root)
-                matching = {
-                    name for name, item in metadata.items()
-                    if isinstance(item, dict) and isinstance(item.get("date"), str)
-                    and item["date"].startswith(month + "-")
-                }
-                if matching:
+                if metadata:
+                    start, end = period
+                    matching = {
+                        name for name, item in metadata.items()
+                        if isinstance(item, dict) and isinstance(item.get("date"), str)
+                        and start <= item["date"] <= end
+                    }
                     search_options["filenames"] = matching
-                    logger.info("request_id=%s phase=chat_month_filter editions=%d",
+                    logger.info("request_id=%s phase=chat_date_filter editions=%d",
                                 request_id, len(matching))
         hits = semantic_search(search_query, authorize_external=True, root=root,
                                top_k=top_k, request_id=request_id, corpus_wide=True,
-                               broad_news=broad_news,
+                               preserve_relevance_order=True,
                                **({"embedder": embedder} if embedder is not None else {}), **search_options)
+        retrieved = len(hits)
+        hits = prioritize_chat_hits(hits)
+        logger.info("request_id=%s phase=chat_candidates retrieved=%d prioritized=%d",
+                    request_id, retrieved, len(hits))
         sources = []
         references = {}
         article_details = {}
@@ -386,13 +407,19 @@ def ask_question(
                                 temporal=temporal_context(temporal_question, metadata), conversation=prompt_context,
                                 articles=article_details)
         sources, _ = fit_context(candidates, lambda selected: CHAT_INSTRUCTION + prompt_for(selected), budget,
-                                 max_source_chars=20000)
+                                 max_source_chars=20000, balance_editions=False)
         if not sources:
             raise RagError("Il contesto disponibile non consente di includere un passaggio completo.")
+        # Identificativi compatti e senza buchi anche quando 64 candidati
+        # diventano soltanto 10-15 passaggi realmente inviati al modello.
+        identifiers = {source.id: f"S{i}" for i, source in enumerate(sources, 1)}
+        sources = [replace(source, id=identifiers[source.id]) for source in sources]
+        all_editions = {identifiers[k]: v for k, v in all_editions.items() if k in identifiers}
+        references = {identifiers[k]: v for k, v in references.items() if k in identifiers}
+        article_details = {identifiers[k]: v for k, v in article_details.items() if k in identifiers}
         editions = {source.id: all_editions.get(source.id, {}) for source in sources}
-        references = {source.id: references[source.id] for source in sources if source.id in references}
-        article_details = {source.id: article_details[source.id] for source in sources
-                           if source.id in article_details}
+        logger.info("request_id=%s phase=chat_context included=%d editions=%d",
+                    request_id, len(sources), len({source.filename for source in sources}))
         temporal = temporal_context(temporal_question, editions)
         if client is None:
             if not key:
@@ -401,10 +428,9 @@ def ask_question(
                 timeout=30_000, retry_options=types.HttpRetryOptions(attempts=1)
             ))
             own_client = True
-        chat_instruction = CHAT_INSTRUCTION + (BROAD_NEWS_INSTRUCTION if broad_news else "")
         raw = generate_response(client, model, prompt_for(sources),
                                 chat_response_schema(sources), request_id=request_id,
-                                system_instruction=chat_instruction)
+                                system_instruction=CHAT_INSTRUCTION)
         result = validate_chat_response(raw, sources, request_id=request_id)
         result = replace(result, source_editions=editions, temporal_notice=temporal_notice(temporal), source_references=references, source_articles=article_details)
         # Il campionamento del contesto non è un errore e non richiede un avviso

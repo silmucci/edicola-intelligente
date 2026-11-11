@@ -11,42 +11,15 @@ from edicola.embeddings import MODEL, EmbeddingError, GeminiEmbedder, api_key, q
 from edicola.indexing import ROOT, plan_index
 from edicola.vectorstore import open_collection
 from edicola.context_selection import MAX_DISTANCE, DISTANCE_WINDOW, edition_order
-from edicola.knowledge_relevance import Topic, terms, INTENT, GENERIC_TARGET
+from edicola.knowledge_relevance import Topic
 
 
 logger = logging.getLogger(__name__)
 
-# Queste sono categorie generali di notizie, non nomi di eventi specifici.
-_BROAD_NEWS_TOPICS = (
-    "econom", "politic", "sport", "lavor", "occupazion", "cultur",
-    "sanit", "ambient", "tecnolog", "istruzion", "finanz", "industr",
-    "important", "rilevant",
-)
-
-
-def broad_news_question(question: str) -> bool:
-    """Riconosce una rassegna generale senza indebolire le domande specifiche."""
-    words = terms(question)
-    if "notizi" not in words:
-        return False
-    subjects = words - INTENT - GENERIC_TARGET
-    return not subjects or all(word.startswith(_BROAD_NEWS_TOPICS) for word in subjects)
-
-
-def broad_news_economic_score(text: str) -> int:
-    """Indicatori editoriali, non prove da mostrare all'utente."""
-    words = terms(text)
-    prefixes = (
-        "econom", "finanz", "industr", "aziend", "impres", "occupazion",
-        "lavor", "investiment", "produz", "prezz", "inflazion",
-        "commerc", "mercat", "banc", "commess", "stabiliment",
-    )
-    return sum(any(word.startswith(prefix) for prefix in prefixes) for word in words)
-
-
 def semantic_search(question: str, *, authorize_external=False, root: Path = ROOT, embedder=None,
                     top_k: int = 5, request_id: str | None = None, diversify_by_pdf=False,
-                    corpus_wide=False, filenames=None, allowed_ids=None, broad_news=False) -> list[dict]:
+                    corpus_wide=False, filenames=None, allowed_ids=None,
+                    preserve_relevance_order=False) -> list[dict]:
     """Una embedding; i prodotti usano corpus_wide, il top-k resta per CLI/eval."""
     if not question.strip():
         raise ValueError("Inserire una domanda non vuota.")
@@ -109,39 +82,21 @@ def semantic_search(question: str, *, authorize_external=False, root: Path = ROO
             topic = Topic(question, eligible)
             lexical = {hit["id"]: topic.score(hit["text"]) for hit in hits}
             lexical_floor = max(lexical.values(), default=0) * .55
-            if broad_news and not topic.strict and not topic.location:
-                # Le domande sulle notizie di un intero mese non coincidono con
-                # il testo di un singolo articolo. Per queste sole domande, una
-                # pertinenza lessicale al settore recupera anche passaggi che
-                # superano la consueta soglia vettoriale.
-                is_economy = any(word.startswith("econom") for word in topic.words)
-                broad_cutoff = min(.80, hits[0]["distance"] + .25) if hits else MAX_DISTANCE
-                relevance = {
-                    hit["id"]: broad_news_economic_score(hit["text"]) if is_economy else 0
-                    for hit in hits
-                }
-                if is_economy:
-                    # Una singola parola come «azienda» in un articolo di sport
-                    # non rende una notizia economica. Privilegia passaggi con
-                    # almeno due indizi, mantenendo un fallback a un solo indizio
-                    # se il corpus ne contiene pochi.
-                    strong = [hit for hit in hits if relevance[hit["id"]] >= 2 and hit["distance"] <= .80]
-                    relevant = strong if len(strong) >= 4 else [
-                        hit for hit in hits if relevance[hit["id"]] > 0 and hit["distance"] <= .75
-                    ]
-                    # Con assenza di indizi non dichiarare automaticamente vuoto
-                    # un corpus che potrebbe avere comunque prossimità semantica.
-                    if not relevant:
-                        relevant = [hit for hit in hits if hit["distance"] <= broad_cutoff]
-                else:
-                    relevant = [hit for hit in hits if hit["distance"] <= broad_cutoff]
-                relevant.sort(key=lambda hit: (
-                    -min(relevance[hit["id"]], 4), hit["distance"], hit["id"]
-                ))
-            else:
-                relevant = [hit for hit in hits if topic.semantic_allowed(hit["text"], strong=hit["distance"] <= min(cutoff, .35)) and
-                            (hit["distance"] <= cutoff or topic.focus and lexical[hit["id"]] > 0 and lexical[hit["id"]] >= lexical_floor)]
-                relevant.sort(key=lambda hit: (-topic.score(hit["text"]), hit["distance"], hit["id"]))
+            # Ranking condiviso, indipendente dall'argomento: somiglianza semantica
+            # prevalente, con un contributo limitato delle parole realmente presenti.
+            # I vincoli espliciti di luoghi/soggetti restano quelli di Topic.
+            relevant = [hit for hit in hits if topic.semantic_allowed(
+                hit["text"], strong=hit["distance"] <= min(cutoff, .35)
+            ) and (
+                hit["distance"] <= cutoff or
+                (topic.focus and lexical[hit["id"]] > 0 and lexical[hit["id"]] >= lexical_floor)
+            )]
+            max_lexical = max((lexical[hit["id"]] for hit in relevant), default=0)
+            relevant.sort(key=lambda hit: (
+                -(1 - hit["distance"] + .10 * lexical[hit["id"]] / max_lexical
+                  if max_lexical else 1 - hit["distance"]),
+                hit["distance"], hit["id"],
+            ))
             # Un risultato pertinente può richiamare altri passaggi del medesimo
             # articolo verificato, senza nuove embedding né PDF interi.
             # Il budget del prodotto decide quanti passaggi utilizzare.
@@ -155,7 +110,9 @@ def semantic_search(question: str, *, authorize_external=False, root: Path = ROO
                 relevant.extend(neighbors)
             logger.info("request_id=%s phase=corpus_ranking candidates=%d accepted=%d discarded=%d reason=relevance",
                         request_id, len(hits), len(relevant), len(hits) - len(relevant))
-            return list(edition_order(relevant, filename=lambda hit: hit["filename"]))
+            return relevant if preserve_relevance_order else list(
+                edition_order(relevant, filename=lambda hit: hit["filename"])
+            )
         if diversify_by_pdf:
             # Opzione editoriale: una sola embedding della domanda, ricerca per edizione.
             # Il percorso del chatbot rimane invariato.

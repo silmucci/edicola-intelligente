@@ -157,9 +157,9 @@ def test_independent_chat_uses_no_old_prompt_context_or_temporal_query(tmp_path)
 
 
 def test_month_scope_of_general_news_is_from_curated_metadata_only(tmp_path):
-    from edicola.rag_context import requested_publication_month
-    assert requested_publication_month("Quali notizie economiche di novembre 2026?") == "2026-11"
-    assert requested_publication_month("Quali notizie economiche?") is None
+    from edicola.rag_context import requested_publication_period
+    assert requested_publication_period("Quali notizie economiche di novembre 2026?") == ("2026-11-01", "2026-11-30")
+    assert requested_publication_period("Quali notizie economiche?") is None
     write_editions(tmp_path, {
         "a.pdf": {"date": "2026-11-10"},
         "b.pdf": {"date": "2026-10-31"},
@@ -179,4 +179,27 @@ def test_month_scope_of_general_news_is_from_curated_metadata_only(tmp_path):
                               authorize_external=True, root=tmp_path, client=client)
     assert result.sufficient
     assert search.call_args.kwargs["filenames"] == {"a.pdf"}
-    assert search.call_args.kwargs["broad_news"] is True
+    assert search.call_args.kwargs["preserve_relevance_order"] is True
+
+
+
+def test_date_range_applies_to_any_subject_without_filename_inference(tmp_path):
+    from edicola.rag_context import requested_publication_period
+    assert requested_publication_period(
+        "Confronta le notizie sportive dal 1° al 10 novembre 2026"
+    ) == ("2026-11-01", "2026-11-10")
+    assert requested_publication_period(
+        "Analizza la politica dal 10 al 1 novembre 2026"
+    ) is None
+    assert requested_publication_period(
+        "Quali aggiornamenti ci sono a ottobre 2026?"
+    ) == ("2026-10-01", "2026-10-31")
+    write_editions(tmp_path, {
+        "a.pdf": {"date": "2026-11-09"},
+        "b.pdf": {"date": "2026-11-17"},
+        "c.pdf": {"date": "2026-10-31"},
+    })
+    with patch("edicola.rag.semantic_search", return_value=[]) as search:
+        ask_question("Confronta le notizie sportive dal 1° al 10 novembre 2026",
+                     authorize_external=True, root=tmp_path, client=Mock())
+    assert search.call_args.kwargs["filenames"] == {"a.pdf"}

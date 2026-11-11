@@ -216,73 +216,88 @@ def test_chat_history_accepts_wider_context_without_changing_serialized_format()
 
 
 
-def test_chat_general_news_can_find_economic_stories_without_word_economiche():
-    """Un nome preciso resta restrittivo, ma una rassegna non richiede un aggettivo letterale."""
-    from edicola.search import broad_news_question
-    question = "Quali sono le principali notizie economiche di novembre 2026?"
-    assert broad_news_question(question)
-    assert broad_news_question("Quali sono le principali notizie di novembre 2026?")
-    assert not broad_news_question("Che cosa succede alla Isringhausen di San Salvo?")
-    assert not broad_news_question("Quali sono le notizie su Isringhausen?")
-
+def test_general_semantic_search_ranks_any_topic_without_category_exceptions():
     value = catalog(3)
     texts = [
-        "Lo stabilimento rischia di perdere la commessa per i sedili, sindacati preoccupati.",
-        "Le aziende annunciano nuovi investimenti nel settore industriale.",
-        "La squadra di calcio ha disputato un incontro amichevole."
+        "I lavoratori sono preoccupati per una commessa nello stabilimento.",
+        "Le aziende programmano nuovi investimenti industriali.",
+        "Una squadra ha disputato un incontro amichevole."
     ]
     value.chunks = [replace(chunk, text=text) for chunk, text in zip(value.chunks, texts)]
     by_id = {c.id: c for c in value.chunks}
-    similarities = [.28, .46, .05]
-
+    similarity = [.79, .70, .08]
     collection = Mock()
+
     def get(**kwargs):
         chosen = [by_id[identity] for identity in kwargs["ids"]]
         return {"ids": [c.id for c in chosen],
                 "documents": [c.text for c in chosen],
                 "metadatas": [c.chroma_metadata for c in chosen],
-                "embeddings": [[similarities[int(c.id[1:])],
-                                math.sqrt(1-similarities[int(c.id[1:])] ** 2)] for c in chosen]}
+                "embeddings": [[similarity[int(c.id[1:])],
+                                math.sqrt(1 - similarity[int(c.id[1:])] ** 2)]
+                               for c in chosen]}
+
     collection.get.side_effect = get
     embedder = Mock()
     embedder.embed.return_value = [1., 0.]
     with patch("edicola.search.read_active_chunks", return_value=(value.chunks, [])), patch(
         "edicola.search.open_collection", return_value=collection), patch(
         "edicola.search.plan_index", return_value=SimpleNamespace(stale_ids=[], pending=[])):
-        restrictive = semantic_search(question, root=ROOT, authorize_external=True,
-                                      embedder=embedder, corpus_wide=True, broad_news=False)
-        broad = semantic_search(question, root=ROOT, authorize_external=True,
-                                embedder=embedder, corpus_wide=True, broad_news=True)
-    assert {hit["id"] for hit in restrictive} == {"c1"}
-    assert {hit["id"] for hit in broad} == {"c0", "c1"}
-    assert "c2" not in {hit["id"] for hit in broad}
+        for question in ("Quali sono le notizie economiche?",
+                         "Quali sono le notizie sulla sanità?",
+                         "Quali sono le principali novità sul lavoro?"):
+            result = semantic_search(question, root=ROOT, authorize_external=True,
+                                     embedder=embedder, corpus_wide=True,
+                                     preserve_relevance_order=True)
+            assert [item["id"] for item in result] == ["c0", "c1"]
+    assert embedder.embed.call_count == 3
 
 
-def test_chat_passes_broad_mode_only_for_editorial_overview():
-    from edicola.search import broad_news_question
+def test_chat_prioritizes_distinct_articles_without_losing_single_edition():
+    from edicola.rag import prioritize_chat_hits
+    hits = [{"id": f"c{i}", "filename": "a.pdf" if i < 8 else "b.pdf",
+             "page": i + 1, "article_id": f"article-{i//2}",
+             "text": f"Testo del passaggio {i}", "distance": .01 * i} for i in range(12)]
+    selected = prioritize_chat_hits(hits, limit=9)
+    assert selected[0]["id"] == "c0"
+    assert "c8" in [h["id"] for h in selected[:4]]
+    assert len(selected) == 9
+    assert len({h["id"] for h in selected}) == 9
+
+    only_one_edition = [dict(item, filename="a.pdf") for item in hits]
+    assert len(prioritize_chat_hits(only_one_edition, limit=9)) == 9
+
+
+def test_chat_uses_same_retrieval_process_for_unrelated_questions():
     value = catalog(1)
+    queries = ("Quali sono le principali notizie economiche?",
+               "Quali notizie ci sono sullo sport?",
+               "Che cosa succede alla Isringhausen di San Salvo?",
+               "Confronta due notizie sul lavoro.")
     with patch("edicola.rag.api_key", return_value="mock"), patch(
         "edicola.rag.semantic_search", return_value=hits_for(value)) as search, patch(
         "edicola.rag.source_editions", return_value={}), patch(
         "edicola.rag.generate_response", return_value='{"sufficient":false,"claims":[]}'):
-        ask_question("Quali sono le principali notizie economiche di novembre 2026?",
-                     root=ROOT, authorize_external=True, client=Mock())
-        assert search.call_args.kwargs["broad_news"] is True
-        ask_question("Che cosa succede alla Isringhausen di San Salvo?",
-                     root=ROOT, authorize_external=True, client=Mock())
-        assert search.call_args.kwargs["broad_news"] is False
+        for query in queries:
+            ask_question(query, root=ROOT, authorize_external=True, client=Mock())
+            assert search.call_args.kwargs["preserve_relevance_order"] is True
+    assert search.call_count == len(queries)
 
 
-
-def test_broad_economic_question_uses_concise_scoped_instruction():
-    from edicola.rag import BROAD_NEWS_INSTRUCTION
-    value = catalog(1)
-    client = Mock()
+def test_chat_compacts_source_ids_after_selecting_context(monkeypatch):
+    monkeypatch.setenv("GEMINI_RAG_MAX_PROMPT_CHARS", "20000")
+    text = "I comuni hanno approvato un progetto di rilancio del territorio. " * 50
+    hits = [{"id": f"c{i}", "filename": f"edizione-{i%3}.pdf", "page": i+1,
+             "text": text, "distance": .1 + .001*i} for i in range(18)]
     with patch("edicola.rag.api_key", return_value="mock"), patch(
-        "edicola.rag.semantic_search", return_value=hits_for(value)), patch(
+        "edicola.rag.semantic_search", return_value=hits), patch(
         "edicola.rag.source_editions", return_value={}), patch(
         "edicola.rag.generate_response", return_value='{"sufficient":false,"claims":[]}') as generate:
-        ask_question("Quali sono le principali notizie economiche di novembre 2026?",
-                     root=ROOT, authorize_external=True, client=client)
-    assert "non pretendere" in BROAD_NEWS_INSTRUCTION
-    assert "non pretendere" in generate.call_args.kwargs["system_instruction"]
+        result = ask_question("Quali progetti sono stati approvati?",
+                              root=ROOT, authorize_external=True, client=Mock())
+    selected = json.loads(generate.call_args.args[2])["sources"]
+    assert 1 <= len(selected) < len(hits)
+    assert [item["source_id"] for item in selected] == [
+        f"S{i}" for i in range(1, len(selected) + 1)]
+    assert [source.id for source in result.sources] == [
+        f"S{i}" for i in range(1, len(result.sources) + 1)]
