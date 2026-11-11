@@ -301,3 +301,40 @@ def test_chat_compacts_source_ids_after_selecting_context(monkeypatch):
         f"S{i}" for i in range(1, len(selected) + 1)]
     assert [source.id for source in result.sources] == [
         f"S{i}" for i in range(1, len(result.sources) + 1)]
+
+
+
+def test_chat_balances_relevant_editions_before_repeating_one_newspaper():
+    from edicola.rag import prioritize_chat_hits, CHAT_INSTRUCTION
+
+    # Ranking fortemente dominato da a.pdf; altre edizioni sono pertinenti.
+    hits = [
+        {"id": f"a{i}", "filename": "a.pdf", "page": i + 1,
+         "distance": .22 + i * .004, "text": f"Aziende, evento {i}"}
+        for i in range(18)
+    ] + [
+        {"id": "b", "filename": "b.pdf", "page": 3,
+         "distance": .31, "text": "Investimenti documentati."},
+        {"id": "c", "filename": "c.pdf", "page": 7,
+         "distance": .35, "text": "Notizie sindacali."},
+        {"id": "far", "filename": "far.pdf", "page": 1,
+         "distance": .82, "text": "Notizia non pertinente."},
+    ]
+    ordered = prioritize_chat_hits(hits, limit=12)
+    assert ordered[0]["id"] == "a0"
+    assert {item["filename"] for item in ordered[:3]} == {"a.pdf", "b.pdf", "c.pdf"}
+    assert "far.pdf" not in {item["filename"] for item in ordered}
+    assert len(ordered) == 12
+    assert "edizioni differenti" in CHAT_INSTRUCTION
+    assert "non aggiungere fonti" in CHAT_INSTRUCTION
+
+
+def test_chat_keeps_single_relevant_edition_without_adding_unrelated_sources():
+    from edicola.rag import prioritize_chat_hits
+    hits = [
+        {"id": "near", "filename": "first.pdf", "page": 1, "distance": .15},
+        {"id": "followup", "filename": "first.pdf", "page": 2, "distance": .20},
+        {"id": "unrelated", "filename": "other.pdf", "page": 3, "distance": .91},
+    ]
+    result = prioritize_chat_hits(hits, limit=2)
+    assert [item["id"] for item in result] == ["near", "followup"]

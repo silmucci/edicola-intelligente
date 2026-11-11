@@ -78,6 +78,12 @@ indicando chiaramente il limite della copertura. Non pretendere di esaurire tutt
 notizie o tutte le cause richieste. Imposta sufficient=false soltanto quando nessuna
 informazione pertinente è realmente verificabile nei passaggi disponibili.
 Una risposta parziale deve citare letteralmente ogni fatto e non diventare un'ipotesi.
+Se la domanda chiede più notizie, vicende, aggiornamenti, confronti o una panoramica,
+valuta tutti i passaggi pertinenti ricevuti: se contengono vicende diverse,
+presentane più di una in affermazioni distinte con le rispettive citazioni,
+anche quando provengono da edizioni differenti. Non limitarti arbitrariamente
+alla prima notizia, non duplicare lo stesso evento e non aggiungere fonti
+irrilevanti per raggiungere un numero prefissato.
 """
 
 class RagError(RuntimeError):
@@ -205,24 +211,59 @@ def validate_response(raw: str, sources: list[Source]) -> RagResult:
 
 
 
-def prioritize_chat_hits(hits: list[dict], *, limit=64) -> list[dict]:
-    """Passaggi rilevanti e distinti, indipendentemente dal tema richiesto.
+def prioritize_chat_hits(hits: list[dict], *, limit=64, max_edition_seeds=6) -> list[dict]:
+    """Rilevanza prima, poi copertura delle edizioni pertinenti.
 
-    Riceve candidati già ordinati per pertinenza. Evita che un singolo articolo
-    o un unico PDF occupino tutto il contesto, ma permette di recuperarne altri
-    passaggi se il corpus contiene poche alternative.
+    Cerca fra tutti i risultati già classificati, senza imporre quote obbligatorie
+    di PDF né aggiungere fonti lontane dalla domanda. I passaggi più pertinenti
+    restano disponibili per l'approfondimento di un singolo argomento.
     """
-    priority, deferred, by_edition, seen_articles = [], [], {}, set()
+    if not hits or limit <= 0:
+        return []
+    best_distance = min(hit["distance"] for hit in hits[:max(64, limit)])
+    # La soglia è una protezione dalla diversificazione su fonti non pertinenti.
+    diversity_distance = min(.65, best_distance + .20)
+    chosen, chosen_ids, covered_editions = [], set(), set()
+
+    def add(hit):
+        if hit["id"] in chosen_ids:
+            return
+        chosen.append(hit)
+        chosen_ids.add(hit["id"])
+        covered_editions.add(hit["filename"])
+
+    add(hits[0])
+    for hit in hits[1:]:
+        if len(covered_editions) >= max_edition_seeds or len(chosen) >= limit:
+            break
+        if hit["filename"] not in covered_editions and hit["distance"] <= diversity_distance:
+            add(hit)
+
+    # Prima passaggi di articoli differenti, poi eventuali approfondimenti dello
+    # stesso articolo: sempre nell'ordine di rilevanza della ricerca.
+    seen_articles, by_edition = set(), {}
+    for hit in chosen:
+        article = (hit["filename"], hit.get("article_id") or ("page", hit["page"]))
+        seen_articles.add(article)
+        by_edition[hit["filename"]] = by_edition.get(hit["filename"], 0) + 1
+
+    deferred = []
     for hit in hits:
-        name = hit["filename"]
-        article = (name, hit.get("article_id") or ("page", hit["page"]))
-        if len(priority) < 24 and by_edition.get(name, 0) < 3 and article not in seen_articles:
-            priority.append(hit)
-            by_edition[name] = by_edition.get(name, 0) + 1
+        if hit["id"] in chosen_ids:
+            continue
+        article = (hit["filename"], hit.get("article_id") or ("page", hit["page"]))
+        if (len(chosen) < min(limit, 24) and by_edition.get(hit["filename"], 0) < 3
+                and article not in seen_articles):
+            add(hit)
+            by_edition[hit["filename"]] = by_edition.get(hit["filename"], 0) + 1
             seen_articles.add(article)
         else:
             deferred.append(hit)
-    return (priority + deferred)[:limit]
+    for hit in deferred:
+        if len(chosen) >= limit:
+            break
+        add(hit)
+    return chosen[:limit]
 
 
 def validate_chat_response(raw: str, sources: list[Source], *, request_id="-") -> RagResult:
