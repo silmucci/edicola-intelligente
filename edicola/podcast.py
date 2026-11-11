@@ -247,13 +247,14 @@ def generate_script_audio(script: Script, product_key: str, *, voice=None, autho
             data = cached_audio()  # Un altro processo potrebbe averlo appena completato.
             from_cache = data is not None
             if data is None:
+                longform = isinstance(cache_context, dict) and cache_context.get("strategy") == "standalone-podcast-v5"
                 if client is None:
                     if not key:
                         raise PodcastError("Configurare GEMINI_API_KEY in .env per la sintesi TTS.")
                     client = genai.Client(api_key=key, vertexai=False, http_options=types.HttpOptions(
-                        timeout=60000, retry_options=types.HttpRetryOptions(attempts=1)))
+                        timeout=120000 if longform else 60000,
+                        retry_options=types.HttpRetryOptions(attempts=1)))
                     own_client = True
-                longform = isinstance(cache_context, dict) and cache_context.get("strategy") == "standalone-podcast-v5"
                 segments = tts_segments(script.text) if longform else [script.text]
                 audio_parts = []
                 for segment in segments:
