@@ -42,7 +42,7 @@ def test_product_judge_all_formats_and_audio_unscored(tmp_path):
             candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
     client.models.generate_content.side_effect = reply
     result, rows = evaluate_products(data, root=tmp_path, model="mock-judge",
-                                     client=client, authorize_external=True)
+                                     client=client, authorize_external=True, provider="gemini")
     assert len(result["records"]) == 4
     assert all(r["status"] == "judged" for r in result["records"])
     assert len([r for r in rows if r["value"] == 3]) == sum(map(len, AUTOMATIC.values()))
@@ -53,7 +53,7 @@ def test_product_judge_all_formats_and_audio_unscored(tmp_path):
 def test_judge_rejects_missing_permission_and_fabricated_quotes(tmp_path):
     data = manifest()
     with pytest.raises(ValueError, match="autorizzare"):
-        evaluate_products(data, root=tmp_path, model="mock", client=Mock())
+        evaluate_products(data, root=tmp_path, model="mock", client=Mock(), provider="gemini")
     grade = payload("briefing")
     grade["faithfulness"]["quote"] = "frase che non esiste"
     with pytest.raises(ValueError, match="inventata"):
@@ -120,3 +120,38 @@ def test_openrouter_free_provider_uses_compatible_endpoint_without_gemini(tmp_pa
     with pytest.raises(ValueError, match=":free"):
         evaluate_products(data, root=tmp_path, model="paid/model", provider="openrouter",
                           authorize_external=True, client=http_client)
+
+
+def test_groq_is_default_and_uses_strict_json_schema(tmp_path, monkeypatch):
+    from edicola.evaluation_products import GROQ_ENDPOINT, GROQ_MODEL
+    data = manifest()
+    data["products"] = data["products"][:1]
+    http_client = Mock()
+    response = Mock()
+    response.json.return_value = {"choices": [
+        {"finish_reason": "stop", "message": {"content": json.dumps(payload("briefing"))}}
+    ]}
+    http_client.post.return_value = response
+    monkeypatch.setenv("GROQ_API_KEY", "mock-groq-key")
+    result, rows = evaluate_products(data, root=tmp_path, client=http_client, authorize_external=True)
+    assert result["provider"] == "groq" and result["model"] == GROQ_MODEL
+    assert result["records"][0]["status"] == "judged"
+    args, kwargs = http_client.post.call_args
+    assert args == (GROQ_ENDPOINT,)
+    assert kwargs["json"]["response_format"]["json_schema"]["strict"] is True
+    assert kwargs["headers"]["Authorization"] == "Bearer mock-groq-key"
+    assert len([row for row in rows if row["value"] is not None]) == len(AUTOMATIC["briefing"])
+
+
+def test_groq_invalid_output_is_not_scored(tmp_path):
+    data = manifest()
+    data["products"] = data["products"][:1]
+    http_client = Mock()
+    response = Mock()
+    response.json.return_value = {"choices": [
+        {"finish_reason": "stop", "message": {"content": "non json"}}
+    ]}
+    http_client.post.return_value = response
+    result, rows = evaluate_products(data, root=tmp_path, client=http_client, authorize_external=True)
+    assert result["records"][0]["status"] == "invalid_judgment"
+    assert all(r["value"] is None for r in rows)
