@@ -7,7 +7,7 @@ from uuid import uuid4
 import streamlit as st
 
 from edicola import editorial, knowledge, rag
-from edicola.knowledge_ui import render_knowledge
+from edicola.knowledge_views import render_knowledge
 from edicola.experience_ui import readable
 from edicola.archive_ui import diagnostics_enabled
 from edicola.consent_ui import authorize_action
