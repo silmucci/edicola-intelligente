@@ -60,6 +60,11 @@ def _feed_item(chunk, topics: tuple[str, ...]) -> FeedItem | None:
                     topics, False)
 
 
+def article_preview(chunk: IndexChunk) -> FeedItem | None:
+    """Titolo verificato o frase completa, riutilizzabile nella rassegna."""
+    return _feed_item(chunk, ())
+
+
 def _story_key(item: FeedItem) -> tuple:
     meta = item.chunk.metadata
     article = meta.get("article_id")
