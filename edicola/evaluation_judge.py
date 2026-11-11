@@ -17,6 +17,7 @@ from edicola.embeddings import api_key
 from edicola.editorial_selection import read_catalog
 from edicola.evaluation_data import digest, validate_dataset, validate_snapshot
 from edicola.evaluation_metrics import rag_assessment, score_run, sources_from_hits
+from edicola.settings import setting
 
 JUDGE_VERSION = "llm-judge-v1"
 CRITERIA = ("faithfulness", "completeness", "answer_relevance", "citation_correctness")
@@ -102,13 +103,17 @@ def validate_grades(raw, sources):
 
 
 def evaluate_run(dataset, frozen, run, *, root, model, limit=20,
-                 authorize_external=False, client=None):
+                 authorize_external=False, client=None, provider="gemini"):
     """Giudica solo risposte RAG validate con una Ground Truth umana compilata."""
     if not authorize_external:
         raise ValueError("Il giudice richiede --authorize-external.")
     if (not isinstance(model, str) or not model.strip() or
             type(limit) is not int or not 1 <= limit <= 100):
         raise ValueError("Modello o limite del giudice non validi.")
+    if provider not in ("gemini", "groq"):
+        raise ValueError("Provider giudice RAG non valido.")
+    if provider == "groq" and model not in ("openai/gpt-oss-120b", "openai/gpt-oss-20b"):
+        raise ValueError("Modello Groq non supportato.")
     validate_dataset(dataset, frozen)
     catalog = validate_snapshot(frozen)
     score_run(dataset, frozen, run, catalog)  # Verifica hash, provenienza e integrità della run.
@@ -117,13 +122,15 @@ def evaluate_run(dataset, frozen, run, *, root, model, limit=20,
     questions = {q["id"]: q for q in dataset["questions"]}
     if client is None and frozen["origin"] != "real":
         raise ValueError("I dati simulati non vengono inviati a Gemini reale.")
-    key = api_key(root) if client is None else ""
+    key = (api_key(root) if provider == "gemini" else setting("GROQ_API_KEY", root=root)) if client is None else ""
     own = client is None
     if own and not key:
         raise ValueError("Configurare GEMINI_API_KEY per la valutazione autorizzata.")
-    if own:
+    if own and provider == "gemini":
         client = genai.Client(api_key=key, vertexai=False, http_options=types.HttpOptions(
             timeout=30000, retry_options=types.HttpRetryOptions(attempts=1)))
+    elif own:
+        client = httpx.Client(timeout=90, follow_redirects=False)
     records = []
     try:
         for rec in run["records"][:limit]:
@@ -148,18 +155,40 @@ def evaluate_run(dataset, frozen, run, *, root, model, limit=20,
                     else:
                         start = time.perf_counter()
                         try:
-                            response = client.models.generate_content(
-                                model=model, contents=prompt,
-                                config=types.GenerateContentConfig(
-                                    system_instruction=INSTRUCTION, temperature=0, tools=[],
-                                    max_output_tokens=2048, response_mime_type="application/json",
-                                    response_json_schema=judge_schema()))
-                            reason = response.candidates[0].finish_reason if response.candidates else None
-                            if reason != types.FinishReason.STOP:
-                                record["status"] = "incomplete_judgment"
+                            if provider == "groq":
+                                response = client.post(
+                                    "https://api.groq.com/openai/v1/chat/completions",
+                                    headers={"Authorization": "Bearer " + (key or "injected-test-key"),
+                                             "Content-Type": "application/json"},
+                                    json={"model": model, "messages": [
+                                        {"role": "system", "content": INSTRUCTION},
+                                        {"role": "user", "content": prompt}],
+                                        "response_format": {"type": "json_schema",
+                                            "json_schema": {"name": "rag_judgment", "strict": True,
+                                                            "schema": judge_schema()}},
+                                        "reasoning_effort": "low", "max_completion_tokens": 2048})
+                                response.raise_for_status()
+                                choice = response.json()["choices"][0]
+                                if choice.get("finish_reason") != "stop":
+                                    record["status"] = "incomplete_judgment"
+                                else:
+                                    record["grades"] = validate_grades(choice["message"]["content"], sources)
+                                    record["status"] = "judged"
                             else:
-                                record["grades"] = validate_grades(response.text or "", sources)
-                                record["status"] = "judged"
+                                response = client.models.generate_content(
+                                    model=model, contents=prompt,
+                                    config=types.GenerateContentConfig(
+                                        system_instruction=INSTRUCTION, temperature=0, tools=[],
+                                        max_output_tokens=2048, response_mime_type="application/json",
+                                        response_json_schema=judge_schema()))
+                                reason = response.candidates[0].finish_reason if response.candidates else None
+                                if reason != types.FinishReason.STOP:
+                                    record["status"] = "incomplete_judgment"
+                                else:
+                                    record["grades"] = validate_grades(response.text or "", sources)
+                                    record["status"] = "judged"
+                        except httpx.HTTPStatusError as exc:
+                            record["status"], record["http_status"] = "api_error", exc.response.status_code
                         except errors.APIError as exc:
                             record["status"], record["http_status"] = "api_error", exc.code
                         except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
@@ -178,7 +207,7 @@ def evaluate_run(dataset, frozen, run, *, root, model, limit=20,
     return {"schema_version": 1, "judge_version": JUDGE_VERSION,
             "utc": datetime.now(timezone.utc).isoformat(), "origin": run["origin"],
             "snapshot_id": frozen["snapshot_id"], "dataset_id": digest(dataset),
-            "run_id": digest(run), "model": model, "records": records}
+            "run_id": digest(run), "model": model, "provider": provider, "records": records}
 
 
 def judge_rows(data, dataset, frozen, run):
