@@ -1,0 +1,69 @@
+"""Regressioni dei prodotti editoriali: prove simulate, nessuna rete esterna."""
+
+import json
+
+from edicola.briefing import (
+    SYSTEM_INSTRUCTION as BRIEFING_INSTRUCTION,
+    briefing_schema,
+    validate_briefing,
+)
+from edicola.context_selection import EDITORIAL_DEPTH_INSTRUCTION
+from edicola.knowledge import MAP_INSTRUCTIONS, VERSION as KNOWLEDGE_VERSION
+from edicola.rag import CHAT_INSTRUCTION, Source, response_schema, validate_response
+
+
+def sources(count):
+    return [
+        Source(
+            f"S{i}", f"chunk-{i}", f"giornale-{i}.pdf", 2,
+            f"Il consiglio comunale ha comunicato il provvedimento numero {i} dopo la seduta ufficiale.",
+            0.1,
+        )
+        for i in range(1, count + 1)
+    ]
+
+
+def claim(text, source):
+    return {"text": text, "evidence": [{"source_id": source.id, "quote": source.text}]}
+
+
+def test_briefing_accepts_more_than_eight_distinct_verified_news():
+    original = sources(10)
+    news = [
+        {"title": claim(f"Provvedimento numero {i}", source),
+         "summary": claim(f"Il provvedimento numero {i} è stato comunicato dal consiglio.", source)}
+        for i, source in enumerate(original, 1)
+    ]
+    result = validate_briefing(json.dumps({"sufficient": True, "news": news}), original)
+    assert result.status == "ok"
+    assert len(result.sections) == 10
+    assert len(set(result.used_source_ids)) == 10
+    assert briefing_schema(original)["properties"]["news"]["maxItems"] == 12
+
+
+def test_briefing_still_rejects_excessive_structural_output():
+    original = sources(13)
+    news = [{"title": claim(f"Notizia {i}", source), "summary": claim(f"Fatto {i}", source)}
+            for i, source in enumerate(original, 1)]
+    result = validate_briefing(json.dumps({"sufficient": True, "news": news}), original)
+    assert not result.sections and result.status == "invalid_structure"
+
+
+def test_chat_accepts_ten_paragraphs_with_original_evidence():
+    original = sources(10)
+    claims = [claim(f"Il consiglio ha comunicato il provvedimento {i}.", source)
+              for i, source in enumerate(original, 1)]
+    answer = validate_response(json.dumps({"sufficient": True, "claims": claims}), original)
+    assert answer.sufficient
+    assert len(answer.answer.split("\n\n")) == 10
+    assert len(answer.used_source_ids) == 10
+    assert response_schema(original)["properties"]["claims"]["maxItems"] == 12
+
+
+def test_shared_editorial_depth_is_document_based():
+    assert "antefatti" in EDITORIAL_DEPTH_INSTRUCTION
+    assert "non dedurre causalità" in EDITORIAL_DEPTH_INSTRUCTION
+    assert EDITORIAL_DEPTH_INSTRUCTION in BRIEFING_INSTRUCTION
+    assert EDITORIAL_DEPTH_INSTRUCTION in CHAT_INSTRUCTION
+    assert "numero prefissato" in MAP_INSTRUCTIONS
+    assert KNOWLEDGE_VERSION == "knowledge-v4"
