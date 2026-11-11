@@ -118,7 +118,7 @@ def test_changing_review_filters_or_navigation_cancels_pending_send(archive):
             assert app.session_state["consent_pending"]
             navigate_to(app, "Timeline")
             assert "consent_pending" not in app.session_state
-            app.session_state["consent_choices"] = {("text", "text-v2"): True}
+            app.session_state["consent_choices"] = {("text", "text-v3"): True}
             navigate_to(app, "Briefing")
             assert not app.exception
             generate.assert_not_called()
