@@ -20,7 +20,7 @@ def script(root):
 
 
 def grant(app):
-    app.session_state["consent_choices"] = {("text", "text-v2"): True}
+    app.session_state["consent_choices"] = {("text", "text-v3"): True}
 
 
 @pytest.mark.parametrize("text", ["dell'Aquila", "dell&#x27;Aquila", "dell&amp;#x27;Aquila", "dell’Aquila"])
@@ -143,7 +143,7 @@ def test_guest_history_keeps_ten_turns_in_session_only(tmp_path):
 def test_identity_change_clears_chat_and_pending(auth, backend, tmp_path):
     db, actor, factory = backend
     from edicola.chat_store import ChatStore
-    factory().set_consent("text", "text-v2", True)
+    factory().set_consent("text", "text-v3", True)
     with patch("edicola.chat_sessions.ChatStore", side_effect=lambda _: ChatStore(actor[0], connect=db.connect, identity_provider=lambda: actor[0])), patch("edicola.consent.PostgresPersonalStore", side_effect=lambda _: factory()), patch("edicola.rag.ask_question", return_value=RESULT) as ask:
         app = AppTest.from_string(script(tmp_path)).run()
         app.chat_input[0].set_value("Domanda privata A").run()
