@@ -4,7 +4,9 @@ Il giudice legge soltanto contenuti e prove presenti nel manifest: non produce
 notizie, ground truth o valutazioni di qualità audio non osservate.
 """
 import json
+import sqlite3
 import time
+from pathlib import Path
 from datetime import datetime, timezone
 
 import httpx
@@ -188,3 +190,92 @@ def report_products(out, manifest, result, rows):
         "model": result["model"], "manifest_sha256": result["manifest_sha256"],
         "products": len(result["records"]), "type": "llm_editorial_assessment",
         "note": "Stima automatica; non certifica verità né qualità audio."})
+
+
+def collect_product_manifest(root, *, limit_per_kind=10):
+    """Esporta solo cache valide rispetto ai chunk attualmente indicizzati."""
+    if type(limit_per_kind) is not int or not 1 <= limit_per_kind <= 30:
+        raise ValueError("Limite prodotti non valido.")
+    from edicola.editorial_selection import read_catalog
+    catalog = read_catalog(root)
+    current = {c.id: c for c in catalog.chunks}
+    products, counts = [], {kind: 0 for kind in KINDS}
+
+    def append(kind, identity, content, sources, topic=""):
+        if counts[kind] >= limit_per_kind or not isinstance(content, str) or not content.strip():
+            return
+        if not isinstance(sources, list) or not sources:
+            return
+        trusted = []
+        seen = set()
+        for source in sources:
+            if not isinstance(source, dict):
+                return
+            chunk = current.get(source.get("chunk_id"))
+            sid = source.get("id")
+            if (chunk is None or not isinstance(sid, str) or not sid or sid in seen or
+                    chunk.text != source.get("text") or
+                    chunk.metadata.get("filename") != source.get("filename") or
+                    chunk.metadata.get("page") != source.get("page")):
+                return
+            seen.add(sid)
+            trusted.append({"source_id": sid, "pdf": source["filename"],
+                            "page": source["page"], "text": source["text"]})
+        candidate = {"kind": kind, "item_id": identity, "origin": "real",
+                     "topic": topic, "content": content, "sources": trusted}
+        try:
+            validate_manifest({"schema_version": 1, "products": [candidate]})
+        except ValueError:
+            return
+        products.append(candidate)
+        counts[kind] += 1
+
+    editorial = Path(root) / "data/editorial.sqlite3"
+    if editorial.is_file():
+        with sqlite3.connect(editorial.resolve().as_uri() + "?mode=ro", uri=True) as db:
+            records = db.execute("SELECT cache_key, result_json FROM products ORDER BY created_at DESC, cache_key").fetchall()
+        for identity, raw in records:
+            if counts["briefing"] >= limit_per_kind:
+                break
+            try:
+                value = json.loads(raw)
+                if value.get("kind") != "briefing" or not value.get("sufficient"):
+                    continue
+                sections = value["sections"]
+                content = "\\n\\n".join(str(s["heading"]) + "\\n" + str(s["text"]) for s in sections)
+                append("briefing", identity, content, value["sources"])
+            except (ValueError, TypeError, KeyError):
+                continue
+
+    podcast_dir = Path(root) / "data/podcast_cache/standalone/scripts"
+    if podcast_dir.is_dir():
+        for path in sorted(podcast_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+            if counts["podcast"] >= limit_per_kind:
+                break
+            try:
+                from edicola.podcast_draft import load_draft
+                draft = load_draft(root, path.stem, catalog)
+                from dataclasses import asdict
+                append("podcast", draft.key, draft.script.text,
+                       [asdict(s) for s in draft.sources], draft.topic)
+            except (ValueError, TypeError, KeyError, OSError, RuntimeError):
+                continue
+
+    knowledge_dir = Path(root) / "data/knowledge_cache"
+    if knowledge_dir.is_dir():
+        for path in sorted(knowledge_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+            if all(counts[kind] >= limit_per_kind for kind in ("timeline", "map")):
+                break
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+                kind = value.get("kind")
+                if kind not in ("timeline", "map") or counts[kind] >= limit_per_kind:
+                    continue
+                data = value.get("data", {})
+                if not isinstance(data, dict) or not data:
+                    continue
+                append(kind, path.stem, json.dumps(data, ensure_ascii=False),
+                       value["sources"], value.get("topic", ""))
+            except (ValueError, TypeError, KeyError, OSError):
+                continue
+    return {"schema_version": 1, "products": products}
