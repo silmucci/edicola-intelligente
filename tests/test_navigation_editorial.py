@@ -56,7 +56,7 @@ def test_product_drafts_results_and_graph_mode_survive_navigation_without_api(ar
     data, counts = validate_map(map_data(), SOURCES)
     mapping = KnowledgeResult("map", "Trasporti", data, SOURCES, COVERAGE, counts)
     with platform(context) as app, patch("edicola.knowledge.generate_knowledge", side_effect=[timeline, mapping]) as generate:
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", "text-v3"): True}
         navigate_to(app, "Timeline")
         app.text_input(key="knowledge_topic_timeline").set_value("Sostegno")
         app.button(key="timeline_submit").click().run()
@@ -87,10 +87,10 @@ def test_navigation_cancels_old_pending_generation_and_keeps_consent(archive):
         assert app.session_state["consent_pending"]
         navigate_to(app, "Mappe concettuali")
         assert "consent_pending" not in app.session_state
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", "text-v3"): True}
         navigate_to(app, "Timeline")
         generate.assert_not_called()
-        assert app.session_state["consent_choices"][("text", "text-v2")]
+        assert app.session_state["consent_choices"][("text", "text-v3")]
 
 
 def test_graph_and_list_are_alternatives_with_editorial_sources_only(archive):
@@ -134,7 +134,7 @@ def test_briefing_keeps_legacy_result_readable_without_generating_dossier(archiv
     dossier = EditorialResult("dossier", "Approfondimento disponibile", [], [], [], COVERAGE, True)
     with platform(context) as app, patch("edicola.editorial.generate_product", return_value=briefing) as generate:
         app.session_state["editorial_results"] = {"dossier": dossier}
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", "text-v3"): True}
         navigate_to(app, "Briefing")
         app.selectbox(key="editorial_saved_product").set_value("session:dossier").run()
         assert any(h.value == dossier.title for h in app.subheader)
