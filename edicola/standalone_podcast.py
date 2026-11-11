@@ -9,7 +9,7 @@ from pathlib import Path
 from edicola.api_guard import PermissionDenied, permission_scope
 from edicola.indexing import ROOT
 from edicola.podcast import generate_script_audio, wav_duration, atomic_write, audio_identity
-from edicola.podcast_draft import prepare_draft, load_draft, digest, VERSION, V3_VERSION, TOPIC_VERSION
+from edicola.podcast_draft import prepare_draft, load_draft, digest, VERSION, V4_VERSION, V3_VERSION, TOPIC_VERSION
 from edicola.podcast_text import PodcastError, Script, list_products
 from edicola.rag import Source
 from edicola.personal_store import PersonalStoreError
@@ -17,7 +17,7 @@ from edicola.personal_store import PersonalStoreError
 
 def draft_context(draft):
     context = {"strategy": draft.strategy, "corpus": draft.source_identity, "script_model": draft.model, "draft": draft.key}
-    if draft.strategy in {VERSION, V3_VERSION, TOPIC_VERSION}:
+    if draft.strategy in {VERSION, V4_VERSION, V3_VERSION, TOPIC_VERSION}:
         context["topic"] = draft.topic
     return context
 
