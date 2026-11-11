@@ -91,7 +91,7 @@ def render_map(result, archive, technical):
     captions = node_captions(data["nodes"])
     view = compact_map(data)
     if not data["edges"]:
-        mode = "Grafo" if len(view["nodes"]) >= 2 else "Elenco"
+        mode = "Elenco"
     else:
         mode = st.segmented_control("Vista della mappa", ["Grafo", "Elenco"], default="Grafo", key="knowledge_map_view") or "Grafo"
     focus = ""
