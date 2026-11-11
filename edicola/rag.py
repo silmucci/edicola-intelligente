@@ -74,6 +74,16 @@ Gli identificativi delle fonti valgono solo per la risposta corrente, non per lo
 """
 CHAT_INSTRUCTION += COMPARISON_INSTRUCTION + EDITORIAL_DEPTH_INSTRUCTION
 
+BROAD_NEWS_INSTRUCTION = """
+Per una domanda sulle principali notizie di un periodo, non pretendere che i
+passaggi coprano ogni fatto pubblicato: offri una selezione di vicende realmente
+documentate nelle fonti disponibili. Non inventare graduatorie o importanza.
+Se almeno una notizia pertinente è sostenuta dai passaggi e verificabile con
+una citazione letterale, fornisci la risposta, anche se non esaustiva.
+Usa sufficient=false solo se nessuna notizia pertinente è documentabile.
+Conserva la forma sintetica e non aggiungere fatti per allungare la risposta.
+"""
+
 
 class RagError(RuntimeError):
     """Messaggio sicuro per l'interfaccia, privo degli errori SDK grezzi."""
@@ -197,6 +207,49 @@ def validate_response(raw: str, sources: list[Source]) -> RagResult:
         return RagResult("\n\n".join(paragraphs), sources, used, True)
     except (ValueError, TypeError, KeyError):
         return fallback
+
+
+
+def validate_chat_response(raw: str, sources: list[Source], *, request_id="-") -> RagResult:
+    """Verifica le evidenze per affermazione, senza pubblicare frasi non provate.
+
+    Il controllo rigoroso degli altri prodotti resta quello di validate_response.
+    Nei log sono registrati soltanto esiti aggregati, mai testo o citazioni.
+    """
+    fallback = RagResult(INSUFFICIENT, sources, [], False)
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        logger.info("request_id=%s phase=chat_validation event=invalid_json", request_id)
+        return fallback
+    if not isinstance(data, dict) or set(data) != {"sufficient", "claims"}:
+        logger.info("request_id=%s phase=chat_validation event=invalid_structure", request_id)
+        return fallback
+    if data["sufficient"] is not True:
+        logger.info("request_id=%s phase=chat_validation event=model_abstained", request_id)
+        return fallback
+    claims = data["claims"]
+    if not isinstance(claims, list) or not 1 <= len(claims) <= 12:
+        logger.info("request_id=%s phase=chat_validation event=invalid_claims_structure", request_id)
+        return fallback
+    paragraphs, used = [], []
+    for claim in claims:
+        try:
+            checked = validate_response(
+                json.dumps({"sufficient": True, "claims": [claim]}, ensure_ascii=False),
+                sources,
+            )
+        except (TypeError, ValueError):
+            checked = fallback
+        if not checked.sufficient:
+            continue
+        paragraphs.append(checked.answer)
+        used.extend(identity for identity in checked.used_source_ids if identity not in used)
+    logger.info("request_id=%s phase=chat_validation event=checked total=%d valid=%d invalid=%d",
+                request_id, len(claims), len(paragraphs), len(claims) - len(paragraphs))
+    if not paragraphs:
+        return fallback
+    return RagResult("\n\n".join(paragraphs), sources, used, True)
 
 
 def generate_response(client, model: str, prompt: str, schema: dict, *, sleep=time.sleep, request_id="-", system_instruction=SYSTEM_INSTRUCTION) -> str:
@@ -348,13 +401,14 @@ def ask_question(
                 timeout=30_000, retry_options=types.HttpRetryOptions(attempts=1)
             ))
             own_client = True
+        chat_instruction = CHAT_INSTRUCTION + (BROAD_NEWS_INSTRUCTION if broad_news else "")
         raw = generate_response(client, model, prompt_for(sources),
-                                chat_response_schema(sources), request_id=request_id, system_instruction=CHAT_INSTRUCTION)
-        result = validate_response(raw, sources)
+                                chat_response_schema(sources), request_id=request_id,
+                                system_instruction=chat_instruction)
+        result = validate_chat_response(raw, sources, request_id=request_id)
         result = replace(result, source_editions=editions, temporal_notice=temporal_notice(temporal), source_references=references, source_articles=article_details)
-        if len(sources) < len(candidates):
-            result = replace(result, temporal_notice=(result.temporal_notice + " " if result.temporal_notice else "") +
-                             "La risposta è una selezione: puoi approfondire nelle edizioni originali.")
+        # Il campionamento del contesto non è un errore e non richiede un avviso
+        # visibile, soprattutto quando il modello non produce una risposta.
         logger.info("request_id=%s phase=rag event=complete sufficient=%s", request_id, result.sufficient)
         return result
     except RagError:

@@ -11,7 +11,7 @@ from google.genai import errors, types
 from edicola.embeddings import EmbeddingError
 from edicola.rag import (
     DEFAULT_MODEL, INSUFFICIENT, SYSTEM_INSTRUCTION, CHAT_INSTRUCTION, RagError, Source,
-    ask_question, build_prompt, generate_response, response_schema, validate_response,
+    ask_question, build_prompt, generate_response, response_schema, validate_response, validate_chat_response,
 )
 
 
@@ -249,3 +249,45 @@ def test_invalid_chunk_config_prevents_external_requests(monkeypatch, value):
         with pytest.raises(RagError):
             ask_question("Domanda?", authorize_external=True)
     search.assert_not_called()
+
+
+
+def test_chat_preserves_only_verifiable_claims_when_other_evidence_is_wrong(caplog):
+    data = answer_data()
+    data["claims"].append({"text": "Informazione non presente.", "evidence": [
+        {"source_id": "S1", "quote": "Una citazione inventata che non compare nel testo."}
+    ]})
+    with caplog.at_level("INFO", logger="edicola.rag"):
+        result = validate_chat_response(json.dumps(data), [SOURCE], request_id="safe-id")
+    assert result.sufficient
+    assert result.used_source_ids == ["S1"]
+    assert "Informazione non presente" not in result.answer
+    assert "total=2 valid=1 invalid=1" in caplog.text
+    assert TEXT not in caplog.text
+
+
+def test_chat_diagnostics_distinguish_model_abstention_from_invalid_quotes(caplog):
+    with caplog.at_level("INFO", logger="edicola.rag"):
+        result = validate_chat_response('{"sufficient":false,"claims":[]}', [SOURCE], request_id="safe-id")
+    assert not result.sufficient
+    assert "event=model_abstained" in caplog.text
+    caplog.clear()
+    wrong = {"sufficient": True, "claims": [{
+        "text": "Affermazione non provata.", "evidence": [
+            {"source_id": "S1", "quote": "Non compare in alcuna fonte."}
+        ]
+    }]}
+    with caplog.at_level("INFO", logger="edicola.rag"):
+        result = validate_chat_response(json.dumps(wrong), [SOURCE], request_id="safe-id")
+    assert not result.sufficient
+    assert "event=checked total=1 valid=0 invalid=1" in caplog.text
+
+
+def test_chat_rejects_malformed_or_fabricated_material():
+    for raw in ('non-json', '{"sufficient":true,"claims":[{"text":"Test", "evidence":[]}]}'):
+        assert not validate_chat_response(raw, [SOURCE]).sufficient
+    # Il validatore comune non deve accettare la parte inventata.
+    data = answer_data()
+    data["claims"].append({"text": "Informazione non presente.",
+                           "evidence": [{"source_id": "S1", "quote": "Non compare in alcuna fonte."}]})
+    assert not validate_response(json.dumps(data), [SOURCE]).sufficient

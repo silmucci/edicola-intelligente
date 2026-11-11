@@ -120,11 +120,24 @@ def semantic_search(question: str, *, authorize_external=False, root: Path = ROO
                     hit["id"]: broad_news_economic_score(hit["text"]) if is_economy else 0
                     for hit in hits
                 }
-                relevant = [
-                    hit for hit in hits if hit["distance"] <= broad_cutoff or
-                    (is_economy and relevance[hit["id"]] > 0 and hit["distance"] <= .80)
-                ]
-                relevant.sort(key=lambda hit: (-relevance[hit["id"]], hit["distance"], hit["id"]))
+                if is_economy:
+                    # Una singola parola come «azienda» in un articolo di sport
+                    # non rende una notizia economica. Privilegia passaggi con
+                    # almeno due indizi, mantenendo un fallback a un solo indizio
+                    # se il corpus ne contiene pochi.
+                    strong = [hit for hit in hits if relevance[hit["id"]] >= 2 and hit["distance"] <= .80]
+                    relevant = strong if len(strong) >= 4 else [
+                        hit for hit in hits if relevance[hit["id"]] > 0 and hit["distance"] <= .75
+                    ]
+                    # Con assenza di indizi non dichiarare automaticamente vuoto
+                    # un corpus che potrebbe avere comunque prossimità semantica.
+                    if not relevant:
+                        relevant = [hit for hit in hits if hit["distance"] <= broad_cutoff]
+                else:
+                    relevant = [hit for hit in hits if hit["distance"] <= broad_cutoff]
+                relevant.sort(key=lambda hit: (
+                    -min(relevance[hit["id"]], 4), hit["distance"], hit["id"]
+                ))
             else:
                 relevant = [hit for hit in hits if topic.semantic_allowed(hit["text"], strong=hit["distance"] <= min(cutoff, .35)) and
                             (hit["distance"] <= cutoff or topic.focus and lexical[hit["id"]] > 0 and lexical[hit["id"]] >= lexical_floor)]

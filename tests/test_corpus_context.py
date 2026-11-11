@@ -271,3 +271,18 @@ def test_chat_passes_broad_mode_only_for_editorial_overview():
         ask_question("Che cosa succede alla Isringhausen di San Salvo?",
                      root=ROOT, authorize_external=True, client=Mock())
         assert search.call_args.kwargs["broad_news"] is False
+
+
+
+def test_broad_economic_question_uses_concise_scoped_instruction():
+    from edicola.rag import BROAD_NEWS_INSTRUCTION
+    value = catalog(1)
+    client = Mock()
+    with patch("edicola.rag.api_key", return_value="mock"), patch(
+        "edicola.rag.semantic_search", return_value=hits_for(value)), patch(
+        "edicola.rag.source_editions", return_value={}), patch(
+        "edicola.rag.generate_response", return_value='{"sufficient":false,"claims":[]}') as generate:
+        ask_question("Quali sono le principali notizie economiche di novembre 2026?",
+                     root=ROOT, authorize_external=True, client=client)
+    assert "non pretendere" in BROAD_NEWS_INSTRUCTION
+    assert "non pretendere" in generate.call_args.kwargs["system_instruction"]
