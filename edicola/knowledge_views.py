@@ -107,7 +107,6 @@ def render_map(result, archive, technical):
         if isolated:
             legend += " · Concetti separati: nessun collegamento documentato"
         st.caption(legend)
-    else:
     if mode == "Grafo":
         def choose(node_id):
             st.session_state["knowledge_map_focus"] = node_id
