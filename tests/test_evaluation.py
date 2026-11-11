@@ -64,8 +64,11 @@ def run_mock(tmp_path, study, **kwargs):
     catalog, frozen, dataset = study
     client = kwargs.pop("client", mock_client())
     def search(_question, **options):
+        assert options["corpus_wide"] is True
+        assert options["preserve_relevance_order"] is True
         options["embedder"].embed("task: question answering | query: domanda sintetica")
-        return [hit(c) for c in catalog.chunks[:options["top_k"]]]
+        # La ricerca estesa restituisce più di K candidati; il benchmark misura i primi K.
+        return [hit(c) for c in catalog.chunks]
     with patch("edicola.evaluation.read_catalog", return_value=catalog), patch("edicola.evaluation.semantic_search", side_effect=search):
         return benchmark(tmp_path, dataset, frozen, mode="rag", k=3, limit=1, client=client, authorize_external=True, **kwargs)
 
@@ -131,6 +134,8 @@ def test_benchmark_measures_separate_phases_model_and_actual_calls(tmp_path, stu
     record = run["records"][0]
     assert run["origin"] == "simulated" and record["status"] == "ok"
     assert record["response_state"] == "answered"
+    assert len(record["retrieved"]) == 3
+    assert run["configuration"]["retrieval_strategy"] == "corpus_wide_ranked_top_k"
     assert [e["phase"] for e in record["api_events"]] == ["query_embedding", "generation"]
     assert record["api_events"][1]["model"] == "configured-test-model"
     assert record["total_seconds"] >= record["retrieval_seconds"] + record["generation_seconds"]
