@@ -38,7 +38,7 @@ class EditorialError(RuntimeError):
 class EditorialConfig:
     dossier_chunks: int = 5
     briefing_chunks: int = 8
-    max_source_chars: int = 8000
+    max_source_chars: int = 16000
     topic_similarity: float = 0.82
 
     def __post_init__(self):
@@ -55,7 +55,7 @@ class EditorialConfig:
     def from_env(cls):
         return cls(int(os.getenv("EDITORIAL_DOSSIER_CHUNKS", "5")),
                    int(os.getenv("EDITORIAL_BRIEFING_CHUNKS", "8")),
-                   int(os.getenv("EDITORIAL_MAX_SOURCE_CHARS", "8000")),
+                   int(os.getenv("EDITORIAL_MAX_SOURCE_CHARS", "16000")),
                    float(os.getenv("EDITORIAL_TOPIC_SIMILARITY", "0.82")))
 
 
@@ -164,10 +164,10 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
         key = api_key(root)
         model = os.getenv("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
         config = config or EditorialConfig.from_env()
-        prompt_budget = 14000
+        prompt_budget = 24000
         if kind == "briefing":
             try:
-                prompt_budget = int(os.getenv("EDITORIAL_BRIEFING_MAX_PROMPT_CHARS", "14000"))
+                prompt_budget = int(os.getenv("EDITORIAL_BRIEFING_MAX_PROMPT_CHARS", "24000"))
             except ValueError:
                 raise EditorialError("EDITORIAL_BRIEFING_MAX_PROMPT_CHARS deve essere un intero da 2000 a 40000.") from None
             if not 2000 <= prompt_budget <= 40000:
