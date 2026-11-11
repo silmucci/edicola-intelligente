@@ -94,11 +94,14 @@ def test_briefing_depth_guidance_and_cache_version():
     from edicola.editorial import cache_key, EditorialConfig
     from edicola.editorial_selection import Catalog
 
-    assert STRATEGY_VERSION == "briefing-v5"
+    assert STRATEGY_VERSION == "briefing-v6"
     assert "cinque-otto frasi" in BRIEFING_INSTRUCTION
     assert "resta breve quando il materiale" in BRIEFING_INSTRUCTION
     assert "sequenza letterale contigua" in BRIEFING_INSTRUCTION
     assert "non limitarti arbitrariamente" in BRIEFING_INSTRUCTION
+    assert "Una sola notizia va bene" in BRIEFING_INSTRUCTION
+    assert "non limitarti al primo PDF" in BRIEFING_INSTRUCTION
+    assert "fonti non pertinenti" in BRIEFING_INSTRUCTION
 
     # Una versione nuova invalida le vecchie risposte brevi in cache senza
     # cancellare i prodotti storici; mantieni il limite strutturale di 12 news.

@@ -390,3 +390,34 @@ def test_balanced_briefing_preserves_same_text_across_distinct_editions():
     assert len(selected) == 4
     assert {chunk.metadata["filename"] for chunk in selected} == {item["pdf"] for item in catalog.coverage["files"]}
     assert len(balanced_briefing(catalog, 8, 0.82, preserve_editions=False)) == 1
+
+
+
+def test_briefing_reports_selected_and_cited_sources_separately(setup_editorial, caplog):
+    root, _, client, _, _ = setup_editorial
+    with caplog.at_level("INFO", logger="edicola"):
+        result = generate_product("briefing", root=root, authorize_external=True, client=client)
+    assert result.sufficient
+    assert result.diagnostics["selected_pdfs"] == 4
+    assert result.diagnostics["cited_pdfs"] == 4
+    assert result.diagnostics["cited_passages"] == len(result.used_source_ids)
+    assert "phase=briefing_coverage selected_pdfs=4 cited_pdfs=4" in caplog.text
+
+
+def test_one_cited_pdf_does_not_misreport_four_selected_pdfs(setup_editorial):
+    root, _, client, _, _ = setup_editorial
+    client.models.generate_content.side_effect = None
+    def only_one(**kwargs):
+        source = json.loads(kwargs["contents"])["sources"][0]
+        claim = lambda text: {"text": text, "evidence": [
+            {"source_id": source["source_id"], "quote": source["text"]}]}
+        return SimpleNamespace(text=json.dumps({"sufficient": True, "news": [
+            {"title": claim("Un titolo verificabile"), "summary": claim("Una vicenda verificabile")}
+        ]}), candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    client.models.generate_content.side_effect = only_one
+    result = generate_product("briefing", root=root, authorize_external=True, client=client)
+    assert result.sufficient
+    assert result.diagnostics["selected_pdfs"] == 4
+    assert result.diagnostics["cited_pdfs"] == 1
+    assert len(result.used_source_ids) == 1
+    assert len(result.sections) == 1

@@ -14,7 +14,7 @@ from edicola.article_evidence import evidence_source_record
 from edicola.context_selection import fit_context, included_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION
 
 
-STRATEGY_VERSION = "briefing-v5"
+STRATEGY_VERSION = "briefing-v6"
 logger = logging.getLogger(__name__)
 SYSTEM_INSTRUCTION = """Sei un redattore che prepara un briefing in italiano dai passaggi forniti.
 Non devi rispondere a una domanda: individua le notizie documentate nei testi disponibili.
@@ -23,7 +23,13 @@ esterne, strumenti o notizie inventate. Non assumere che ogni chunk sia un artic
 contenere colonne, continuazioni o più notizie. Usa solo fatti chiaramente leggibili.
 Seleziona le vicende più rilevanti in base a prove, impatto documentato e aggiornamenti
 disponibili, senza riempire il briefing per raggiungere una quantità prestabilita.
-Non c'è un numero minimo obbligatorio: anche una sola vicenda è sufficiente se verificata.
+Prima di scrivere, valuta tutti i passaggi ricevuti e individua le vicende DISTINTE
+sufficientemente documentate. Se trovi più notizie pertinenti, dedica a ciascuna
+una sezione autonoma con un fatto principale e le fonti; non fermarti alla notizia
+più facile da riassumere e non limitarti al primo PDF. Una sola notizia va bene
+solo se nei passaggi non emergono altre vicende autonome verificabili.
+Non c'è una quota minima di notizie o di PDF: non aggiungere fonti non pertinenti
+né moltiplicare artificialmente le sezioni per raggiungere un numero.
 sufficient=false e news=[] solo se non emerge alcuna notizia verificabile.
 Puoi ignorare passaggi inutili e unire più passaggi pertinenti alla stessa vicenda.
 I gruppi locali sono suggerimenti, non obbligano a produrre notizie né limitano le fonti.
@@ -43,7 +49,10 @@ scarso, senza ripetere concetti o inventare dettagli per raggiungere una lunghez
 Se più edizioni contengono aggiornamenti della stessa vicenda, integra i fatti
 complementari senza ripetere il titolo e usa le fonti di ciascun aggiornamento.
 Quando ci sono diverse notizie verificabili, non limitarti arbitrariamente alle
-prime: cerca un equilibrio fra varietà, pertinenza e profondità.
+prime: cerca un equilibrio fra varietà, pertinenza e profondità. Se edizioni
+diverse riportano fatti indipendenti, rappresentali entrambi con le rispettive
+fonti. Se più passaggi completano la stessa notizia, cita ciascun passaggio
+necessario e uniscili soltanto quando parlano davvero dello stesso evento.
 Ogni informazione sostanziale del summary deve essere sostenuta dalle evidence di
 quella stessa notizia. Ogni quote è una sequenza letterale contigua del testo
 originale del source_id indicato, non una parafrasi o una correzione del testo.

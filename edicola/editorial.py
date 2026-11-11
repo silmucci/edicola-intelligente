@@ -266,9 +266,15 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
             result = briefing_result(draft, sources, selection_coverage(catalog.coverage, candidates, sources),
                                      articles={source.id: article_details[source.id] for source in sources
                                                if source.id in article_details})
+            used = set(result.used_source_ids)
+            cited_pdfs = len({source.filename for source in sources if source.id in used})
             result.diagnostics.update({"selected_passages": len(sources), "selected_pdfs": len({s.filename for s in sources}),
+                                       "cited_passages": len(used), "cited_pdfs": cited_pdfs,
                                        "source_chars": sum(len(s.text) for s in sources), "prompt_chars": prompt_chars,
                                        "prompt_budget": prompt_budget})
+            logger.info("request_id=%s phase=briefing_coverage selected_pdfs=%d cited_pdfs=%d cited_passages=%d validated_news=%d",
+                        request_id, result.diagnostics["selected_pdfs"], cited_pdfs, len(used),
+                        len(result.sections))
             if result.sufficient:
                 cache_write(path, identity, result)
             logger.info("request_id=%s phase=editorial_cache kind=briefing event=%s status=%s",
