@@ -4,17 +4,13 @@ Il giudice legge soltanto contenuti e prove presenti nel manifest: non produce
 notizie, ground truth o valutazioni di qualità audio non osservate.
 """
 import json
-import os
 import sqlite3
 import time
 from pathlib import Path
 from datetime import datetime, timezone
 
 import httpx
-from google import genai
-from google.genai import errors, types
 
-from edicola.embeddings import api_key
 from edicola.evaluation_data import CRITERIA, RUBRICS, digest
 from edicola.evaluation_report import render_report
 from edicola.settings import setting
@@ -154,68 +150,16 @@ def groq_judgment(model, prompt, criteria, *, root=None, client=None):
             client.close()
 
 
-OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_FREE_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
-
-
-def openrouter_judgment(model, prompt, criteria, *, root=None, client=None):
-    """Una richiesta senza retry, con validazione locale dello schema."""
-    key = setting("OPENROUTER_API_KEY", root=root)
-    if not key and client is None:
-        raise ValueError("OPENROUTER_API_KEY mancante.")
-    if not model.endswith(":free"):
-        raise ValueError("Usare soltanto modelli :free.")
-    payload = {"model": model, "messages": [
-        {"role": "system", "content": INSTRUCTION +
-         "\nRestituisci soltanto un oggetto JSON con le chiavi " +
-         json.dumps(list(criteria)) +
-         ". Ogni valore contiene score (stringa 0-4 o NA), reason, source_id e quote."},
-        {"role": "user", "content": prompt}],
-        "max_tokens": 4096, "temperature": 0}
-    own = client is None
-    if own:
-        client = httpx.Client(timeout=90, follow_redirects=False)
-    try:
-        response = client.post(OPENROUTER_ENDPOINT,
-                               headers={"Authorization": "Bearer " + (key or "injected-test-key"),
-                                        "Content-Type": "application/json"},
-                               json=payload)
-        response.raise_for_status()
-        data = response.json()
-        choice = data["choices"][0]
-        if choice.get("finish_reason") != "stop":
-            raise ValueError("Giudizio incompleto.")
-        content = choice["message"]["content"]
-        if not isinstance(content, str):
-            raise ValueError("Risposta non testuale.")
-        return content
-    finally:
-        if own:
-            client.close()
-
-
-def evaluate_products(manifest, *, root, model=GROQ_MODEL, authorize_external=False, client=None, provider="groq"):
+def evaluate_products(manifest, *, root, model=GROQ_MODEL, authorize_external=False, client=None):
     items = validate_manifest(manifest)
     if not authorize_external:
         raise ValueError("Occorre autorizzare l'invio al giudice.")
     if not isinstance(model, str) or not model.strip():
         raise ValueError("Modello giudice non valido.")
-    if provider not in ("gemini", "openrouter", "groq"):
-        raise ValueError("Provider giudice non valido.")
-    if provider == "openrouter" and not model.endswith(":free"):
-        raise ValueError("OpenRouter gratuito richiede un modello :free.")
-    if provider == "groq" and model not in ("openai/gpt-oss-120b", "openai/gpt-oss-20b"):
+    if model not in ("openai/gpt-oss-120b", "openai/gpt-oss-20b"):
         raise ValueError("Modello Groq non supportato per output strutturati.")
     if client is None and any(x["origin"] != "real" for x in items):
         raise ValueError("Non inviare dati simulati al servizio reale.")
-    own = client is None
-    if own and provider == "gemini":
-        key = api_key(root)
-        if not key:
-            raise ValueError("Chiave API non configurata.")
-        client = genai.Client(api_key=key, vertexai=False,
-                            http_options=types.HttpOptions(timeout=30000,
-                                retry_options=types.HttpRetryOptions(attempts=1)))
     records, rows = [], []
     try:
         for item in items:
@@ -232,30 +176,11 @@ def evaluate_products(manifest, *, root, model=GROQ_MODEL, authorize_external=Fa
             else:
                 start = time.perf_counter()
                 try:
-                    if provider == "groq":
-                        response_text = groq_judgment(model, prompt, criteria, root=root, client=client)
-                        record["grades"] = validate_grades(response_text, item)
-                        record["status"] = "judged"
-                    elif provider == "openrouter":
-                        response_text = openrouter_judgment(model, prompt, criteria, root=root, client=client)
-                        record["grades"] = validate_grades(response_text, item)
-                        record["status"] = "judged"
-                    else:
-                        answer = client.models.generate_content(
-                            model=model, contents=prompt,
-                            config=types.GenerateContentConfig(system_instruction=INSTRUCTION,
-                                temperature=0, tools=[], max_output_tokens=3072,
-                                response_mime_type="application/json",
-                                response_json_schema=grade_schema(criteria)))
-                        if not answer.candidates or answer.candidates[0].finish_reason != types.FinishReason.STOP:
-                            record["status"] = "incomplete_judgment"
-                        else:
-                            record["grades"] = validate_grades(answer.text or "", item)
-                            record["status"] = "judged"
+                    response_text = groq_judgment(model, prompt, criteria, root=root, client=client)
+                    record["grades"] = validate_grades(response_text, item)
+                    record["status"] = "judged"
                 except httpx.HTTPStatusError as exc:
                     record["status"], record["http_status"] = "api_error", exc.response.status_code
-                except errors.APIError as exc:
-                    record["status"], record["http_status"] = "api_error", exc.code
                 except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
                     record["status"] = "transport_error"
                 except (ValueError, TypeError, KeyError, IndexError):
@@ -272,10 +197,9 @@ def evaluate_products(manifest, *, root, model=GROQ_MODEL, authorize_external=Fa
                                       ("Non valutabile dal testo" if criterion == "audio_quality"
                                        else "Non valutato: " + record["status"]))})
     finally:
-        if own:
-            client.close()
+        pass  # Il client HTTP è gestito e chiuso in groq_judgment.
     return {"schema_version": 1, "judge_version": VERSION,
-            "utc": datetime.now(timezone.utc).isoformat(), "model": model, "provider": provider,
+            "utc": datetime.now(timezone.utc).isoformat(), "model": model, "provider": "groq",
             "manifest_sha256": digest(manifest), "records": records}, rows
 
 
@@ -283,7 +207,7 @@ def report_products(out, manifest, result, rows):
     if result.get("manifest_sha256") != digest(manifest):
         raise ValueError("Report e prodotti non corrispondono.")
     return render_report(out, rows, metadata={"judge_version": VERSION,
-        "model": result["model"], "provider": result.get("provider", "gemini"), "manifest_sha256": result["manifest_sha256"],
+        "model": result["model"], "provider": result.get("provider", "groq"), "manifest_sha256": result["manifest_sha256"],
         "products": len(result["records"]), "type": "llm_editorial_assessment",
         "note": "Stima automatica; non certifica verità né qualità audio."})
 
