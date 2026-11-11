@@ -14,7 +14,6 @@ from edicola.for_you import select_feed
 from edicola.profiles import load_profile, save_passage
 from edicola import identity
 from edicola.design import section_intro
-from edicola.editorial_components import render_highlights
 
 from edicola.product_navigation import SECTIONS, cancel_navigation_action, canonical_section
 INTERESTS = ["Ambiente", "Cultura", "Economia", "Politica", "Salute", "Scuola", "Sport", "Tecnologia", "Trasporti"]
@@ -31,21 +30,6 @@ def navigate(section):
 
 def authenticated():
     return identity.native_logged_in() if identity.local_demo() else identity.current_identity() is not None
-
-
-def logout():
-    identity.logout()
-
-
-def account_controls():
-    if not identity.local_demo():
-        identity.login_controls()
-        return
-    logged_in = authenticated()
-    st.caption("Sessione autenticata. Il profilo del prototipo resta demo e condiviso." if logged_in else
-               "Stai navigando come ospite. Il profilo disponibile è dimostrativo e condiviso.")
-    st.button("Logout", key="account_logout", disabled=not logged_in, on_click=logout,
-              help="Esci dalla sessione autenticata." if logged_in else "Nessuna sessione autenticata da chiudere.")
 
 
 def excerpt(text, limit):
