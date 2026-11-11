@@ -405,3 +405,19 @@ def test_chat_fallback_can_be_disabled_without_changing_primary(monkeypatch):
             ask_question("Che cosa ha approvato il consiglio?", authorize_external=True,
                          client=client)
     assert client.models.generate_content.call_count == 3
+
+
+
+def test_chat_switches_model_on_quota_only_when_requested(monkeypatch):
+    monkeypatch.setenv("GEMINI_CHAT_FALLBACK_MODELS", "backup-flash")
+    client = Mock()
+    client.models.generate_content.side_effect = [
+        errors.ClientError(429, {"error": {"code": 429, "message": "private-key"}}),
+        response({"sufficient": False, "claims": []}),
+    ]
+    assert generate_response(
+        client, "primary", "same-prompt", response_schema([SOURCE]),
+        fallback_models=("backup-flash",), quota_fallback=True, sleep=Mock())
+    assert [call.kwargs["model"] for call in client.models.generate_content.call_args_list] == [
+        "primary", "backup-flash"]
+    assert len({call.kwargs["contents"] for call in client.models.generate_content.call_args_list}) == 1

@@ -22,6 +22,7 @@ from edicola.article_evidence import source_articles
 from edicola.embeddings import api_key
 from edicola.indexing import ROOT
 from edicola.settings import setting
+from edicola.ai_models import product_model, alternative_models
 from edicola.rag import (DEFAULT_MODEL, INSUFFICIENT, RagError, Source, build_prompt,
                          generate_response, response_schema, validate_response)
 from edicola.search import semantic_search
@@ -165,7 +166,9 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
     own_client = False
     try:
         key = api_key(root)
-        model = os.getenv("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+        model = (product_model("BRIEFING", os.getenv("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
+                               root=root) if kind == "briefing" else
+                 os.getenv("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL)
         config = config or EditorialConfig.from_env()
         prompt_budget = 24000
         if kind == "briefing":
@@ -265,9 +268,9 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
                                        selection_coverage(catalog.coverage, candidates, []))
             prompt_chars = len(BRIEFING_INSTRUCTION) + len(prompt)
             logger.info("request_id=%s phase=briefing_context prompt_chars=%d budget=%d", request_id, prompt_chars, prompt_budget)
-            fallback_model = setting("GEMINI_RAG_FALLBACK_MODEL", "gemini-3.8-flash", root=root)
+            fallbacks = alternative_models("BRIEFING", model, root=root)
             draft = generate_briefing_response(client, model, prompt, sources, request_id=request_id,
-                                              fallback_model=fallback_model)
+                                              fallback_models=fallbacks, quota_fallback=True)
             # Se la prima sintesi copre poche vicende, consulta un secondo campione
             # di passaggi prima esclusi dal budget. Non ripetere le fonti già inviate.
             if (0 < len(draft.sections) <= 2 and len(candidates) > len(sources)
@@ -288,7 +291,7 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
                     try:
                         extra = generate_briefing_response(
                             client, model, extra_prompt, extra_sources, request_id=request_id,
-                            fallback_model=fallback_model)
+                            fallback_models=fallbacks, quota_fallback=True)
                     except RagError:
                         # La prima rassegna validata rimane disponibile; non
                         # pubblicare dettagli tecnici sulla richiesta.

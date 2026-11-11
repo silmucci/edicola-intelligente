@@ -12,6 +12,7 @@ from google import genai
 from google.genai import types
 
 from edicola.api_guard import require_permission
+from edicola.ai_models import run_text_request, product_model, alternative_models
 from edicola.briefing import briefing_schema, validate_briefing, request_news_json
 from edicola.context_selection import fit_context, included_coverage, selection_coverage, COMPARISON_INSTRUCTION
 from edicola.editorial import EditorialConfig, EditorialResult
@@ -244,7 +245,8 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
         from edicola.press_review import filter_catalog
         catalog = filter_catalog(catalog, selection)
     key_value = api_key(root)
-    model = os.getenv("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    model = product_model("PODCAST_SCRIPT", os.getenv("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
+                          root=root)
     config = EditorialConfig(max_source_chars=int(os.getenv("EDITORIAL_MAX_SOURCE_CHARS", "11000")),
                              topic_similarity=float(os.getenv("EDITORIAL_TOPIC_SIMILARITY", "0.82")))
     cache_config = {**asdict(config), "podcast_source_chars": DEEP_SOURCE_CHARS,
@@ -290,9 +292,13 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
                 raise PodcastError("Il servizio di preparazione non è disponibile.")
             client = genai.Client(api_key=key_value, vertexai=False, http_options=types.HttpOptions(
                 timeout=30000, retry_options=types.HttpRetryOptions(attempts=1)))
-        response = request_news_json(
-            client, model, prompt(sources), sources, instruction=INSTRUCTION,
-            max_output_tokens=8192, request_id=key[:12], phase="podcast_script")
+        contents = prompt(sources)
+        response = run_text_request(
+            lambda active: request_news_json(
+                client, active, contents, sources, instruction=INSTRUCTION,
+                max_output_tokens=8192, request_id=key[:12], phase="podcast_script"),
+            model, fallbacks=alternative_models("PODCAST_SCRIPT", model, root=root),
+            request_id=key[:12], phase="podcast_script", quota_fallback=True)
         if not response.candidates or response.candidates[0].finish_reason != types.FinishReason.STOP:
             raise PodcastError("La preparazione dell'episodio non è stata completata. Riprova manualmente.")
         coverage = selection_coverage(catalog.coverage, candidates, sources)

@@ -17,6 +17,7 @@ from edicola.editorial_selection import read_catalog
 from edicola.article_evidence import source_articles, evidence_source_record
 from edicola.embeddings import api_key
 from edicola.indexing import ROOT
+from edicola.ai_models import run_text_request, product_model, alternative_models
 from edicola.knowledge_validation import validate_map, validate_timeline, explicit_aliases
 from edicola.rag import DEFAULT_MODEL, Source, response_schema
 from edicola.search import semantic_search
@@ -206,39 +207,47 @@ def request_error_kind(exc: errors.APIError) -> str:
     return "invalid_request"
 
 
-def generate_data(client, model, prompt, schema, *, sleep=time.sleep, system_instruction=SYSTEM):
-    for attempt in range(3):
-        logger.info("phase=knowledge_generation model=%r version=%s attempt=%d", model, VERSION, attempt + 1)
-        try:
-            from edicola.api_guard import require_permission
-            require_permission("text")
-            response = client.models.generate_content(model=model, contents=prompt, config=types.GenerateContentConfig(
-                system_instruction=system_instruction, temperature=0, tools=[], max_output_tokens=8192,
-                response_mime_type="application/json", response_json_schema=schema))
-            reason = response.candidates[0].finish_reason if response.candidates else None
-            if reason != types.FinishReason.STOP:
-                raise KnowledgeError("Risposta Gemini troncata o non completata; risultato non pubblicato.")
-            return response.text or ""
-        except errors.APIError as exc:
-            code, retryable = exc.code, exc.code in {408, 429, 500, 502, 503, 504}
-            error_kind = request_error_kind(exc)
-        except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
-            code, retryable = "-", True
-            error_kind = "transport"
+def generate_data(client, model, prompt, schema, *, sleep=time.sleep,
+                  system_instruction=SYSTEM, fallback_models=(), quota_fallback=False):
+    """Genera dati verificabili con retry e riserve condivisi dagli altri prodotti."""
+    def send(active):
+        from edicola.api_guard import require_permission
+        require_permission("text")
+        return client.models.generate_content(
+            model=active, contents=prompt, config=types.GenerateContentConfig(
+                system_instruction=system_instruction, temperature=0, tools=[],
+                max_output_tokens=8192, response_mime_type="application/json",
+                response_json_schema=schema))
+
+    def on_error(active, error, attempt, retry):
+        status = error.code if isinstance(error, errors.APIError) else "-"
+        kind = request_error_kind(error) if isinstance(error, errors.APIError) else "transport"
         logger.warning("phase=knowledge_generation model=%r version=%s http_status=%s error_kind=%s attempt=%d retry=%s",
-                       model, VERSION, code, error_kind, attempt + 1, retryable and attempt < 2)
-        if not retryable or attempt == 2:
-            if code == 400:
-                explanation = {
-                    "schema": "Il server segnala uno schema di risposta non accettato o troppo complesso.",
-                    "unsupported_parameter": "Il server segnala un parametro non supportato dalla richiesta o dal modello.",
-                    "authentication": "Il server segnala un problema con la chiave API.",
-                    "invalid_request": "Richiesta non valida; il server non identifica esplicitamente un errore di schema.",
-                }[error_kind]
-                raise KnowledgeError(f"Gemini HTTP 400 ({error_kind}). {explanation} Nessun nuovo tentativo automatico.") from None
-            raise KnowledgeError(f"Gemini non disponibile: HTTP {code}. Verificare accesso, quota e connessione.") from None
-        sleep(2 ** attempt)
-    raise KnowledgeError("Tentativi Gemini esauriti.")
+                       active, VERSION, status, kind, attempt, retry)
+
+    try:
+        response = run_text_request(
+            send, model, fallbacks=fallback_models, sleep=sleep,
+            phase="knowledge_generation", quota_fallback=quota_fallback,
+            on_error=on_error)
+    except errors.APIError as exc:
+        code = exc.code
+        error_kind = request_error_kind(exc)
+        if code == 400:
+            explanation = {
+                "schema": "Il server segnala uno schema di risposta non accettato o troppo complesso.",
+                "unsupported_parameter": "Il server segnala un parametro non supportato dalla richiesta o dal modello.",
+                "authentication": "Il server segnala un problema con la chiave API.",
+                "invalid_request": "Richiesta non valida; il server non identifica esplicitamente un errore di schema.",
+            }[error_kind]
+            raise KnowledgeError(f"Gemini HTTP 400 ({error_kind}). {explanation} Nessun nuovo tentativo automatico.") from None
+        raise KnowledgeError(f"Gemini non disponibile: HTTP {code}. Verificare accesso, quota e connessione.") from None
+    except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
+        raise KnowledgeError("Gemini non disponibile: HTTP -. Verificare accesso, quota e connessione.") from None
+    reason = response.candidates[0].finish_reason if response.candidates else None
+    if reason != types.FinishReason.STOP:
+        raise KnowledgeError("Risposta Gemini troncata o non completata; risultato non pubblicato.")
+    return response.text or ""
 
 
 def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root: Path = ROOT, client=None, selection=None,
@@ -251,7 +260,8 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
     temporary = None
     try:
         key = api_key(root)
-        model = os.getenv("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+        model = product_model(kind.upper(), os.getenv("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
+                              root=root)
         top_k = int(os.getenv("KNOWLEDGE_CHUNKS", "5"))  # Compatibilità; non limita il recupero corpus_wide.
         budget = int(os.getenv("KNOWLEDGE_MAX_PROMPT_CHARS", "12000"))
         neighbors = int(os.getenv("MAP_ADJACENT_CHUNKS", "2")) if kind == "map" else 0
@@ -338,7 +348,9 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
             client = genai.Client(api_key=key, vertexai=False, http_options=types.HttpOptions(
                 timeout=30000, retry_options=types.HttpRetryOptions(attempts=1)))
             own_client = True
-        raw = generate_data(client, model, prompt, knowledge_schema(kind, sources), system_instruction=instruction)
+        raw = generate_data(client, model, prompt, knowledge_schema(kind, sources), system_instruction=instruction,
+                            fallback_models=alternative_models(kind.upper(), model, root=root),
+                            quota_fallback=True)
         try:
             raw_data = json.loads(raw)
             extraction_counts = {}

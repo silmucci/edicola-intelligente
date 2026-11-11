@@ -448,7 +448,7 @@ def test_briefing_switches_model_only_after_two_server_503_errors(setup_editoria
 
 
 @pytest.mark.parametrize("status", [403, 429])
-def test_briefing_does_not_use_fallback_for_quota_or_permission_errors(setup_editorial, monkeypatch, status):
+def test_briefing_switches_model_on_quota_but_not_permission_errors(setup_editorial, monkeypatch, status):
     root, _, client, _, _ = setup_editorial
     monkeypatch.setenv("GEMINI_RAG_FALLBACK_MODEL", "backup-flash")
     client.models.generate_content.side_effect = errors.ClientError(
@@ -458,8 +458,8 @@ def test_briefing_does_not_use_fallback_for_quota_or_permission_errors(setup_edi
             generate_product("briefing", root=root, authorize_external=True, client=client)
     assert "private-key" not in str(exc.value)
     assert client.models.generate_content.call_count == (2 if status == 429 else 1)
-    assert all(c.kwargs["model"] == "configured-flash"
-               for c in client.models.generate_content.call_args_list)
+    assert [c.kwargs["model"] for c in client.models.generate_content.call_args_list] == (
+        ["configured-flash", "backup-flash"] if status == 429 else ["configured-flash"])
 
 
 def test_briefing_fallback_disabled_retries_primary_only(setup_editorial, monkeypatch):

@@ -10,6 +10,7 @@ import httpx
 from google.genai import errors, types
 
 from edicola.rag import RagError, Source, response_schema, validate_response
+from edicola.ai_models import run_text_request
 from edicola.article_evidence import evidence_source_record
 from edicola.context_selection import fit_context, included_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION
 
@@ -282,51 +283,29 @@ def merge_briefing_drafts(primary: BriefingDraft, supplemental: BriefingDraft) -
 
 def generate_briefing_response(client, model: str, prompt: str, sources: list[Source], *,
                                request_id="-", sleep=time.sleep,
-                               fallback_model: str | None = None) -> BriefingDraft:
-    """Riprova gli errori transitori e usa il secondo modello solo per guasti server.
+                               fallback_model: str | None = None, fallback_models=None,
+                               quota_fallback=False) -> BriefingDraft:
+    """Modelli di riserva senza cambiare prompt o validatori delle citazioni."""
+    alternates = (tuple(fallback_models) if fallback_models is not None else
+                  (fallback_model,) if fallback_model else ())
+    def send(active):
+        return request_news_json(
+            client, active, prompt, sources, instruction=SYSTEM_INSTRUCTION,
+            max_output_tokens=12288, request_id=request_id, phase="briefing_generation")
 
-    Le fonti e il prompt non cambiano; anche la risposta alternativa viene validata
-    con le stesse regole e non viene salvata quando non è verificabile.
-    """
-    alternate = (fallback_model or "").strip()
-    if alternate.lower() in {"off", "none", "disabled", "0"} or alternate == model:
-        alternate = ""
-    models = [(model, 2 if alternate else 3)]
-    if alternate:
-        models.append((alternate, 2))
-
-    for model_index, (active_model, max_attempts) in enumerate(models):
-        for attempt in range(max_attempts):
-            logger.info("request_id=%s phase=briefing_generation model=%r strategy=%s event=start attempt=%d max_attempts=%d",
-                        request_id, active_model, STRATEGY_VERSION, attempt + 1, max_attempts)
-            try:
-                response = request_news_json(
-                    client, active_model, prompt, sources, instruction=SYSTEM_INSTRUCTION,
-                    max_output_tokens=12288, request_id=request_id, phase="briefing_generation")
-                candidates = response.candidates or []
-                reason = candidates[0].finish_reason if candidates else None
-                if reason != types.FinishReason.STOP:
-                    status = "output_truncated" if reason == types.FinishReason.MAX_TOKENS else "output_blocked"
-                    logger.warning("request_id=%s phase=briefing_generation status=%s", request_id, status)
-                    return BriefingDraft(status=status)
-                return validate_briefing(response.text or "", sources, request_id=request_id)
-            except errors.APIError as exc:
-                code = exc.code
-                retryable = code in {408, 429, 500, 502, 503, 504}
-                can_fallback = code in {500, 502, 503, 504} and model_index + 1 < len(models)
-                message = f"Generazione briefing Gemini: errore HTTP {code}."
-            except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
-                code, retryable, can_fallback = "-", True, False
-                message = "Generazione briefing Gemini non raggiungibile o timeout."
-            retry = retryable and attempt < max_attempts - 1
-            logger.warning("request_id=%s phase=briefing_generation model=%r event=error http_status=%s attempt=%d retry=%s",
-                           request_id, active_model, code, attempt + 1, retry)
-            if retry:
-                sleep(2 ** attempt)
-                continue
-            if can_fallback:
-                logger.warning("request_id=%s phase=briefing_generation event=model_fallback from_model=%r to_model=%r",
-                               request_id, active_model, models[model_index + 1][0])
-                break
-            raise RagError(message) from None
-    raise RagError("Tentativi briefing esauriti.")
+    try:
+        response = run_text_request(
+            send, model, fallbacks=alternates, sleep=sleep,
+            request_id=request_id, phase="briefing_generation",
+            quota_fallback=quota_fallback)
+    except errors.APIError as exc:
+        raise RagError(f"Generazione briefing Gemini: errore HTTP {exc.code}.") from None
+    except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
+        raise RagError("Generazione briefing Gemini non raggiungibile o timeout.") from None
+    candidates = response.candidates or []
+    reason = candidates[0].finish_reason if candidates else None
+    if reason != types.FinishReason.STOP:
+        status = "output_truncated" if reason == types.FinishReason.MAX_TOKENS else "output_blocked"
+        logger.warning("request_id=%s phase=briefing_generation status=%s", request_id, status)
+        return BriefingDraft(status=status)
+    return validate_briefing(response.text or "", sources, request_id=request_id)

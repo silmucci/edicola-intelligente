@@ -496,3 +496,34 @@ def test_neighbor_configuration_invalidates_only_map_cache(setup_knowledge, monk
     assert generate_knowledge("timeline", "Trasporti", authorize_external=True, root=root, client=client).from_cache
     assert not generate_knowledge("map", "Trasporti", authorize_external=True, root=root, client=client).from_cache
     assert client.models.generate_content.call_count == 3
+
+
+
+@pytest.mark.parametrize("kind", ["timeline", "map"])
+def test_knowledge_switches_model_on_quota_and_validates_result(setup_knowledge, monkeypatch, kind):
+    root, _, client, _, _ = setup_knowledge
+    monkeypatch.setenv(f"GEMINI_{kind.upper()}_FALLBACK_MODELS", "backup-flash")
+    original = client.models.generate_content.side_effect
+
+    def send(**kwargs):
+        if kwargs["model"] == "configured-flash":
+            raise errors.ClientError(429, {"error": {"code": 429, "message": "private-key"}})
+        return original(**kwargs)
+
+    client.models.generate_content.side_effect = send
+    result = generate_knowledge(kind, "Trasporti", authorize_external=True, root=root, client=client)
+    assert result.data
+    assert [call.kwargs["model"] for call in client.models.generate_content.call_args_list] == [
+        "configured-flash", "backup-flash"]
+    assert (generate_knowledge(kind, "Trasporti", authorize_external=True,
+                               root=root, client=client)).from_cache
+
+
+def test_knowledge_permission_error_never_switches_model(setup_knowledge, monkeypatch):
+    root, _, client, _, _ = setup_knowledge
+    monkeypatch.setenv("GEMINI_MAP_FALLBACK_MODELS", "backup-flash")
+    client.models.generate_content.side_effect = errors.ClientError(
+        403, {"error": {"code": 403, "message": "private-key"}})
+    with pytest.raises(KnowledgeError, match="403"):
+        generate_knowledge("map", "Trasporti", authorize_external=True, root=root, client=client)
+    assert client.models.generate_content.call_count == 1

@@ -377,3 +377,34 @@ def test_v4_cached_podcast_script_remains_readable(standalone):
         "script": vars(expected), "title": "Storico",
         "created_at": "2026-11-10T10:00:00+00:00"}, ensure_ascii=False), encoding="utf-8")
     assert load_draft(standalone.root, key).script == expected
+
+
+
+def test_podcast_script_uses_fallback_for_quota_and_preserves_audio(standalone, monkeypatch):
+    monkeypatch.setenv("GEMINI_PODCAST_SCRIPT_FALLBACK_MODELS", "backup-flash")
+    original = standalone.text.models.generate_content.side_effect
+
+    def send(**kwargs):
+        if kwargs["model"] == "configured-text-model":
+            raise errors.ClientError(429, {"error": {"code": 429, "message": "private-key"}})
+        return original(**kwargs)
+
+    standalone.text.models.generate_content.side_effect = send
+    episode = generate(standalone)
+    assert episode.audio_path.exists()
+    assert [call.kwargs["model"] for call in standalone.text.models.generate_content.call_args_list] == [
+        "configured-text-model", "backup-flash"]
+    assert standalone.audio.models.generate_content.call_count == 1
+    assert len({call.kwargs["contents"] for call in
+                standalone.text.models.generate_content.call_args_list}) == 1
+    assert generate(standalone).from_cache
+
+
+def test_podcast_script_fallback_never_changes_authorization(standalone, monkeypatch):
+    monkeypatch.setenv("GEMINI_PODCAST_SCRIPT_FALLBACK_MODELS", "backup-flash")
+    standalone.text.models.generate_content.side_effect = errors.ClientError(
+        403, {"error": {"code": 403, "message": "private-key"}})
+    with pytest.raises(PodcastError):
+        generate(standalone)
+    assert standalone.text.models.generate_content.call_count == 1
+    standalone.audio.models.generate_content.assert_not_called()
