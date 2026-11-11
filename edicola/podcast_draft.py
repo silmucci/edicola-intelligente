@@ -1,6 +1,7 @@
 """Copioni Podcast autonomi: selezione comune, prove verificate, cache dedicata."""
 import hashlib
 import json
+import logging
 import os
 import re
 import unicodedata
@@ -158,7 +159,13 @@ def script_from_response(raw, sources, coverage, topic="", *, max_words=350, max
         if re.search(r"\bS\d+\b|\bchunk[_-]|\.pdf\b", script.text, re.I):
             raise ValueError
         return script
-    except (ValueError, TypeError, KeyError):
+    except (ValueError, TypeError, KeyError) as exc:
+        # Diagnostica tecnica senza inserire in log testo, nomi o citazioni delle fonti.
+        point = exc.__traceback__
+        while point is not None and point.tb_next is not None:
+            point = point.tb_next
+        logging.getLogger(__name__).warning("phase=podcast_script event=invalid type=%s line=%s",
+                                           type(exc).__name__, point.tb_lineno if point else 0)
         raise PodcastError("Le fonti non permettono di preparare un episodio affidabile.") from None
 
 
