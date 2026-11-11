@@ -138,8 +138,9 @@ def test_card_navigation_preserves_readings_and_does_not_call_ai():
     state = {"nav_section": "Rassegna stampa", "knowledge_results": {"timeline": "saved"},
              "consent_pending": {"action": "timeline"}, "rag_pending": {"new": True}}
     with patch.object(nav.st, "session_state", state), patch("google.genai.Client") as api:
-        assert nav.open_product(4)
-        assert state["nav_section"] == "Timeline" and state["knowledge_results"]["timeline"] == "saved"
+        assert nav.open_product_id("timeline")
+        assert state["nav_section"] == "Esplora" and state["knowledge_kind"] == "Timeline"
+        assert state["knowledge_results"]["timeline"] == "saved"
         assert "consent_pending" not in state and state["rag_pending"]["new"] is False
         api.assert_not_called()
 
@@ -165,7 +166,7 @@ def test_party_extraction_does_not_turn_a_verb_into_an_organization():
     assert not any(n["label"]["text"].casefold() == "lega" for n in completed)
 
 
-def test_review_form_waits_for_submit_and_clears_hidden_filters():
+def test_review_form_waits_for_submit_and_preserves_briefing_filters():
     from streamlit.testing.v1 import AppTest
     code = '''
 from types import SimpleNamespace
@@ -184,7 +185,8 @@ render_press_review(catalog, None, {})
         app.session_state["editorial_review_latest"] = True
         app.run()
         assert not app.exception and len(app.text_input) == 1 and not app.selectbox and not app.multiselect
-        assert "editorial_review_files" not in app.session_state and "editorial_review_latest" not in app.session_state
+        assert app.session_state["editorial_review_files"] == ["obsolete.pdf"]
+        assert app.session_state["editorial_review_latest"] is True
         app.text_input[0].set_value("sanità abruzzese").run()
         assert "editorial_press_query" not in app.session_state
         app.text_input[0].set_value("sanità abruzzese")
