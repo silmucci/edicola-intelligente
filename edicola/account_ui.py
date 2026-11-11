@@ -156,13 +156,12 @@ def render_account_profile(root, archive=None):
             # Streamlit monta anche schede non visibili: carica solo quella scelta.
             if st.session_state.get("personal_area") == "Raccolta":
                 if archive is None:
-                    st.info("Le tue letture saranno disponibili quando l'archivio è aperto.")
-                else:
-                    try:
-                        catalog = read_catalog(root)
-                    except (OSError, ValueError, RuntimeError):
-                        catalog = None
-                    render_account_readings(root, archive, store, profile, catalog)
+                    st.caption("I collegamenti ai PDF sono disponibili quando l'archivio è aperto.")
+                try:
+                    catalog = read_catalog(root) if archive is not None else None
+                except (OSError, ValueError, RuntimeError):
+                    catalog = None
+                render_account_readings(root, archive, store, profile, catalog)
     except PersonalStoreError:
         st.error("Il tuo spazio personale non è disponibile in questo momento. Riprova più tardi: nessun nuovo salvataggio è stato confermato.")
     except (PermissionDenied, RagError, PodcastError) as exc:
