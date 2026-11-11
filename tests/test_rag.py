@@ -12,6 +12,7 @@ from edicola.embeddings import EmbeddingError
 from edicola.rag import (
     DEFAULT_MODEL, INSUFFICIENT, SYSTEM_INSTRUCTION, CHAT_INSTRUCTION, RagError, Source,
     ask_question, build_prompt, generate_response, response_schema, validate_response,
+    prioritize_chat_hits, validate_chat_response,
 )
 
 
@@ -249,3 +250,36 @@ def test_invalid_chunk_config_prevents_external_requests(monkeypatch, value):
         with pytest.raises(RagError):
             ask_question("Domanda?", authorize_external=True)
     search.assert_not_called()
+
+
+def test_chat_candidate_selection_prioritizes_semantics_over_file_order():
+    hits = []
+    for i in range(160):
+        hits.append({"id": f"id-{i}", "filename": f"{i % 20:02}.pdf",
+                     "page": 1, "text": "Notizia verificata.", "distance": .05 + i * .003})
+    # Il primo PDF non deve determinare tutti i passaggi, né entrano 160 fonti.
+    selected = prioritize_chat_hits(list(reversed(hits)))
+    assert len(selected) == 96
+    assert selected[0]["id"] == "id-0"
+    assert len({hit["filename"] for hit in selected}) == 12
+    assert all(hit["distance"] <= hits[11]["distance"] + 20 * .003 * 8
+               for hit in selected[:12])
+
+
+def test_chat_keeps_valid_claim_when_another_quote_is_invented():
+    data = answer_data()
+    data["claims"].append({
+        "text": "Un fatto inventato.",
+        "evidence": [{"source_id": "S1", "quote": "La citazione non compare nel quotidiano."}]})
+    result = validate_chat_response(json.dumps(data), [SOURCE])
+    assert result.sufficient and result.used_source_ids == ["S1"]
+    assert result.answer.count("[S1]") == 1
+    assert "fatto inventato" not in result.answer.lower()
+    assert not validate_response(json.dumps(data), [SOURCE]).sufficient
+
+
+def test_chat_rejects_all_unverified_claims():
+    data = {"sufficient": True, "claims": [{
+        "text": "La notizia era inventata.",
+        "evidence": [{"source_id": "S999", "quote": TEXT}]}]}
+    assert not validate_chat_response(json.dumps(data), [SOURCE]).sufficient
