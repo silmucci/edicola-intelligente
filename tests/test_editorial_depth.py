@@ -94,7 +94,7 @@ def test_briefing_depth_guidance_and_cache_version():
     from edicola.editorial import cache_key, EditorialConfig
     from edicola.editorial_selection import Catalog
 
-    assert STRATEGY_VERSION == "briefing-v7"
+    assert STRATEGY_VERSION == "briefing-v8"
     assert "cinque-otto frasi" in BRIEFING_INSTRUCTION
     assert "resta breve quando il materiale" in BRIEFING_INSTRUCTION
     assert "sequenza letterale contigua" in BRIEFING_INSTRUCTION

@@ -490,3 +490,89 @@ def test_briefing_rejects_invalid_fallback_citations(setup_editorial, monkeypatc
         result = generate_product("briefing", root=root, authorize_external=True, client=client)
     assert not result.sufficient and result.diagnostics["status"] == "citation_validation_failed"
     assert not (root / "data/editorial.sqlite3").exists()
+
+
+
+def test_sparse_briefing_tries_unseen_passages_for_more_distinct_news(setup_editorial):
+    root, catalog, client, _, _ = setup_editorial
+    # Il contesto iniziale non puo' contenere tutti i passaggi: i PDF non
+    # inclusi devono essere consultati in un secondo giro.
+    expanded = " Il consiglio ha comunicato altri dettagli verificabili." * 70
+    catalog.chunks = [replace(chunk, text=chunk.text + expanded) for chunk in catalog.chunks]
+    calls = []
+
+    def two_pass_briefing(**kwargs):
+        data = json.loads(kwargs["contents"])
+        calls.append(data)
+        passages = data["sources"]
+        assert len(passages) >= 2
+        def news(source, title):
+            claim = lambda text: {"text": text, "evidence": [{
+                "source_id": source["source_id"], "quote": source["text"][:150]}]}
+            return {"title": claim(title), "summary": claim(f"Approfondimento della notizia: {title}.")}
+        if len(calls) == 1:
+            selection = [news(passages[0], "Vicenda A documentata"),
+                         news(passages[1], "Vicenda B documentata")]
+        else:
+            assert data["already_covered"] == ["Vicenda A documentata", "Vicenda B documentata"]
+            assert set(p["source_id"] for p in passages).isdisjoint(
+                p["source_id"] for p in calls[0]["sources"])
+            selection = [news(passages[0], "Vicenda C documentata"),
+                         news(passages[1], "Vicenda D documentata")]
+        return SimpleNamespace(text=json.dumps({"sufficient": True, "news": selection}),
+                               candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+
+    client.models.generate_content.side_effect = two_pass_briefing
+    result = generate_product("briefing", root=root, authorize_external=True, client=client)
+    assert result.sufficient
+    assert len(result.sections) == 4
+    assert result.diagnostics["additional_news"] == 2
+    assert len(calls) == 2
+    assert len(result.used_source_ids) == 4
+    assert len({s.chunk_id for s in result.sources}) == len(result.sources)
+    assert generate_product("briefing", root=root, authorize_external=True, client=client).from_cache
+    assert client.models.generate_content.call_count == 2
+
+
+def test_briefing_second_pass_failure_preserves_first_verified_news(setup_editorial):
+    root, catalog, client, _, _ = setup_editorial
+    expanded = " Il consiglio ha comunicato altri dettagli verificabili." * 70
+    catalog.chunks = [replace(chunk, text=chunk.text + expanded) for chunk in catalog.chunks]
+    calls = []
+
+    def generation(**kwargs):
+        calls.append(kwargs["model"])
+        if len(calls) > 1:
+            raise errors.ServerError(503, {"error": {"code": 503, "message": "private-key"}})
+        source = json.loads(kwargs["contents"])["sources"][0]
+        claim = lambda text: {"text": text, "evidence": [{
+            "source_id": source["source_id"], "quote": source["text"][:150]}]}
+        return SimpleNamespace(text=json.dumps({"sufficient": True, "news": [{
+            "title": claim("Prima notizia verificata"),
+            "summary": claim("La prima notizia e' documentata.")}]}),
+            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+
+    client.models.generate_content.side_effect = generation
+    with patch("edicola.briefing.time.sleep", return_value=None):
+        result = generate_product("briefing", root=root, authorize_external=True, client=client)
+    assert result.sufficient
+    assert len(result.sections) == 1
+    assert len(calls) > 1
+    assert result.used_source_ids
+
+
+def test_merge_briefing_removes_duplicate_even_with_different_reference_numbers():
+    from edicola.briefing import BriefingDraft, merge_briefing_drafts
+    a = BriefingDraft([{"heading": "Un progetto approvato [S1]",
+                        "text": "Il progetto e' stato approvato dal consiglio comunale [S1]"}],
+                      ["S1"], diagnostics={"received_news": 1, "validated_news": 1})
+    b = BriefingDraft([{"heading": "Un progetto approvato [S7]",
+                        "text": "Il progetto e' stato approvato dal consiglio comunale [S7]"},
+                       {"heading": "Una seconda notizia [S8]",
+                        "text": "Un altro provvedimento documentato [S8]"}],
+                      ["S7", "S8"], diagnostics={"received_news": 2, "validated_news": 2})
+    result = merge_briefing_drafts(a, b)
+    assert len(result.sections) == 2
+    assert result.used_source_ids == ["S1", "S8"]
+    assert result.diagnostics["duplicates_removed"] == 1
+    assert result.diagnostics["additional_news"] == 1

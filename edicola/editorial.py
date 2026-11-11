@@ -14,7 +14,8 @@ from google.genai import types
 
 from edicola.briefing import (MESSAGES, STRATEGY_VERSION, BriefingDraft,
                              SYSTEM_INSTRUCTION as BRIEFING_INSTRUCTION, fit_briefing_prompt,
-                             generate_briefing_response, validate_briefing)
+                             generate_briefing_response, merge_briefing_drafts,
+                             prioritize_unseen_briefing_topics, validate_briefing)
 from edicola.editorial_selection import Catalog, balanced_briefing, read_catalog, topic_clusters
 from edicola.article_evidence import source_articles
 from edicola.embeddings import api_key
@@ -266,6 +267,38 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
             fallback_model = setting("GEMINI_RAG_FALLBACK_MODEL", "gemini-3.8-flash", root=root)
             draft = generate_briefing_response(client, model, prompt, sources, request_id=request_id,
                                               fallback_model=fallback_model)
+            # Se la prima sintesi copre poche vicende, consulta un secondo campione
+            # di passaggi prima esclusi dal budget. Non ripetere le fonti già inviate.
+            if (0 < len(draft.sections) <= 2 and len(candidates) > len(sources)
+                    and config.max_source_chars >= 4000):
+                remaining = prioritize_unseen_briefing_topics(candidates, sources, assignments)
+                headlines = [re.sub(r"\[S\d+\]", "", item["heading"]).strip()
+                             for item in draft.sections]
+                try:
+                    extra_sources, extra_prompt = fit_briefing_prompt(
+                        remaining, catalog.coverage, groups, prompt_budget,
+                        source_budget=config.max_source_chars, articles=article_details,
+                        already_covered=headlines, balance_editions=False)
+                except ValueError:
+                    extra_sources = []
+                if extra_sources:
+                    logger.info("request_id=%s phase=briefing_additional event=start passages=%d pdfs=%d",
+                                request_id, len(extra_sources), len({s.filename for s in extra_sources}))
+                    try:
+                        extra = generate_briefing_response(
+                            client, model, extra_prompt, extra_sources, request_id=request_id,
+                            fallback_model=fallback_model)
+                    except RagError:
+                        # La prima rassegna validata rimane disponibile; non
+                        # pubblicare dettagli tecnici sulla richiesta.
+                        logger.warning("request_id=%s phase=briefing_additional event=generation_failed", request_id)
+                    else:
+                        draft = merge_briefing_drafts(draft, extra)
+                        if draft.diagnostics.get("additional_news", 0):
+                            sources = sources + extra_sources
+                        logger.info("request_id=%s phase=briefing_additional event=complete added=%d total=%d",
+                                    request_id, draft.diagnostics.get("additional_news", 0),
+                                    len(draft.sections))
             result = briefing_result(draft, sources, selection_coverage(catalog.coverage, candidates, sources),
                                      articles={source.id: article_details[source.id] for source in sources
                                                if source.id in article_details})
