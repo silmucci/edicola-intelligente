@@ -1,7 +1,7 @@
 """Passaggio dalla chat a una bozza: mai una richiesta API pendente."""
 
 import streamlit as st
-from edicola.product_navigation import cancel_navigation_action, destination
+from edicola.product_navigation import cancel_navigation_action, open_product_id
 
 TARGETS = {"Briefing": ("briefing", "editorial_review_keyword"),
            "Timeline": ("timeline", "knowledge_topic_timeline"),
@@ -15,7 +15,9 @@ def open_draft(label, topic):
     identifier, key = TARGETS[label]
     cancel_navigation_action()
     st.session_state[key] = " ".join(topic.split())[:500]
-    st.session_state["nav_section"] = destination(identifier)
+    if identifier in {"timeline", "map"}:
+        st.session_state["knowledge_topic"] = st.session_state[key]
+    open_product_id(identifier)
 
 
 def render_handoff(topic):
