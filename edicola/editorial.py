@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sqlite3
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
