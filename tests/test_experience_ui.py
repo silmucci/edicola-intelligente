@@ -86,13 +86,13 @@ def test_shortcuts_keep_consents_and_do_not_generate(archive, button, destinatio
         "edicola.personalization_ui.generate_personal_briefing", side_effect=AssertionError("Generazione automatica")
     ):
         app = AppTest.from_string(script(root), default_timeout=15).run()
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", "text-v3"): True}
         app.run()
         app.button(key=button).click().run()
         assert not app.exception
         assert app.session_state["nav_section"] == destination
         assert len(app.chat_input) == (1 if destination == "Chat AI" else 0)
-        assert app.session_state["consent_choices"][("text", "text-v2")]
+        assert app.session_state["consent_choices"][("text", "text-v3")]
         assert app.selectbox(key="nav_section").options == SECTIONS
 
 
@@ -156,7 +156,7 @@ def test_conversational_history_does_not_repeat_requests_and_handles_failure(arc
         app = AppTest.from_string(script(root), default_timeout=15).run()
         navigate_to(app, "Chat AI")
         app.chat_input(key="rag_input").set_value("Prima domanda")
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", "text-v3"): True}
         app.run()
         assert not app.exception and len(app.chat_message) == 2
         assert app.chat_message[0].name == "user" and app.chat_message[1].name == "assistant"
