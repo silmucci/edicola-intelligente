@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 from datetime import date
 
 from edicola.editorial_selection import Catalog, topic_clusters
-from edicola.corpus_versions import source_version
+from edicola.corpus_cache import source_version
 from edicola.knowledge_relevance import Topic, terms as topic_terms
 from edicola.context_selection import edition_order
 import unicodedata
