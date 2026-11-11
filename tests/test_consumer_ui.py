@@ -152,4 +152,4 @@ def test_errors_do_not_expose_technical_messages_or_blame_the_reader(status):
                               "Aumentare EDITORIAL_BRIEFING_MAX_PROMPT_CHARS; JSON", diagnostics={"status": status})
     message = product_notice(product)
     assert "JSON" not in message and "EDITORIAL_" not in message
-    assert "edizioni originali" in message
+    assert "Non è stato possibile preparare" in message
