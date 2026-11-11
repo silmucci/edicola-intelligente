@@ -6,6 +6,7 @@ from collections import Counter
 from edicola.press_review import ReviewSelection, filter_catalog, ranked_chunks, article_groups
 from edicola.editorial_selection import read_catalog
 from edicola.for_you import article_preview
+from edicola.consent_ui import cancel_pending
 
 
 def render_press_review(catalog, context, metadata):
@@ -75,7 +76,8 @@ def review_controls(root, catalog=None):
     except Exception:
         st.info("La selezione delle fonti non è disponibile in questo momento.")
         return None, ReviewSelection()
-    keyword = st.text_input("Tema o parole chiave", key="editorial_review_keyword", max_chars=500)
+    keyword = st.text_input("Tema o parole chiave", key="editorial_review_keyword", max_chars=500,
+                            on_change=cancel_pending)
     names = {chunk.metadata["filename"] for chunk in catalog.chunks}
     files = {item["pdf"]: item for item in catalog.coverage["files"] if item["pdf"] in names}
     labels = {name: " · ".join(filter(None, [item.get("publication") or f"Edizione {index}", item.get("date")]))
@@ -87,18 +89,20 @@ def review_controls(root, catalog=None):
     if "editorial_review_files" in st.session_state:
         st.session_state["editorial_review_files"] = [f for f in st.session_state["editorial_review_files"] if f in files]
     selected = st.multiselect("Fonti / edizioni", list(files), key="editorial_review_files",
-        format_func=labels.__getitem__)
+        format_func=labels.__getitem__, on_change=cancel_pending)
     scopes = sorted({item.get("scope") for item in files.values()} & {"nazionale", "internazionale"})
     options = [""] + scopes
     if st.session_state.get("editorial_review_scope", "") not in options:
         st.session_state["editorial_review_scope"] = ""
     scope = st.selectbox("Ambito delle edizioni", options, key="editorial_review_scope",
-                         format_func=lambda value: value.capitalize() if value else "Tutti gli ambiti")
+                         format_func=lambda value: value.capitalize() if value else "Tutti gli ambiti",
+                         on_change=cancel_pending)
     # Vecchie bozze non devono mantenere filtri che non sono più visibili.
     for key in ("editorial_review_from", "editorial_review_to"):
         st.session_state.pop(key, None)
     latest = st.selectbox("Copertura delle edizioni", [False, True], key="editorial_review_latest",
-                          format_func=lambda value: "Solo le più recenti della selezione" if value else "Tutte le edizioni selezionate")
+                          format_func=lambda value: "Solo le più recenti della selezione" if value else "Tutte le edizioni selezionate",
+                          on_change=cancel_pending)
     selection = ReviewSelection(keyword=keyword.strip(), filenames=tuple(sorted(selected)), scope=scope, latest=latest)
     filtered = filter_catalog(catalog, selection)
     return filtered, selection

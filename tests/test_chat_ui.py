@@ -104,12 +104,16 @@ def test_sources_include_verified_metadata_original_text_and_pdf_route(tmp_path)
         app = AppTest.from_string(script(tmp_path)).run()
         grant(app)
         app.chat_input[0].set_value("Progetto?").run()
-        assert not app.exception and [e.label for e in app.main.expander] == ["Edizioni incluse nella lettura"]
-        assert len(app.get("popover")) == 1
-        assert any(x.value == RESULT.sources[0].text for x in app.text)
+        # L'interfaccia attuale mostra link diretti alle fonti citate,
+        # senza riproporre l'estratto completo in pannelli tecnici.
+        assert not app.exception
+        assert not app.main.expander
+        assert any("Fonti" in item.value for item in app.markdown)
         assert all("a.pdf" not in x.value for x in app.text)
         assert "Quotidiano di prova" in open_pdf.call_args.kwargs["label"]
-        assert "2026-10-17" in open_pdf.call_args.kwargs["help_text"]
+        assert "2026" in open_pdf.call_args.kwargs["label"]
+        assert "pagina 2" in open_pdf.call_args.kwargs["label"]
+        assert open_pdf.call_args.kwargs["help_text"] == "Apri la pagina del quotidiano"
         assert open_pdf.call_args.args == ("a.pdf", 2)
         assert open_pdf.call_args.kwargs["chunk_id"] == "chunk-test"
 

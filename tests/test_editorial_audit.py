@@ -116,9 +116,12 @@ def test_changing_review_filters_or_navigation_cancels_pending_send(archive):
             assert "consent_pending" not in app.session_state
             app.button(key="briefing_submit").click().run()
             assert app.session_state["consent_pending"]
-            navigate_to(app, "Timeline")
+            # Una selezione reale della card (non un'iniezione dello stato)
+            # deve annullare la richiesta ancora in sospeso.
+            app.button(key="home_products_test_5").click().run()
+            assert app.session_state["nav_section"] == "Esplora"
             assert "consent_pending" not in app.session_state
             app.session_state["consent_choices"] = {("text", "text-v3"): True}
-            navigate_to(app, "Briefing")
+            app.button(key="home_products_test_3").click().run()
             assert not app.exception
             generate.assert_not_called()
