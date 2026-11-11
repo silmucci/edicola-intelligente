@@ -223,6 +223,11 @@ def prioritize_chat_hits(hits: list[dict], *, limit=64, max_edition_seeds=6) -> 
     best_distance = min(hit["distance"] for hit in hits[:max(64, limit)])
     # La soglia è una protezione dalla diversificazione su fonti non pertinenti.
     diversity_distance = min(.65, best_distance + .20)
+    # Quando il corpus contiene già varie prove vicine alla domanda, i risultati
+    # semanticamente molto distanti non devono entrare solo per riempire il budget.
+    close_hits = [hit for hit in hits if hit["distance"] <= diversity_distance]
+    if len(close_hits) >= min(limit, 4):
+        hits = close_hits
     chosen, chosen_ids, covered_editions = [], set(), set()
 
     def add(hit):
