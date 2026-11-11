@@ -204,10 +204,12 @@ def render_for_you(root, context):
 
     if profile is None:
         return
-    with st.expander("Le tue letture salvate e i briefing", expanded=False):
-        if identity.local_demo():
-            from edicola.personalization_ui import render_demo_readings
-            render_demo_readings(root, context, profile, catalog)
-        else:
-            from edicola.account_ui import render_account_readings
-            render_account_readings(root, context, store, profile, catalog)
+    st.divider()
+    st.subheader("La tua raccolta")
+    # Le viste personali contengono già expander: evitare contenitori annidati.
+    if identity.local_demo():
+        from edicola.personalization_ui import render_demo_readings
+        render_demo_readings(root, context, profile, catalog)
+    else:
+        from edicola.account_ui import render_account_readings
+        render_account_readings(root, context, store, profile, catalog)
