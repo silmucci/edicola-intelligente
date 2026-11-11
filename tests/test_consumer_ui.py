@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from editorial_adapter import navigate_to
 from edicola.chat_sources import citation_text
 from edicola.design import product_notice
 from edicola.editorial import EditorialResult
@@ -132,7 +133,7 @@ def test_actual_app_mounts_only_eight_supported_destinations_with_mocked_archive
         assert not app.exception
         assert app.selectbox(key="nav_section").options == [p["title"] for p in PRODUCTS]
         for product in PRODUCTS:
-            app.selectbox(key="nav_section").set_value(product["title"]).run()
+            navigate_to(app, product["title"])
             assert not app.exception and not app.segmented_control
         editorial.assert_called_once()
         api.assert_not_called()
