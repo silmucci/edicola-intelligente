@@ -11,7 +11,6 @@ from streamlit.testing.v1 import AppTest
 from edicola.chat_sources import citation_text
 from edicola.design import product_notice
 from edicola.editorial import EditorialResult
-from edicola.editorial_handoff import TARGETS, open_draft
 from edicola.podcast_text import CachedProduct
 from edicola.product_navigation import PRODUCTS
 from edicola.rag import Source
@@ -51,8 +50,7 @@ def test_single_product_has_no_retired_controls_and_uses_editorial_labels(consum
     assert not app.exception
     assert not app.segmented_control
     assert len([p for p in PRODUCTS if p["id"] == "briefing"]) == 1
-    assert len(PRODUCTS) == 8 and all(p["id"] != "dossier" for p in PRODUCTS)
-    assert not {"Dossier", "Infografica", "Rassegna"} & TARGETS.keys()
+    assert len(PRODUCTS) == 7 and all(p["id"] != "dossier" for p in PRODUCTS)
     assert all(".pdf" not in label for label in app.multiselect[0].options)
     assert all("indicizz" not in text.value for text in app.caption)
     generate.assert_not_called()
@@ -93,35 +91,26 @@ def test_only_authorized_explicit_send_generates_briefing(consumer_ui):
     generate.assert_called_once()
 
 
-def test_handoff_prepares_single_briefing_without_retired_state():
-    state = {"editorial_workspace": "Infografica", "consent_pending": {"action": "briefing"}}
-    with patch("streamlit.session_state", state):
-        open_draft("Briefing", "Un tema")
-    assert state["nav_section"] == "Briefing"
-    assert state["editorial_review_keyword"] == "Un tema"
-    assert "consent_pending" not in state
-
-
-def test_home_opens_briefing_with_same_filters_without_generating():
+def test_legacy_home_opens_all_news_without_generating():
+    """Il vecchio link Rassegna apre Per te, nella modalità completa."""
     fixture = ModuleType("edicola.consumer_fixture")
-    fixture.context = SimpleNamespace(root=Path(__file__).parent / "__consumer_fixture_only__", documents=[])
+    fixture.context = SimpleNamespace(root=Path(__file__).parent / "__consumer_fixture_only__",
+                                      documents=[], chunk_references={})
     code = '''from edicola.consumer_fixture import context
 from edicola.experience_ui import render_home
 render_home(context.root, context)
 '''
     with patch.dict("sys.modules", {"edicola.consumer_fixture": fixture}), patch(
         "edicola.experience_ui.read_catalog", return_value=make_catalog()), patch(
-        "edicola.experience_ui.render_products"), patch("edicola.experience_ui.render_highlights"), patch(
-        "edicola.experience_ui.source_button"), patch("edicola.experience_ui.authenticated", return_value=False), patch(
-        "edicola.editorial.generate_product") as generate, patch("google.genai.Client") as api:
+        "edicola.experience_ui.identity.synchronize_identity"), patch(
+        "edicola.press_review_ui.render_press_review") as press, patch(
+        "edicola.editorial.generate_product") as generate, patch(
+        "google.genai.Client", side_effect=AssertionError("API non autorizzate")):
         app = AppTest.from_string(code).run()
-        app.text_input(key="editorial_review_keyword").set_value("trasporti").run()
-        app.button(key="home_prepare_briefing").click().run()
-        assert not app.exception and app.session_state["nav_section"] == "Briefing"
-        assert app.session_state["editorial_review_keyword"] == "trasporti"
-        assert not any(button.key == "briefing_submit" for button in app.button)
+        assert not app.exception
+        assert app.session_state["for_you_mode"] == "Tutte le notizie"
+        press.assert_called_once()
         generate.assert_not_called()
-        api.assert_not_called()
 
 
 def test_actual_app_mounts_only_eight_supported_destinations_with_mocked_archive():
