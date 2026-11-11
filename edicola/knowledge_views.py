@@ -269,7 +269,6 @@ def render_event_details(event, sources):
         st.caption("Pubblicazione della fonte" + page + ": " + (item["date"] or "non disponibile"))
     if event.get("date_anchor"):
         st.caption("Anno completato con l’edizione " + event["date_anchor"]["publication_date"])
-    if event.get("date_reason"):
     if event.get("temporal_quote"):
         st.text("Riferimento temporale originale: " + event["temporal_quote"])
     for evidence in event.get("evidence", []):
