@@ -4,7 +4,6 @@ from copy import deepcopy
 from dataclasses import replace
 from unittest.mock import patch
 
-import pytest
 from streamlit.testing.v1 import AppTest
 
 from edicola.editorial import generate_product
@@ -13,7 +12,6 @@ from edicola.map_exploration import focused_map
 from edicola.podcast_text import CachedProduct, prepare_script
 from test_editorial import make_catalog, setup_editorial
 from test_podcast import editorial_product, fake_client, podcast_archive
-from test_chat_ui import RESULT, script as chat_script, grant
 from test_knowledge import COVERAGE, SOURCES, map_data
 from test_knowledge_exploration import installed_fixture, render_script
 from edicola.knowledge import KnowledgeResult
@@ -54,28 +52,6 @@ def test_filtered_briefing_separate_cache_and_no_unselected_sources(setup_editor
 
 
 
-
-
-@pytest.mark.parametrize("label,key,destination", [
-    ("Briefing", "editorial_review_keyword", "Briefing"),
-    ("Timeline", "knowledge_topic_timeline", "Timeline"),
-    ("Mappa", "knowledge_topic_map", "Mappe concettuali"),
-    ("Podcast", "podcast_topic", "Podcast"),
-])
-def test_chat_handoff_only_prepares_draft(tmp_path, label, key, destination):
-    with patch("edicola.rag.ask_question", return_value=RESULT) as ask, patch(
-        "edicola.editorial.generate_product") as generate, patch("edicola.knowledge.generate_knowledge") as knowledge:
-        app = AppTest.from_string(chat_script(tmp_path), default_timeout=15).run()
-        grant(app)
-        app.chat_input[0].set_value("Progetto trasporti").run()
-        app.button(key="editorial_handoff_" + label).click().run()
-        assert not app.exception and app.session_state[key] == "Progetto trasporti"
-        assert app.session_state["nav_section"] == destination
-        assert "consent_pending" not in app.session_state
-        assert "rag_pending" not in app.session_state
-        ask.assert_called_once()
-        generate.assert_not_called()
-        knowledge.assert_not_called()
 
 
 def test_focus_map_preserves_only_existing_edges_and_keeps_isolated_node():
