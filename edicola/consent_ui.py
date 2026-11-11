@@ -6,7 +6,6 @@ import json
 import streamlit as st
 
 from edicola import consent
-from edicola.api_guard import PermissionDenied
 from edicola.personal_store import PersonalStoreError
 from edicola.account_recovery import offer_guest_access
 

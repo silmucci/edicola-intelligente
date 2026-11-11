@@ -4,12 +4,11 @@ import json
 
 import streamlit as st
 
-from edicola.archive_ui import edition_metadata
 from edicola.embeddings import api_key
 from edicola.identity import current_identity, synchronize_identity
 from edicola.personal_audio import audio_scope, prepare_audio, remove_audio
 from edicola.personal_store import PersonalStoreError, PostgresPersonalStore
-from edicola.personalization import generate_personal_briefing, recommend
+from edicola.personalization import generate_personal_briefing
 from edicola.pdf_viewer import source_button
 from edicola.podcast import VOICES, generate_podcast
 from edicola.podcast_text import PodcastError

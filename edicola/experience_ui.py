@@ -15,7 +15,7 @@ from edicola.pdf_viewer import source_button
 from edicola.personalization import recommend
 from edicola.profiles import load_profile, save_passage
 from edicola import identity
-from edicola.design import section_intro, empty_state
+from edicola.design import section_intro
 from edicola.editorial_components import render_highlights
 
 from edicola.product_navigation import SECTIONS, cancel_navigation_action, canonical_section

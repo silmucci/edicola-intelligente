@@ -6,7 +6,6 @@ import streamlit as st
 
 from edicola.pdf_viewer import source_button, resolve_reference, PdfViewError
 from edicola.rag_context import source_editions
-from edicola.article_evidence import article_reference
 
 
 def document_label(context, filename, page):
