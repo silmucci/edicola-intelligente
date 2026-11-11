@@ -108,7 +108,7 @@ def test_rag_ui_requires_authorization_and_keeps_response_on_rerun(tmp_path):
         assert any(item.value == chat_markdown(result.answer.replace("[S1]", "[1]")) for item in app.markdown)
         ask.side_effect = RagError("Quota Gemini esaurita.")
         app.chat_input(key="rag_input").set_value("Quale piano è stato approvato?")
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", "text-v3"): True}
         app.run()
         assert not app.exception
         assert "limite di utilizzo" in app.error[0].value
@@ -141,7 +141,7 @@ def test_editorial_ui_only_generates_on_authorized_submit(tmp_path):
         app.button(key="briefing_submit").click().run()
         generate.assert_not_called()
         app.text_input(key="editorial_review_keyword").set_value("Trasporti")
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", "text-v3"): True}
         app.button(key="briefing_submit").click().run()
         assert not app.exception
         generate.assert_called_once()
@@ -152,7 +152,7 @@ def test_editorial_ui_only_generates_on_authorized_submit(tmp_path):
         navigate_to(app, "Archivio PDF")
         app.selectbox(key="archive_extracted_page").select_index(1).run()
         assert generate.call_count == 1
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", "text-v3"): True}
         navigate_to(app, "Briefing")
         app.button(key="briefing_submit").click().run()
         assert not app.exception
@@ -248,7 +248,7 @@ def test_knowledge_ui_renders_and_does_not_repeat_calls(tmp_path, kind, submit_k
         app.button(key=submit_key).click().run()
         generate.assert_not_called()
         app.text_input(key="knowledge_topic_" + kind).set_value("Trasporti")
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", "text-v3"): True}
         app.button(key=submit_key).click().run()
         assert not app.exception
         assert generate.call_args.args[:2] == (kind, "Trasporti")
