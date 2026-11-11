@@ -242,7 +242,7 @@ def collect_product_manifest(root, *, limit_per_kind=10):
                 if value.get("kind") != "briefing" or not value.get("sufficient"):
                     continue
                 sections = value["sections"]
-                content = "\\n\\n".join(str(s["heading"]) + "\\n" + str(s["text"]) for s in sections)
+                content = "\n\n".join(str(s["heading"]) + "\n" + str(s["text"]) for s in sections)
                 append("briefing", identity, content, value["sources"])
             except (ValueError, TypeError, KeyError):
                 continue
