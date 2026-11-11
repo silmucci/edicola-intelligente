@@ -81,10 +81,10 @@ def test_undated_proposal_is_useful_without_empty_timeline_warnings():
         app.run()
     assert not app.exception and not app.warning
     assert not app.info
-    assert any("Cronologia delle notizie" in c.value for c in app.caption)
+    assert not app.info
     assert all(event["event_date"] is None for event in result.data["undated_events"])
     assert not any("Risultato già disponibile" in c.value for c in app.caption)
-    assert any("Cronologia delle notizie" in c.value for c in app.caption)
+    assert not app.info
     assert not app.get("vega_lite_chart")
     api.assert_not_called()
 
@@ -97,7 +97,7 @@ def test_strict_chronology_explains_undated_limit_once():
         app = AppTest.from_string(code).run()
     assert not app.exception
     assert not app.info
-    assert any("Cronologia delle notizie" in c.value for c in app.caption)
+    assert not app.info
     assert all(event["event_date"] is None for event in result.data["undated_events"])
     assert strict_chronology(result.topic)
 
@@ -162,7 +162,7 @@ def test_event_reference_opens_original_page(archive):
     with installed_fixture(module), patch("google.genai.Client") as api:
         app = AppTest.from_string(code).run()
         assert not app.exception
-        assert any("Cronologia delle notizie" in caption.value for caption in app.caption)
+        assert not app.info
         api.assert_not_called()
 
 
@@ -233,7 +233,7 @@ def test_timeline_presentation_sorts_dates_leaves_undated_last_and_hides_source_
     chronological = story.call_args.kwargs["data"]["items"]
     assert [item["iso"] for item in chronological] == ["2026-10-12", "2026-10-17", "2026-10-20"]
     assert chronological[1]["edition_fallback"] is True
-    assert chronological[1]["date"].startswith("Edizione del ")
+    assert chronological[1]["date"].startswith("Edizione · ")
     assert all("[S1]" not in item["title"] + item["description"] for item in chronological)
     # Lo sviluppo senza data viene collocato nell’edizione, senza inventare una data evento.
     assert not any(item.label == "Altri sviluppi" for item in app.expander)
@@ -285,11 +285,11 @@ render_visuals(Path({str(tmp_path)!r}), None)
         app.session_state["consent_choices"] = {("text", "text-v3"): True}
         app.text_input(key="knowledge_topic").set_value("Pesca").run()
         app.button(key="timeline_submit").click().run()
-        assert any("Cronologia delle notizie" in c.value for c in app.caption)
+        assert not app.info
         app.segmented_control(key="knowledge_kind").set_value("Mappa").run()
         assert not any(item.label == "Altri sviluppi" for item in app.expander)
         generate.assert_called_once()
         app.button(key="map_submit").click().run()
         app.segmented_control(key="knowledge_kind").set_value("Timeline").run()
-        assert not app.exception and any("Cronologia delle notizie" in c.value for c in app.caption)
+        assert not app.exception and not app.info
         assert generate.call_count == 2
