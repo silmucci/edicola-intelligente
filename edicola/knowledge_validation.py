@@ -13,8 +13,7 @@ from edicola.timeline_dates import documented_dates, event_status, resolve_date,
 from edicola.timeline_events import compact_events
 from edicola.knowledge_presentation import development_kind, deadline_reference
 from edicola.design_tokens import COLORS
-from edicola.map_presentation import GROUPS, node_captions, node_groups
-from edicola.map_exploration import informative_nodes
+from edicola.map_presentation import GROUPS, node_captions, node_groups, informative_nodes
 from edicola.proposal_extraction import ITEM as NOMINAL_PROPOSAL
 
 
