@@ -86,3 +86,22 @@ def test_remote_briefing_schema_is_simple_but_local_validation_stays_strict():
             {"source_id": "S999", "quote": original[0].text}]},
     }]}
     assert not validate_briefing(json.dumps(bad), original).sections
+
+
+
+def test_briefing_depth_guidance_and_cache_version():
+    from edicola.briefing import STRATEGY_VERSION
+    from edicola.editorial import cache_key, EditorialConfig
+    from edicola.editorial_selection import Catalog
+
+    assert STRATEGY_VERSION == "briefing-v5"
+    assert "cinque-otto frasi" in BRIEFING_INSTRUCTION
+    assert "resta breve quando il materiale" in BRIEFING_INSTRUCTION
+    assert "sequenza letterale contigua" in BRIEFING_INSTRUCTION
+    assert "non limitarti arbitrariamente" in BRIEFING_INSTRUCTION
+
+    # Una versione nuova invalida le vecchie risposte brevi in cache senza
+    # cancellare i prodotti storici; mantieni il limite strutturale di 12 news.
+    catalog = Catalog([], {}, {"indexed": 0, "total": 0, "files": [], "partial": False})
+    assert briefing_schema(sources(1))["properties"]["news"]["maxItems"] == 12
+    assert cache_key("briefing", "", "model", EditorialConfig(), catalog)

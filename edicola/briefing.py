@@ -14,7 +14,7 @@ from edicola.article_evidence import evidence_source_record
 from edicola.context_selection import fit_context, included_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION
 
 
-STRATEGY_VERSION = "briefing-v4"
+STRATEGY_VERSION = "briefing-v5"
 logger = logging.getLogger(__name__)
 SYSTEM_INSTRUCTION = """Sei un redattore che prepara un briefing in italiano dai passaggi forniti.
 Non devi rispondere a una domanda: individua le notizie documentate nei testi disponibili.
@@ -32,11 +32,23 @@ title e summary, ciascuno con text ed evidence contenenti source_id e quote lett
 di almeno 20 caratteri quando disponibili. Usa solo ID ricevuti. Non inserire rimandi o
 identificativi in text: li aggiungerà il programma. Per ogni vicenda, il summary
 deve spiegare prima il fatto principale e poi, quando le fonti lo documentano,
-antefatti, protagonisti, punti di vista differenti e sviluppi. Preferisci paragrafi
-scorrevoli di tre-cinque frasi se le evidenze sono ricche; resta breve se non lo sono.
+antefatti, protagonisti, decisioni, dati, punti di vista differenti, sviluppi e conseguenze.
+Produci una rassegna informativa e approfondita, non una sequenza di titoli seguiti
+da due frasi generiche. Per le notizie che dispongono di prove sufficientemente
+ricche, scrivi un paragrafo scorrevole di cinque-otto frasi sostanziali: descrivi
+che cosa è successo, chi è coinvolto, perché è rilevante secondo le fonti e quali
+sono gli aggiornamenti documentati. Mantieni proporzioni naturali: dedica più
+spazio alle vicende con prove consistenti, e resta breve quando il materiale è
+scarso, senza ripetere concetti o inventare dettagli per raggiungere una lunghezza.
+Se più edizioni contengono aggiornamenti della stessa vicenda, integra i fatti
+complementari senza ripetere il titolo e usa le fonti di ciascun aggiornamento.
+Quando ci sono diverse notizie verificabili, non limitarti arbitrariamente alle
+prime: cerca un equilibrio fra varietà, pertinenza e profondità.
 Ogni informazione sostanziale del summary deve essere sostenuta dalle evidence di
-quella stessa notizia. Non inventare nomi di testate o date e non presentare
-l'archivio parziale come completo."""
+quella stessa notizia. Ogni quote è una sequenza letterale contigua del testo
+originale del source_id indicato, non una parafrasi o una correzione del testo.
+Non inventare nomi di testate o date e non presentare l'archivio parziale
+come completo."""
 SYSTEM_INSTRUCTION += COMPARISON_INSTRUCTION + EDITORIAL_DEPTH_INSTRUCTION
 
 
