@@ -179,7 +179,7 @@ def narrative_script(draft, sources, coverage, intro, outro, *, max_words, max_c
         body = spoken_text(section["text"], filenames)
         refs = list(dict.fromkeys(identity for match in REFERENCES.finditer(section["text"])
                                   for identity in re.findall(r"S\d+", match.group())))
-        if not body or not refs or not set(refs) <= available:
+        if not body or not refs or not set(refs) <= available.keys():
             continue
         if body[-1] not in ".?!":
             body += "."
