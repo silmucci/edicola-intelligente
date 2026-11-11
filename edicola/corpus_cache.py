@@ -1,5 +1,6 @@
-"""Audit read-only delle cache: distingue fonti obsolete da copertura storica."""
+"""Versioni deterministiche del corpus e audit read-only delle cache."""
 
+import hashlib
 import json
 import sqlite3
 from collections import Counter
@@ -68,3 +69,9 @@ def render_history_notice(coverage, archive):
     if historical:
         import streamlit as st
         st.caption("Risultato storico o di una copertura precedente dell’archivio. Per includere gli aggiornamenti serve un nuovo invio esplicito.")
+
+
+def source_version(chunks, *, metadata=(), selection=None):
+    payload = {"version": 1, "chunks": sorted((c.id, c.fingerprint, c.metadata) for c in chunks),
+               "metadata": sorted(metadata, key=lambda item: item["pdf"]), "selection": selection}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
