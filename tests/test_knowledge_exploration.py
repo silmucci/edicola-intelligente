@@ -80,11 +80,11 @@ def test_undated_proposal_is_useful_without_empty_timeline_warnings():
         app = AppTest.from_string(code).run()
         app.run()
     assert not app.exception and not app.warning
-    assert len(app.info) == 1 and "cronologia affidabile" in app.info[0].value
-    assert any(item.label == "Altri sviluppi" for item in app.expander)
+    assert not app.info
+    assert any("Cronologia delle notizie" in c.value for c in app.caption)
     assert all(event["event_date"] is None for event in result.data["undated_events"])
     assert not any("Risultato già disponibile" in c.value for c in app.caption)
-    assert any("Proposta documentata" in item.proto.body for item in app.get("html"))
+    assert any("Cronologia delle notizie" in c.value for c in app.caption)
     assert not app.get("vega_lite_chart")
     api.assert_not_called()
 
@@ -96,7 +96,8 @@ def test_strict_chronology_explains_undated_limit_once():
     with installed_fixture(module):
         app = AppTest.from_string(code).run()
     assert not app.exception
-    assert len(app.info) == 1 and "cronologia affidabile" in app.info[0].value
+    assert not app.info
+    assert any("Cronologia delle notizie" in c.value for c in app.caption)
     assert all(event["event_date"] is None for event in result.data["undated_events"])
     assert strict_chronology(result.topic)
 
@@ -231,14 +232,12 @@ def test_timeline_presentation_sorts_dates_leaves_undated_last_and_hides_source_
         app = AppTest.from_string(code).run()
     assert not app.exception and story.called
     chronological = story.call_args.kwargs["data"]["items"]
-    assert [item["iso"] for item in chronological] == ["2026-10-12", "2026-10-20"]
+    assert [item["iso"] for item in chronological] == ["2026-10-12", "2026-10-20", "2026-10-23"]
+    assert chronological[-1]["edition_fallback"] is True
+    assert chronological[-1]["date"].startswith("Edizione del ")
     assert all("[S1]" not in item["title"] + item["description"] for item in chronological)
-    # Gli eventi senza data non entrano nella cronologia: restano consultabili
-    # in una sezione distinta, senza inventare collocazioni temporali.
-    cards = [item.proto.body for item in app.get("html")
-             if '<article class="edi-event ' in item.proto.body]
-    assert len(cards) == 1 and 'undated"' in cards[0] and "<time " not in cards[0]
-    assert any(item.label == "Altri sviluppi" for item in app.expander)
+    # Lo sviluppo senza data viene collocato nell’edizione, senza inventare una data evento.
+    assert not any(item.label == "Altri sviluppi" for item in app.expander)
     assert any(h.value == "Sostegno" for h in app.subheader)
     assert all("[S1]" not in text.value for text in app.text)
     assert all("[S1]" not in caption.value for caption in app.caption)
@@ -287,11 +286,11 @@ render_visuals(Path({str(tmp_path)!r}), None)
         app.session_state["consent_choices"] = {("text", "text-v3"): True}
         app.text_input(key="knowledge_topic").set_value("Pesca").run()
         app.button(key="timeline_submit").click().run()
-        assert any(item.label == "Altri sviluppi" for item in app.expander)
+        assert any("Cronologia delle notizie" in c.value for c in app.caption)
         app.segmented_control(key="knowledge_kind").set_value("Mappa").run()
         assert not any(item.label == "Altri sviluppi" for item in app.expander)
         generate.assert_called_once()
         app.button(key="map_submit").click().run()
         app.segmented_control(key="knowledge_kind").set_value("Timeline").run()
-        assert not app.exception and any(item.label == "Altri sviluppi" for item in app.expander)
+        assert not app.exception and any("Cronologia delle notizie" in c.value for c in app.caption)
         assert generate.call_count == 2
