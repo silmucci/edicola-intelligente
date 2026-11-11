@@ -563,7 +563,7 @@ def test_owner_is_transaction_local_on_commit_rollback_and_user_switch(backend):
     actor[0] = B
     assert factory().load_profile().interests == []
     actor[0] = A
-    assert factory().load_profile().interests == ["Scuola"]
+    assert factory().load_profile().interests == ["scuola"]
     assert all(c.owner is None for c in db.connections)
     guc = [(sql, params) for sql, params in db.calls if "set_config('edicola.owner_id'" in sql]
     assert all("%s, true)" in sql for sql, _ in guc)
