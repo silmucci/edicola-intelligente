@@ -212,8 +212,6 @@ def prioritize_chat_hits(hits: list[dict], *, limit=64) -> list[dict]:
     o un unico PDF occupino tutto il contesto, ma permette di recuperarne altri
     passaggi se il corpus contiene poche alternative.
     """
-    if len(hits) <= 12:
-        return hits
     priority, deferred, by_edition, seen_articles = [], [], {}, set()
     for hit in hits:
         name = hit["filename"]
