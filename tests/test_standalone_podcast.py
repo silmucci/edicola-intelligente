@@ -330,3 +330,34 @@ def test_longform_audio_rejects_a_truncated_segment(tmp_path, monkeypatch):
                               client=tts, authorize_external=True,
                               cache_context={"strategy": "standalone-podcast-v5"})
     assert not list((tmp_path / "data/podcast_cache").glob("*.wav"))
+
+
+def test_podcast_respects_explicit_briefing_edition_filters(standalone):
+    from edicola.press_review import ReviewSelection
+    episode = generate(standalone, selection=ReviewSelection(filenames=("giornale-0.pdf",)))
+    assert [s["filename"] for s in episode.script.sources] == ["giornale-0.pdf"]
+    request = json.loads(standalone.text.models.generate_content.call_args.kwargs["contents"])
+    assert {source["filename"] for source in request["sources"]} == {"giornale-0.pdf"}
+
+
+def test_v4_cached_podcast_script_remains_readable(standalone):
+    from edicola.rag import Source
+    from edicola.podcast_draft import V4_VERSION, V4_INSTRUCTION, digest
+    src = Source("S1", "legacy-chunk", "vecchio.pdf", 2,
+                 "La Regione ha approvato un piano per il trasporto pubblico.", 0.)
+    claim = lambda text: {"text": text, "evidence": [{"source_id": "S1", "quote": src.text}]}
+    raw = json.dumps({"sufficient": True, "news": [{
+        "title": claim("Piano per il trasporto pubblico"), "summary": claim(src.text)}]})
+    topic = "trasporti"
+    expected = script_from_response(raw, [src], {"files": []}, topic,
+                                    max_words=350, max_chars=5000)
+    config, identity, model = {}, "corpus-prima", "text-model"
+    key = digest([V4_VERSION, identity, model, config, V4_INSTRUCTION, topic])
+    path = standalone.root / "data/podcast_cache/standalone/scripts" / (key + ".json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"version": V4_VERSION, "key": key, "topic": topic,
+        "source_identity": identity, "model": model, "config": config, "raw": raw,
+        "sources": [vars(src)], "coverage": {"files": []},
+        "script": vars(expected), "title": "Storico",
+        "created_at": "2026-11-10T10:00:00+00:00"}, ensure_ascii=False), encoding="utf-8")
+    assert load_draft(standalone.root, key).script == expected
