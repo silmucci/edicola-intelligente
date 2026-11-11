@@ -106,7 +106,7 @@ Nella modalità locale, si possono inserire nuovi PDF nella cartella `data/inbox
 
 **Importante:** preparare un PDF non significa averlo già indicizzato per la ricerca semantica. Per generare gli embedding mancanti è necessaria un'operazione separata e autorizzata.
 
-L'acquisizione automatica non è attiva nella modalità cloud basata su uno snapshot dei documenti. Per dettagli vedere [Acquisizione dei PDF](PDF_AUTO_INTAKE.md) e [Gestione dell'archivio](GESTIONE_ARCHIVIO.md).
+L'acquisizione automatica non è attiva nella modalità cloud basata su uno snapshot dei documenti. Il flusso locale è implementato in [`edicola/pdf_intake.py`](edicola/pdf_intake.py) e la preparazione dell'indice in [`edicola/indexing.py`](edicola/indexing.py).
 
 ## Esecuzione con Docker
 
@@ -118,17 +118,19 @@ Per l'avvio locale con Docker:
 docker compose up --build -d
 ```
 
-La configurazione con lo snapshot dei PDF già preparati segue una procedura diversa, descritta in [DOCKER.md](DOCKER.md). Docker non sostituisce Streamlit e non esegue modelli AI locali.
+Per lo snapshot dei PDF già preparati è disponibile anche [`compose.snapshot.yaml`](compose.snapshot.yaml). Docker non sostituisce Streamlit e non esegue modelli AI locali.
 
 ## Organizzazione del progetto
 
-- `app.py`: punto di ingresso dell'interfaccia.
-- `edicola/`: moduli per documenti, ricerca, generazione AI e sezioni dell'app.
-- `tests/`: test automatici.
-- `data/`: dati e documenti locali, secondo la configurazione utilizzata.
-- `deployment/`: file necessari alle modalità di pubblicazione previste.
-- `requirements.txt`: dipendenze Python.
-- `.env.example`: esempio delle variabili di configurazione.
+- `app.py`: avvio e navigazione dell'interfaccia Streamlit.
+- `edicola/ingestion.py`, `edicola/chunking.py`, `edicola/storage.py`: acquisizione, preparazione e registro dei PDF.
+- `edicola/archive.py`, `edicola/indexing.py`, `edicola/search.py`, `edicola/rag.py`: corpus, indicizzazione, ricerca e risposte con fonti.
+- `edicola/briefing.py`, `edicola/podcast.py`, `edicola/knowledge.py`: generazione dei prodotti editoriali.
+- `edicola/*_ui.py` e `edicola/*_components.py`: schermate e componenti di presentazione.
+- `edicola/cloud.py` e `deployment/`: gestione dello snapshot per la pubblicazione.
+- `tests/`: verifiche automatiche senza chiamate API reali.
+- `data/`: documenti e dati locali, secondo la modalità di esecuzione.
+- `requirements.txt` e `.env.example`: dipendenze e configurazione.
 
 ## Limiti e attenzione alle fonti
 
