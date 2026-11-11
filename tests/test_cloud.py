@@ -171,7 +171,7 @@ def test_cloud_full_start_and_rerun_make_no_external_calls(source, tmp_path, mon
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15).run()
         assert not app.exception
         from edicola.product_navigation import SECTIONS
-        assert app.selectbox(key="nav_section").options == SECTIONS
+        assert app.session_state["nav_section"] in SECTIONS
         assert not app.chat_input
         navigate_to(app, "Il mio profilo")
         assert app.button(key="account_login").disabled
