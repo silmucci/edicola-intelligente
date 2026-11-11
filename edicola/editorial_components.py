@@ -16,12 +16,12 @@ CARD_CSS = scoped_css("""
 @media(max-width:1024px){.cards{grid-template-columns:repeat(3,minmax(0,1fr))}.highlights{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.cards{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:6px 3px 18px}.card{flex:0 0 155px;scroll-snap-align:start;min-height:184px;box-sizing:border-box;padding:16px}.highlights .card{flex-basis:85%;min-height:160px;border:0}.card h3{font-size:18px}}
 @media(prefers-reduced-motion:reduce){.card{transition:none}.card:hover{transform:none}}
-.cards.products{grid-template-columns:repeat(8,minmax(0,1fr));gap:10px;padding-bottom:18px}
-.products .card{padding:14px 12px;gap:8px}.products .card svg{width:26px;height:26px;flex-shrink:0}
+.cards.products{grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;padding-bottom:18px}
+.products .card{padding:16px 14px;gap:9px}.products .card svg{width:26px;height:26px;flex-shrink:0}
 .products .card h3{font-size:17px}.products .card p{font-size:12px;line-height:1.5}.products .arrow{width:24px;height:24px;font-size:14px}
 .products .card.active{border-color:var(--edi-primary);background:var(--edi-surface);box-shadow:inset 0 0 0 1px var(--edi-primary)}
 .products .card.active svg{stroke:var(--edi-primary)}.products .card.active h3{color:var(--edi-primary)}
-@media(max-width:1280px){.cards.products{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:1280px){.cards.products{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:1024px){.cards.products{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:600px){.cards.products{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible;scroll-snap-type:none;gap:10px}.products .card{min-height:0;flex:none;padding:14px 12px}.products .card h3{font-size:17px}}
 @media(max-width:340px){.cards.products{grid-template-columns:minmax(0,1fr)}}
@@ -61,7 +61,8 @@ def render_products():
         if type(chosen) is int:
             old_order = ("home", "archive", "chat", "briefing", "timeline", "map", "podcast")
             chosen = old_order[chosen] if 0 <= chosen < len(old_order) else None
-        if isinstance(chosen, str) and chosen in {p["id"] for _, p in visible}:
+        allowed = {p["id"] for _, p in visible} | {"home", "timeline", "map"}
+        if isinstance(chosen, str) and chosen in allowed:
             open_product_id(chosen)
     cards_component(data={"mode": "products", "items": [{**p, "active": p["section"] == st.session_state.get("nav_section", PRODUCTS[0]["section"])} for _, p in visible]},
                     key="home_products", on_selected_change=selected)
