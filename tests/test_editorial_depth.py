@@ -8,8 +8,13 @@ from edicola.briefing import (
     provider_briefing_schema,
     validate_briefing,
 )
-from edicola.context_selection import EDITORIAL_DEPTH_INSTRUCTION
-from edicola.knowledge import MAP_INSTRUCTIONS, VERSION as KNOWLEDGE_VERSION
+from edicola.context_selection import (
+    COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION,
+)
+from edicola.knowledge import (
+    MAP_INSTRUCTIONS, TIMELINE_INSTRUCTIONS, SYSTEM as KNOWLEDGE_SYSTEM,
+    VERSION as KNOWLEDGE_VERSION,
+)
 from edicola.rag import CHAT_INSTRUCTION, Source, chat_response_schema, response_schema, validate_response
 
 
@@ -68,7 +73,12 @@ def test_shared_editorial_depth_is_document_based():
     assert EDITORIAL_DEPTH_INSTRUCTION in BRIEFING_INSTRUCTION
     assert EDITORIAL_DEPTH_INSTRUCTION in CHAT_INSTRUCTION
     assert "numero minimo" in MAP_INSTRUCTIONS
-    assert KNOWLEDGE_VERSION == "knowledge-v4"
+    assert KNOWLEDGE_VERSION == "knowledge-v5"
+    assert len(KNOWLEDGE_SYSTEM + MAP_INSTRUCTIONS + COMPARISON_INSTRUCTION
+               + EDITORIAL_DEPTH_INSTRUCTION) < 4400
+    assert len(KNOWLEDGE_SYSTEM + TIMELINE_INSTRUCTIONS + COMPARISON_INSTRUCTION
+               + EDITORIAL_DEPTH_INSTRUCTION) < 3500
+    assert len(CHAT_INSTRUCTION) < 4500
 
 
 def test_remote_briefing_schema_is_simple_but_local_validation_stays_strict():
@@ -94,7 +104,8 @@ def test_briefing_depth_guidance_and_cache_version():
     from edicola.editorial import cache_key, EditorialConfig
     from edicola.editorial_selection import Catalog
 
-    assert STRATEGY_VERSION == "briefing-v8"
+    assert STRATEGY_VERSION == "briefing-v9"
+    assert len(BRIEFING_INSTRUCTION) < 3000
     assert "cinque-otto frasi" in BRIEFING_INSTRUCTION
     assert "resta breve quando il materiale" in BRIEFING_INSTRUCTION
     assert "sequenza letterale contigua" in BRIEFING_INSTRUCTION
