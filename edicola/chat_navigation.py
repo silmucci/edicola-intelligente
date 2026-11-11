@@ -78,7 +78,8 @@ def render_navigation():
                         _conversation_button(entries[chat_id], chat_id, chat["id"])
 
         with st.popover("Opzioni chat", icon=":material/more_horiz:", use_container_width=True):
-            if st.session_state.get("rag_controls_for") != chat["id"]:
+            if (st.session_state.get("rag_controls_for") != chat["id"]
+                    or "rag_rename_input" not in st.session_state):
                 st.session_state["rag_rename_input"] = chat["title"]
                 st.session_state["rag_delete_confirm"] = False
                 st.session_state["rag_controls_for"] = chat["id"]
