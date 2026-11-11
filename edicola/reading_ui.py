@@ -8,7 +8,6 @@ import streamlit as st
 
 from edicola import editorial, knowledge, rag
 from edicola.knowledge_ui import render_knowledge
-from edicola.pdf_viewer import source_button
 from edicola.experience_ui import readable
 from edicola.archive_ui import diagnostics_enabled
 from edicola.consent_ui import authorize_action
@@ -19,7 +18,6 @@ from edicola.account_recovery import offer_guest_access
 from edicola.design import section_intro, friendly_error, reading_title
 from edicola import consent
 from edicola.identity import synchronize_identity
-from edicola.rag_context import source_editions
 from edicola import chat_sessions
 from edicola.chat_navigation import render_navigation
 from edicola.chat_sources import render_sources, citation_text, render_context_limit

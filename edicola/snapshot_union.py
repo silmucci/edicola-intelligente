@@ -22,7 +22,6 @@ from edicola.cloud import digest, validate_seed
 from edicola.embeddings import validate_vector
 from edicola.indexing import plan_index
 from edicola.maintenance_store import maintenance_lock
-from edicola.storage import open_registry
 from edicola.vectorstore import open_collection, stored_records
 
 TABLES = ("sources", "extractions", "chunk_sets", "chunks")

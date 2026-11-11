@@ -9,7 +9,7 @@ import streamlit as st
 
 from edicola.editorial_selection import read_catalog
 from edicola.embeddings import api_key
-from edicola.personalization import generate_personal_briefing, recommend
+from edicola.personalization import generate_personal_briefing
 from edicola.podcast import VOICES, MODEL, VERSION, STYLE, generate_podcast, wav_duration
 from edicola.podcast_text import PodcastError, list_products
 from edicola.profiles import (delete_profile, load_profile, personal_root, remove_passage,
@@ -17,8 +17,7 @@ from edicola.profiles import (delete_profile, load_profile, personal_root, remov
 from edicola.rag import RagError
 from edicola.pdf_viewer import source_button
 from edicola.settings import setting
-from edicola.archive_ui import edition_metadata
-from edicola.experience_ui import INTERESTS, excerpt, passage_card, readable
+from edicola.experience_ui import INTERESTS, excerpt, readable
 from edicola.identity import local_demo
 from edicola.consent_ui import authorize_action, privacy_controls
 from edicola.consent import perform
