@@ -269,7 +269,7 @@ def test_local_permission_is_rechecked_before_retry(prepared, monkeypatch):
 
 
 def test_console_snapshot_only_authorized_selection_without_overwriting_existing(prepared):
-    from edicola.maintenance_snapshot import prepare_snapshot
+    from edicola.archive_manager import prepare_snapshot
     root, _ = prepared
     with pytest.raises(PermissionError):
         prepare_snapshot(root, ["old.pdf"])
