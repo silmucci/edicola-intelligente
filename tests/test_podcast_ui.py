@@ -51,7 +51,7 @@ def test_two_consents_before_any_request_then_player_and_no_repeat(standalone):
 def test_old_text_consent_does_not_authorize_new_podcast_treatment(standalone):
     with patch('edicola.podcast_ui.generate_standalone_podcast') as generate:
         app = AppTest.from_string(ui_script(standalone.root)).run()
-        app.session_state['consent_choices'] = {('text', 'text-v3'): True, ('audio', 'audio-v1'): True}
+        app.session_state['consent_choices'] = {('text', 'text-v2'): True, ('audio', 'audio-v1'): True}
         app.button(key='podcast_submit').click().run()
         assert app.session_state['consent_pending']['purpose'] == 'text'
         app.button(key='consent_refuse').click().run()
