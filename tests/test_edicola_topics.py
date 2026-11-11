@@ -179,11 +179,18 @@ def test_v1_draft_and_audio_context_remain_compatible(standalone):
     saved = json.loads(path.read_text(encoding='utf-8'))
     saved['version'] = drafts.LEGACY_VERSION
     saved.pop('topic')
+    # Un copione v1 storico aveva un formato audio diverso dalla narrativa v5:
+    # costruire una cache v1 coerente, non limitarsi a cambiare il numero di versione.
+    from dataclasses import asdict
+    saved['script'] = asdict(drafts.script_from_response(
+        saved['raw'], [drafts.Source(**item) for item in saved['sources']],
+        saved['coverage'], max_words=drafts.MAX_WORDS, max_chars=drafts.MAX_CHARS))
     saved['key'] = drafts.digest([drafts.LEGACY_VERSION, saved['source_identity'], saved['model'], saved['config'], drafts.LEGACY_INSTRUCTION])
     old_path = path.with_name(saved['key']+'.json')
     old_path.write_text(json.dumps(saved), encoding='utf-8')
     old = drafts.load_draft(standalone.root, saved['key'])
-    assert old.script.text == episode.script.text
+    assert old.script.text == saved['script']['text'] and old.script.text
+    assert old.script.text != episode.script.text
     assert draft_context(old) == {'strategy': drafts.LEGACY_VERSION, 'corpus': old.source_identity, 'script_model': old.model, 'draft': old.key}
     restored = generate(standalone, retry_key=old.key)
     assert any(e.key == restored.key for e in list_episodes(standalone.root))
