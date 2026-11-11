@@ -26,7 +26,8 @@ def test_old_links_resolve_into_correct_new_sections():
     }
     for old, new in expected.items():
         assert navigation.destination(old) == new
-        assert navigation.active_product(old)["section"] == new if old not in {"home", "timeline", "map"} else navigation.destination(old) == new
+        if old not in {"home", "timeline", "map"}:
+            assert navigation.active_product(old)["section"] == new
 
 
 def test_old_section_restores_its_selected_subview():
