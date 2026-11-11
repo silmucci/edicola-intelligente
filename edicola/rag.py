@@ -16,6 +16,7 @@ from google.genai import errors, types
 
 from edicola.embeddings import EmbeddingError, api_key
 from edicola.indexing import ROOT
+from edicola.settings import setting
 from edicola.search import semantic_search
 from edicola.rag_context import source_editions, temporal_context, temporal_notice, retrieval_query, requested_publication_period
 from edicola.edition_dates import read_edition_metadata
@@ -353,45 +354,67 @@ def validate_chat_response(raw: str, sources: list[Source], *, request_id="-") -
     return RagResult("\n\n".join(paragraphs), sources, used, True)
 
 
-def generate_response(client, model: str, prompt: str, schema: dict, *, sleep=time.sleep, request_id="-", system_instruction=SYSTEM_INSTRUCTION) -> str:
-    for attempt in range(3):
-        logger.info("request_id=%s phase=generation model=%r event=start attempt=%d max_attempts=3",
-                    request_id, model, attempt + 1)
-        try:
-            from edicola.api_guard import require_permission
-            require_permission("text")
-            response = client.models.generate_content(
-                model=model, contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction, temperature=0,
-                    max_output_tokens=6144, response_mime_type="application/json",
-                    response_json_schema=schema, tools=[],
-                ),
-            )
-            # Un output troncato o bloccato non deve diventare una risposta visibile.
-            candidates = response.candidates or []
-            if not candidates or candidates[0].finish_reason != types.FinishReason.STOP:
-                logger.warning("request_id=%s phase=generation model=%r event=incomplete_output attempt=%d",
-                               request_id, model, attempt + 1)
-                return ""
-            logger.info("request_id=%s phase=generation model=%r event=success attempt=%d",
-                        request_id, model, attempt + 1)
-            return response.text or ""
-        except errors.APIError as exc:
-            code = exc.code
-            retryable = code in {408, 429, 500, 502, 503, 504}
-            http_status = code
-            message = f"Generazione Gemini: errore HTTP {code}. Verificare chiave, quota e disponibilità del modello."
-        except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
-            retryable = True
-            http_status = "-"
-            message = "Generazione Gemini non raggiungibile o timeout di connessione."
-        logger.warning("request_id=%s phase=generation model=%r event=error http_status=%s attempt=%d retry=%s",
-                       request_id, model, http_status, attempt + 1, retryable and attempt < 2)
-        if not retryable or attempt == 2:
+def generate_response(client, model: str, prompt: str, schema: dict, *, sleep=time.sleep,
+                      request_id="-", system_instruction=SYSTEM_INSTRUCTION,
+                      fallback_model: str | None = None) -> str:
+    """Genera una risposta verificabile, con fallback solo per errori server temporanei.
+
+    Il modello secondario riceve esattamente prompt, istruzioni e schema originali.
+    Non effettua nuove ricerche, non cambia i criteri di verifica delle citazioni.
+    """
+    alternate = (fallback_model or "").strip()
+    if alternate.lower() in {"off", "none", "disabled", "0"} or alternate == model:
+        alternate = ""
+    models = [(model, 2 if alternate else 3)]
+    if alternate:
+        models.append((alternate, 2))
+    for model_index, (active_model, attempts) in enumerate(models):
+        for attempt in range(attempts):
+            logger.info("request_id=%s phase=generation model=%r event=start attempt=%d max_attempts=%d",
+                        request_id, active_model, attempt + 1, attempts)
+            try:
+                from edicola.api_guard import require_permission
+                require_permission("text")
+                response = client.models.generate_content(
+                    model=active_model, contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction, temperature=0,
+                        max_output_tokens=6144, response_mime_type="application/json",
+                        response_json_schema=schema, tools=[],
+                    ),
+                )
+                candidates = response.candidates or []
+                if not candidates or candidates[0].finish_reason != types.FinishReason.STOP:
+                    logger.warning("request_id=%s phase=generation model=%r event=incomplete_output attempt=%d",
+                                   request_id, active_model, attempt + 1)
+                    return ""
+                logger.info("request_id=%s phase=generation model=%r event=success attempt=%d",
+                            request_id, active_model, attempt + 1)
+                return response.text or ""
+            except errors.APIError as exc:
+                code = exc.code
+                retryable = code in {408, 429, 500, 502, 503, 504}
+                failover = code in {500, 502, 503, 504} and model_index + 1 < len(models)
+                http_status = code
+                message = f"Generazione Gemini: errore HTTP {code}. Verificare chiave, quota e disponibilità del modello."
+            except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
+                retryable = True
+                failover = False
+                http_status = "-"
+                message = "Generazione Gemini non raggiungibile o timeout di connessione."
+            will_retry = retryable and attempt < attempts - 1
+            logger.warning("request_id=%s phase=generation model=%r event=error http_status=%s attempt=%d retry=%s",
+                           request_id, active_model, http_status, attempt + 1, will_retry)
+            if will_retry:
+                sleep(2 ** attempt)
+                continue
+            if failover:
+                logger.warning("request_id=%s phase=generation event=model_fallback from_model=%r to_model=%r",
+                               request_id, active_model, models[model_index + 1][0])
+                break
             raise RagError(message) from None
-        sleep(2 ** attempt)
     raise RagError("Tentativi Gemini esauriti.")
+
 
 
 def ask_question(
@@ -512,9 +535,10 @@ def ask_question(
                 timeout=30_000, retry_options=types.HttpRetryOptions(attempts=1)
             ))
             own_client = True
+        fallback_model = setting("GEMINI_RAG_FALLBACK_MODEL", "gemini-3.8-flash", root=root)
         raw = generate_response(client, model, prompt_for(sources),
                                 chat_response_schema(sources), request_id=request_id,
-                                system_instruction=CHAT_INSTRUCTION)
+                                system_instruction=CHAT_INSTRUCTION, fallback_model=fallback_model)
         result = validate_chat_response(raw, sources, request_id=request_id)
         result = replace(result, source_editions=editions, temporal_notice=temporal_notice(temporal), source_references=references, source_articles=article_details)
         # Il campionamento del contesto non è un errore e non richiede un avviso

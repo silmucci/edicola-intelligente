@@ -317,3 +317,91 @@ def test_chat_reports_safe_validation_reason_without_leaking_sources(bad_claim, 
 def test_chat_instruction_requires_literal_source_quote():
     assert "sequenza CONTIGUA" in SYSTEM_INSTRUCTION
     assert "non parafrasare" in SYSTEM_INSTRUCTION
+
+
+
+def test_generation_falls_back_after_repeated_503_and_keeps_identical_evidence_prompt(caplog):
+    client = Mock()
+    client.models.generate_content.side_effect = [
+        errors.ServerError(503, {"error": {"code": 503, "message": "private-key"}}),
+        errors.ServerError(503, {"error": {"code": 503, "message": "private-key"}}),
+        response(),
+    ]
+    sleep = Mock()
+    with caplog.at_level("INFO", logger="edicola.rag"):
+        raw = generate_response(client, "gemini-3.5-flash-lite",
+                                "test question and trusted PDFs", response_schema([SOURCE]),
+                                system_instruction=CHAT_INSTRUCTION,
+                                request_id="test-fallback", fallback_model="gemini-3.8-flash",
+                                sleep=sleep)
+    assert validate_response(raw, [SOURCE]).sufficient
+    assert [call.kwargs["model"] for call in client.models.generate_content.call_args_list] == [
+        "gemini-3.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"
+    ]
+    assert {call.kwargs["contents"] for call in client.models.generate_content.call_args_list} == {
+        "test question and trusted PDFs"
+    }
+    assert all(call.kwargs["config"].system_instruction == CHAT_INSTRUCTION
+               for call in client.models.generate_content.call_args_list)
+    sleep.assert_called_once_with(1)
+    assert "event=model_fallback" in caplog.text
+    assert "private-key" not in caplog.text
+    assert "test question and trusted PDFs" not in caplog.text
+
+
+@pytest.mark.parametrize("code", [403, 404, 429])
+def test_generation_does_not_switch_models_for_authorization_or_quota_errors(code):
+    client = Mock()
+    client.models.generate_content.side_effect = errors.ClientError(
+        code, {"error": {"code": code, "message": "private-key"}})
+    with pytest.raises(RagError):
+        generate_response(client, "primary", "prompt", response_schema([SOURCE]),
+                          fallback_model="secondary", sleep=Mock())
+    assert client.models.generate_content.call_count == (2 if code == 429 else 1)
+    assert all(call.kwargs["model"] == "primary"
+               for call in client.models.generate_content.call_args_list)
+
+
+def test_generation_fallback_is_not_recursive_or_duplicate():
+    client = Mock()
+    client.models.generate_content.side_effect = errors.ServerError(
+        503, {"error": {"code": 503, "message": "private-key"}})
+    with pytest.raises(RagError, match="503"):
+        generate_response(client, "primary", "prompt", response_schema([SOURCE]),
+                          fallback_model="secondary", sleep=Mock())
+    assert [call.kwargs["model"] for call in client.models.generate_content.call_args_list] == [
+        "primary", "primary", "secondary", "secondary"
+    ]
+    client.models.generate_content.reset_mock()
+    with pytest.raises(RagError, match="503"):
+        generate_response(client, "primary", "prompt", response_schema([SOURCE]),
+                          fallback_model="primary", sleep=Mock())
+    assert client.models.generate_content.call_count == 3
+
+
+def test_chat_uses_default_fallback_model_on_503(monkeypatch):
+    monkeypatch.delenv("GEMINI_RAG_FALLBACK_MODEL", raising=False)
+    client = Mock()
+    client.models.generate_content.side_effect = [
+        errors.ServerError(503, {"error": {"code": 503, "message": "private-key"}}),
+        errors.ServerError(503, {"error": {"code": 503, "message": "private-key"}}),
+        response(),
+    ]
+    with patch("edicola.rag.semantic_search", return_value=[HIT]):
+        result = ask_question("Che cosa ha approvato il consiglio?", authorize_external=True,
+                              client=client)
+    assert result.sufficient
+    assert client.models.generate_content.call_args.kwargs["model"] == "gemini-3.8-flash"
+    assert result.answer.endswith("[S1]")
+
+
+def test_chat_fallback_can_be_disabled_without_changing_primary(monkeypatch):
+    monkeypatch.setenv("GEMINI_RAG_FALLBACK_MODEL", "off")
+    client = Mock()
+    client.models.generate_content.side_effect = errors.ServerError(
+        503, {"error": {"code": 503, "message": "private-key"}})
+    with patch("edicola.rag.semantic_search", return_value=[HIT]):
+        with pytest.raises(RagError, match="503"):
+            ask_question("Che cosa ha approvato il consiglio?", authorize_external=True,
+                         client=client)
+    assert client.models.generate_content.call_count == 3
