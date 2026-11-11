@@ -11,7 +11,7 @@ import numpy as np  # Già dipendenza di ChromaDB.
 
 from edicola.archive import IndexChunk, read_active_chunks
 from edicola.vectorstore import open_collection, stored_records
-from edicola.corpus_versions import source_version
+from edicola.corpus_cache import source_version
 
 
 @dataclass
