@@ -117,10 +117,11 @@ def render_personalization_ui(root, archive=None):
                     st.error(friendly_error(exc))
                     return
     with tabs[1]:
+        # Briefing e podcast salvati restano leggibili anche senza un contesto PDF.
+        # source_button non espone link quando manca la fonte originale.
         if archive is None:
-            st.info("Le letture salvate sono disponibili quando l'archivio è aperto.")
-        else:
-            render_demo_readings(root, archive, profile, None)
+            st.caption("I collegamenti ai PDF sono disponibili quando l'archivio è aperto.")
+        render_demo_readings(root, archive, profile, None)
     with tabs[2]:
         privacy_controls(key="demo_privacy")
         with st.expander("Cancella i dati del profilo demo"):
