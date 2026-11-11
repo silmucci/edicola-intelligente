@@ -219,7 +219,7 @@ render_knowledge(result)
     if has_edges is True:
         assert app.segmented_control(key="knowledge_map_view")
     else:
-        assert any("Non emergono relazioni verificabili" in info.value for info in app.info)
+        assert not app.info
     assert all("chunk-1" not in text.value for text in app.text)
 
 
