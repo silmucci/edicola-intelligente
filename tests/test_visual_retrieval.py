@@ -80,3 +80,29 @@ def test_local_news_fallback_remains_undated_until_render():
     checked, _ = validate_timeline({"events": proposals}, [source], coverage)
     assert len(checked["undated_events"]) == 1
     assert checked["undated_events"][0]["event_date"] is None
+
+
+def test_newspaper_headline_links_person_to_documented_proposal():
+    from edicola.knowledge_fallback import graph_candidates
+    from edicola.knowledge_validation import validate_map
+    from edicola.rag import Source
+
+    passage = "Dissesto idrogeologico, D'Amico chiede un piano straordinario per la sicurezza del territorio."
+    source = Source("S1", "one", "8nov.pdf", 15, passage, .2)
+    candidates = graph_candidates({"nodes": [], "edges": []}, [source], "dissesto idrogeologico in Abruzzo")
+    graph, details = validate_map(candidates, [source])
+    assert graph["edges"], details
+    assert any(edge["label"].casefold() == "chiede" for edge in graph["edges"])
+
+
+def test_newspaper_headline_links_office_to_documented_meeting():
+    from edicola.knowledge_fallback import graph_candidates
+    from edicola.knowledge_validation import validate_map
+    from edicola.rag import Source
+
+    passage = "Dissesto idrogeologico, il presidente della Provincia convoca un vertice straordinario."
+    source = Source("S1", "two", "7nov.pdf", 19, passage, .2)
+    candidates = graph_candidates({"nodes": [], "edges": []}, [source], "dissesto idrogeologico")
+    graph, details = validate_map(candidates, [source])
+    assert graph["edges"], details
+    assert any(edge["label"].casefold() == "convoca" for edge in graph["edges"])
