@@ -24,7 +24,7 @@ def platform(context):
     with patch("edicola.ingestion.ingest_directory", return_value=context.documents), patch(
         "edicola.chunking.prepare_documents", return_value=[]
     ), patch("edicola.pdf_viewer.archive_context", return_value=context), patch(
-        "edicola.podcast_ui.list_products", return_value=[]
+        "edicola.podcast_ui.list_episodes", return_value=[]
     ), patch("edicola.personalization_ui.load_profile", return_value=Profile()):
         yield AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15).run()
 
