@@ -153,3 +153,30 @@ def test_independent_chat_uses_no_old_prompt_context_or_temporal_query(tmp_path)
     prompt = json.loads(client.models.generate_content.call_args.kwargs["contents"])
     assert "conversation_context" not in prompt
     assert prompt["temporal_context"]["recency_requested"] is False
+
+
+
+def test_month_scope_of_general_news_is_from_curated_metadata_only(tmp_path):
+    from edicola.rag_context import requested_publication_month
+    assert requested_publication_month("Quali notizie economiche di novembre 2026?") == "2026-11"
+    assert requested_publication_month("Quali notizie economiche?") is None
+    write_editions(tmp_path, {
+        "a.pdf": {"date": "2026-11-10"},
+        "b.pdf": {"date": "2026-10-31"},
+    })
+    client = Mock()
+    client.models.generate_content.return_value = response({
+        "sufficient": True, "claims": [{
+            "text": "La fonte riporta una previsione sui lavori.",
+            "evidence": [{"source_id": "S1", "quote": TEXT}]
+        }]
+    })
+    with patch("edicola.rag.semantic_search", return_value=[{
+        "id": SOURCE.chunk_id, "filename": SOURCE.filename,
+        "page": SOURCE.page, "text": TEXT, "distance": .1
+    }]) as search:
+        result = ask_question("Quali sono le principali notizie economiche di novembre 2026?",
+                              authorize_external=True, root=tmp_path, client=client)
+    assert result.sufficient
+    assert search.call_args.kwargs["filenames"] == {"a.pdf"}
+    assert search.call_args.kwargs["broad_news"] is True

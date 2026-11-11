@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from edicola.timeline_dates import publication_date
+from edicola.timeline_dates import publication_date, MONTHS
 from edicola.edition_dates import read_edition_metadata
 from edicola.chat_data import bounded_context
 
@@ -55,6 +55,15 @@ def temporal_notice(context):
         return "Non posso confermare aggiornamenti attuali con queste fonti." + detail + " La ricerca riguarda solo l’archivio, senza verifica in tempo reale."
     return (f"Consultazione dell’archivio al {context['reference_date']}: le fonti recuperate includono edizioni recenti, "
             "ma non costituiscono una verifica in tempo reale. Le date di pubblicazione sono indicate nelle fonti.")
+
+
+
+def requested_publication_month(question: str) -> str | None:
+    """Mese richiesto esplicitamente, per limitare solo le rassegne generali."""
+    match = re.search(r"\b(" + "|".join(MONTHS) + r")\s+(\d{4})\b", question, re.I)
+    if match is None:
+        return None
+    return f"{match[2]}-{MONTHS[match[1].lower()]:02d}"
 
 
 def retrieval_query(question, context):

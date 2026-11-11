@@ -233,7 +233,7 @@ def test_chat_general_news_can_find_economic_stories_without_word_economiche():
     ]
     value.chunks = [replace(chunk, text=text) for chunk, text in zip(value.chunks, texts)]
     by_id = {c.id: c for c in value.chunks}
-    similarities = [.52, .46, .05]
+    similarities = [.28, .46, .05]
 
     collection = Mock()
     def get(**kwargs):
@@ -253,7 +253,7 @@ def test_chat_general_news_can_find_economic_stories_without_word_economiche():
                                       embedder=embedder, corpus_wide=True, broad_news=False)
         broad = semantic_search(question, root=ROOT, authorize_external=True,
                                 embedder=embedder, corpus_wide=True, broad_news=True)
-    assert restrictive == []  # Riproduce la regressione segnalata con il vecchio filtro.
+    assert {hit["id"] for hit in restrictive} == {"c1"}
     assert {hit["id"] for hit in broad} == {"c0", "c1"}
     assert "c2" not in {hit["id"] for hit in broad}
 

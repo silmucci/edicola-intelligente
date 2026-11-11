@@ -33,6 +33,17 @@ def broad_news_question(question: str) -> bool:
     return not subjects or all(word.startswith(_BROAD_NEWS_TOPICS) for word in subjects)
 
 
+def broad_news_economic_score(text: str) -> int:
+    """Indicatori editoriali, non prove da mostrare all'utente."""
+    words = terms(text)
+    prefixes = (
+        "econom", "finanz", "industr", "aziend", "impres", "occupazion",
+        "lavor", "investiment", "produz", "prezz", "inflazion",
+        "commerc", "mercat", "banc", "commess", "stabiliment",
+    )
+    return sum(any(word.startswith(prefix) for prefix in prefixes) for word in words)
+
+
 def semantic_search(question: str, *, authorize_external=False, root: Path = ROOT, embedder=None,
                     top_k: int = 5, request_id: str | None = None, diversify_by_pdf=False,
                     corpus_wide=False, filenames=None, allowed_ids=None, broad_news=False) -> list[dict]:
@@ -99,11 +110,21 @@ def semantic_search(question: str, *, authorize_external=False, root: Path = ROO
             lexical = {hit["id"]: topic.score(hit["text"]) for hit in hits}
             lexical_floor = max(lexical.values(), default=0) * .55
             if broad_news and not topic.strict and not topic.location:
-                # Per una rassegna generale la parola della categoria può non
-                # comparire nel singolo articolo: usa la somiglianza semantica
-                # come criterio, senza abbassare la soglia di distanza.
-                relevant = [hit for hit in hits if hit["distance"] <= cutoff]
-                relevant.sort(key=lambda hit: (hit["distance"], hit["id"]))
+                # Le domande sulle notizie di un intero mese non coincidono con
+                # il testo di un singolo articolo. Per queste sole domande, una
+                # pertinenza lessicale al settore recupera anche passaggi che
+                # superano la consueta soglia vettoriale.
+                is_economy = any(word.startswith("econom") for word in topic.words)
+                broad_cutoff = min(.80, hits[0]["distance"] + .25) if hits else MAX_DISTANCE
+                relevance = {
+                    hit["id"]: broad_news_economic_score(hit["text"]) if is_economy else 0
+                    for hit in hits
+                }
+                relevant = [
+                    hit for hit in hits if hit["distance"] <= broad_cutoff or
+                    (is_economy and relevance[hit["id"]] > 0 and hit["distance"] <= .80)
+                ]
+                relevant.sort(key=lambda hit: (-relevance[hit["id"]], hit["distance"], hit["id"]))
             else:
                 relevant = [hit for hit in hits if topic.semantic_allowed(hit["text"], strong=hit["distance"] <= min(cutoff, .35)) and
                             (hit["distance"] <= cutoff or topic.focus and lexical[hit["id"]] > 0 and lexical[hit["id"]] >= lexical_floor)]

@@ -16,7 +16,8 @@ from google.genai import errors, types
 from edicola.embeddings import EmbeddingError, api_key
 from edicola.indexing import ROOT
 from edicola.search import semantic_search, broad_news_question
-from edicola.rag_context import source_editions, temporal_context, temporal_notice, retrieval_query
+from edicola.rag_context import source_editions, temporal_context, temporal_notice, retrieval_query, requested_publication_month
+from edicola.edition_dates import read_edition_metadata
 from edicola.chat_data import bounded_context
 from edicola.article_evidence import verified_article, duplicate_article_hit, evidence_source_record
 from edicola.context_selection import fit_context, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION
@@ -275,6 +276,7 @@ def ask_question(
         # Uno storico con risposte insufficienti non deve contaminare nuove domande.
         prompt_context = context if search_query != question else []
         temporal_question = search_query
+        broad_news = broad_news_question(question)
         search_options = {}
         if selection is not None:
             from edicola.editorial_selection import read_catalog
@@ -282,9 +284,22 @@ def ask_question(
             catalog = filter_catalog(read_catalog(root), selection)
             search_options["allowed_ids"] = {c.id for c in catalog.chunks}
             search_options["filenames"] = {c.metadata["filename"] for c in catalog.chunks}
+        if broad_news and selection is None:
+            month = requested_publication_month(question)
+            if month:
+                metadata = read_edition_metadata(root)
+                matching = {
+                    name for name, item in metadata.items()
+                    if isinstance(item, dict) and isinstance(item.get("date"), str)
+                    and item["date"].startswith(month + "-")
+                }
+                if matching:
+                    search_options["filenames"] = matching
+                    logger.info("request_id=%s phase=chat_month_filter editions=%d",
+                                request_id, len(matching))
         hits = semantic_search(search_query, authorize_external=True, root=root,
                                top_k=top_k, request_id=request_id, corpus_wide=True,
-                               broad_news=broad_news_question(question),
+                               broad_news=broad_news,
                                **({"embedder": embedder} if embedder is not None else {}), **search_options)
         sources = []
         references = {}
