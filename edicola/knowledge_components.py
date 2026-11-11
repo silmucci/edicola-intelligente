@@ -61,7 +61,10 @@ STORY_CSS = scoped_css("""
 .story{font-family:var(--edi-sans);color:var(--edi-ink);max-width:900px;margin:0;padding:0 0 0 32px;list-style:none;position:relative;box-sizing:border-box}
 .story:before{content:'';position:absolute;left:10px;top:22px;bottom:22px;width:3px;background:var(--edi-primary);border-radius:4px}
 .story li{position:relative;padding:0 0 22px}.story li:before{content:'';position:absolute;left:-28px;top:22px;width:13px;height:13px;border:3px solid white;box-shadow:0 0 0 2px var(--edi-primary);background:var(--edi-primary);border-radius:50%;box-sizing:border-box}
-.story article{background:var(--edi-paper);border:1px solid var(--edi-border);border-radius:var(--edi-radius);box-shadow:var(--edi-shadow);padding:20px}
+.story article{background:var(--edi-paper);border:1px solid var(--edi-border);border-radius:var(--edi-radius);box-shadow:var(--edi-shadow);padding:20px;transition:box-shadow .18s ease,border-color .18s ease}
+.story article:hover{box-shadow:0 8px 24px rgba(18,49,83,.10);border-color:var(--edi-primary)}
+.story li.edition:before{background:var(--edi-paper);border:3px solid var(--edi-primary);box-shadow:0 0 0 2px var(--edi-paper)}
+.story li.edition time{color:var(--edi-muted);font-weight:650}
 .story time{font-size:15px;font-weight:750;color:var(--edi-primary)}.story h3{font:700 23px/1.3 var(--edi-serif);margin:10px 0;overflow-wrap:anywhere}
 .story p{font-size:16px;line-height:1.6;margin:0 0 12px;white-space:pre-line;overflow-wrap:anywhere}.story .status{font-size:12px;color:var(--edi-muted);margin:6px 0}
 .story .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.story button{font:600 13px/1.5 var(--edi-sans);color:var(--edi-primary);background:var(--edi-surface);border:1px solid var(--edi-border);border-radius:10px;padding:10px 12px;cursor:pointer;text-align:left;overflow-wrap:anywhere;max-width:100%}
@@ -75,7 +78,7 @@ export default function({parentElement,data,setTriggerValue}){
  const root=parentElement.querySelector('.story');root.replaceChildren();
  const element=(tag,text)=>{const item=document.createElement(tag);if(text!==undefined)item.textContent=text;return item;};
  for(const [index,item] of data.items.entries()){
-  const row=element('li'),card=element('article'),time=element('time',item.date);time.dateTime=item.iso;card.append(time);
+  const row=element('li'),card=element('article'),time=element('time',item.date);row.classList.toggle('edition',!!item.edition_fallback);time.dateTime=item.iso;card.append(time);
   if(item.status) {const status=element('p',item.status);status.className='status';card.append(status);}
   card.append(element('h3',item.title),element('p',item.summary));
   if(item.summary!==item.description){const details=element('details');details.append(element('summary','Continua a leggere'),element('p',item.description));card.append(details);}
