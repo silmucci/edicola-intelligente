@@ -44,7 +44,7 @@ class PodcastAudioError(PodcastError):
 
 def generate_standalone_podcast(*, root=ROOT, voice=None, authorize_text=False, authorize_audio=False,
                                 text_check=None, audio_check=None, client=None, tts_client=None, retry_key=None,
-                                topic="", embedder=None):
+                                topic="", embedder=None, selection=None):
     if not authorize_text or not authorize_audio:
         raise PermissionDenied("Autorizzare preparazione del testo e sintesi audio prima di continuare.")
     text_check = text_check or (lambda: authorize_text)
@@ -56,7 +56,8 @@ def generate_standalone_podcast(*, root=ROOT, voice=None, authorize_text=False, 
         pass
     with permission_scope(text_check, "text"):
         try:
-            draft = prepare_draft(root, client=client, retry_key=retry_key, topic=topic, embedder=embedder)
+            draft = prepare_draft(root, client=client, retry_key=retry_key, topic=topic,
+                                  embedder=embedder, selection=selection)
         except (PermissionDenied, PodcastError):
             raise
         except (OSError, ValueError, RuntimeError):
