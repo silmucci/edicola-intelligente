@@ -68,7 +68,7 @@ def test_header_search_and_profile_are_local_actions(archive):
     with patch("edicola.editorial_selection.read_catalog", return_value=catalog), patch("edicola.rag.ask_question") as ask:
         app = AppTest.from_string(code, default_timeout=15).run()
         app.text_input(key="account_header_search").set_value("podcast").run()
-        app.button(key="header_product_6").click().run()
+        app.button(key="header_product_podcast").click().run()
         assert not app.exception and app.session_state["nav_section"] == "Podcast"
         app.button(key="header_profile").click().run()
         assert not app.exception and app.session_state["nav_section"] == "Il mio profilo"
@@ -76,17 +76,18 @@ def test_header_search_and_profile_are_local_actions(archive):
         ask.assert_not_called()
 
 
-def test_home_date_filter_and_highlights_use_real_archive_metadata(archive):
+def test_archive_date_filter_uses_real_edition_metadata(archive):
     root, _, _ = archive
     with patch("edicola.archive_ui.gallery_component") as gallery:
         app = AppTest.from_string(script(root), default_timeout=15).run()
-        options = app.selectbox(key="home_edition_date").options
+        options = app.selectbox(key="archive_edition_date").options
         assert options == ["Tutte le edizioni", "23 ottobre 2026", "21 ottobre 2026"]
-        app.selectbox(key="home_edition_date").set_value("23 ottobre 2026").run()
+        app.selectbox(key="archive_edition_date").set_value("23 ottobre 2026").run()
         assert not app.exception
-        home = next(c for c in reversed(gallery.call_args_list) if c.kwargs["key"] == "home_gallery")
-        assert len(home.kwargs["data"]["editions"]) == 1
-        assert home.kwargs["data"]["editions"][0]["title"] == "Edizione B"
+        archive_call = next(c for c in reversed(gallery.call_args_list)
+                            if c.kwargs["key"] == "archive_gallery")
+        assert len(archive_call.kwargs["data"]["editions"]) == 1
+        assert archive_call.kwargs["data"]["editions"][0]["title"] == "Edizione B"
 
 
 def test_archive_filter_opens_selected_edition_not_unfiltered_index(archive):
@@ -107,17 +108,18 @@ def test_archive_filter_opens_selected_edition_not_unfiltered_index(archive):
         assert app.session_state["archive_page"] == 1 and app.session_state["nav_section"] == "In edicola"
 
 
-def test_highlights_are_literal_excerpts_with_verified_labels(archive):
-    root, _, catalog = archive
-    # Override only the test adapter to inspect the actual component payload.
-    with patch("edicola.editorial_components.cards_component") as component:
-        app = AppTest.from_string(script(root), default_timeout=15).run()
-        assert not app.exception
-        highlights = next(c.kwargs["data"] for c in component.call_args_list if c.kwargs["key"] == "home_highlights")
-    for item in highlights["items"]:
-        excerpt = item["description"].strip("«»").removesuffix("…")
-        assert any(excerpt in c.text for c in catalog.chunks)
-        assert "Edizione" in item["title"] and ".pdf" not in item["title"]
+def test_current_feed_previews_remain_traceable_to_original_text(archive):
+    _, _, catalog = archive
+    from edicola.for_you import select_feed
+    news = select_feed(catalog)
+    assert news
+    for item in news:
+        original = " ".join(item.chunk.text.split())
+        if not item.verified_title:
+            assert item.title.removesuffix("…") in original
+        if item.preview:
+            assert item.preview.removesuffix("…") in original
+        assert item.chunk.metadata["filename"] in {"a.pdf", "b.pdf"}
 
 
 def test_tokens_theme_contrast_and_styles_are_local_and_scoped():
@@ -150,13 +152,13 @@ const root=new Element('nav');
 const document={createElement:t=>new Element(t),createElementNS:(_,t)=>new Element(t)};
 const parentElement={querySelector:()=>root};const events=[];
 const run=COMPONENT;
-run({parentElement,data:{mode:'products',items:[{title:'<img onerror=x>',description:'Testo originale',icon:'paper',active:true}]},setTriggerValue:(...args)=>events.push(args)});
+run({parentElement,data:{mode:'products',items:[{id:'chat',title:'<img onerror=x>',description:'Testo originale',icon:'paper',active:true}]},setTriggerValue:(...args)=>events.push(args)});
 root.children[0].onclick();
 console.log(JSON.stringify({tag:root.children[0].tag,type:root.children[0].type,title:nodes.find(n=>n.tag==='h3').textContent,events}));
 '''.replace("COMPONENT", CARD_JS.replace("export default function", "function"))
     result = subprocess.run([node, "--input-type=module", "-e", harness], capture_output=True, text=True, check=True)
     data = json.loads(result.stdout)
-    assert data == dict(tag="button", type="button", title="<img onerror=x>", events=[["selected", 0]])
+    assert data == dict(tag="button", type="button", title="<img onerror=x>", events=[["selected", "chat"]])
 
 
 def test_section_heading_escapes_untrusted_text():
