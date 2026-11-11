@@ -265,6 +265,27 @@ def test_new_podcast_targets_four_to_five_minutes_without_padding():
     assert "titoli recitati" in INSTRUCTION
 
 
+
+def test_v5_cached_draft_remains_readable(standalone):
+    from edicola.podcast_draft import V5_VERSION, V5_INSTRUCTION, digest
+    from edicola.standalone_podcast import draft_context
+
+    episode = generate(standalone)
+    current = next((standalone.root / "data/podcast_cache/standalone/scripts").glob("*.json"))
+    saved = json.loads(current.read_text(encoding="utf-8"))
+    historical_key = digest([V5_VERSION, saved["source_identity"], saved["model"],
+                             saved["config"], V5_INSTRUCTION, saved["topic"]])
+    saved["version"] = V5_VERSION
+    saved["key"] = historical_key
+    historical = current.with_name(historical_key + ".json")
+    historical.write_text(json.dumps(saved, ensure_ascii=False), encoding="utf-8")
+
+    previous = load_draft(standalone.root, historical_key)
+    assert previous.script.text == episode.script.text
+    assert draft_context(previous)["topic"] == ""
+
+
+
 def test_previous_podcast_strategy_retains_topic_audio_identity():
     from edicola.standalone_podcast import draft_context
     from edicola.podcast_draft import V3_VERSION, V4_VERSION, V5_VERSION, VERSION
