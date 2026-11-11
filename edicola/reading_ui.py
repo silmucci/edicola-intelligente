@@ -245,7 +245,7 @@ def render_visuals(root, context, *, kind=None):
         old_key = "knowledge_topic_timeline" if kind == "Timeline" else "knowledge_topic_map"
         if "knowledge_topic" not in st.session_state and isinstance(st.session_state.get(old_key), str):
             st.session_state["knowledge_topic"] = st.session_state[old_key]
-        st.caption("Eventi in ordine cronologico, con date verificate." if kind == "Timeline"
+        st.caption("Notizie in ordine temporale: data dell’evento o dell’edizione, sempre distinguibili." if kind == "Timeline"
                    else "Soggetti, concetti e relazioni documentate dalle fonti.")
     else:
         section_intro("Timeline" if kind == "Timeline" else "Mappe concettuali",
@@ -256,8 +256,8 @@ def render_visuals(root, context, *, kind=None):
     if previous is not None:
         results[previous.kind] = previous
     versions = st.session_state.setdefault("knowledge_result_versions", {})
-    strategies = {"map": (knowledge.MAP_VERSION, knowledge.RELEVANCE_VERSION),
-                  "timeline": (knowledge.TIMELINE_CONTENT_VERSION, knowledge.TIMELINE_VERSION, knowledge.RELEVANCE_VERSION)}
+    strategies = {"map": (knowledge.VERSION, knowledge.MAP_VERSION, knowledge.RELEVANCE_VERSION, knowledge.VISUAL_RETRIEVAL_VERSION),
+                  "timeline": (knowledge.VERSION, knowledge.TIMELINE_CONTENT_VERSION, knowledge.TIMELINE_VERSION, knowledge.RELEVANCE_VERSION, knowledge.VISUAL_RETRIEVAL_VERSION)}
     topic_key = "knowledge_topic" if standalone else "knowledge_topic_" + result_kind
     topic = st.text_input("Quale tema vuoi esplorare?", max_chars=500, key=topic_key, placeholder="Un argomento, un luogo, una questione")
     submitted = st.button("Genera timeline" if kind == "Timeline" else "Genera mappa concettuale",
