@@ -9,8 +9,10 @@
   compatibile con v1 e ascolti storici; retry audio senza retrieval/testo.
 
 - Podcast autonomo: il comando generale non dipende da letture o cache Briefing.
-  Riusa selezione bilanciata e validatori, con copione breve in cache Podcast
-  separata, senza scritture nel DB editoriale. Consensi testo/audio prima degli
+  Riusa selezione bilanciata, filtri espliciti del Briefing e validatori, con
+  copione narrativo fino a circa 4-5 minuti quando le fonti lo sostengono, in
+  cache Podcast separata e senza scritture nel DB editoriale. Il TTS v5 suddivide
+  il testo in segmenti completi e salva un unico WAV solo se tutti sono validi. Consensi testo/audio prima degli
   invii, verifica aggiornata per ogni SDK, nessun retry automatico. Conservare
   il copione se il TTS fallisce e ritentare solo l'audio su azione esplicita.
   Il percorso estrattivo da Briefing rimane per storici e letture personali.
