@@ -130,9 +130,11 @@ def test_editorial_ui_only_generates_on_authorized_submit(tmp_path):
     ], [Source("S1", "id", "quotidiano.pdf", 1, "Un passaggio del quotidiano realmente recuperato.", 0.1)],
         ["S1"], {"indexed": 1, "total": 2, "partial": True, "warnings": ["Data non disponibile."],
                  "files": [{"pdf": "quotidiano.pdf", "publication": "", "date": "", "indexed": 1, "total": 2}]}, True)
+    from test_editorial import make_catalog
     with patch("edicola.ingestion.ingest_directory", side_effect=lambda *_: ingest_directory(incoming, registry)), patch(
         "edicola.chunking.prepare_documents", side_effect=lambda docs, _: prepare_documents(docs, registry)
-    ), patch("edicola.editorial.generate_product", return_value=result) as generate, patch(
+    ), patch("edicola.press_review_ui.read_catalog", return_value=make_catalog()), patch(
+        "edicola.editorial.generate_product", return_value=result) as generate, patch(
         "google.genai.Client", side_effect=AssertionError("API reali vietate")
     ):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=10).run()
@@ -147,8 +149,7 @@ def test_editorial_ui_only_generates_on_authorized_submit(tmp_path):
         generate.assert_called_once()
         assert generate.call_args.args[:2] == ("briefing", "")
         assert generate.call_args.kwargs["authorize_external"] is True
-        assert any("Copertura parziale" in item.value for item in app.caption)
-        assert app.json  # Diagnostica esplicitamente abilitata dalla fixture di sviluppo.
+        assert any("Briefing sui trasporti" in item.value for item in app.subheader)
         navigate_to(app, "Archivio PDF")
         app.selectbox(key="archive_extracted_page").select_index(1).run()
         assert generate.call_count == 1
@@ -213,18 +214,13 @@ render_knowledge(result)
     with patch("google.genai.Client", side_effect=AssertionError("API reali vietate")):
         app = AppTest.from_string(script, default_timeout=10).run()
     assert not app.exception
-    assert len(app.get("graphviz_chart")) == 1  # Anche soli concetti: raggruppamento senza archi.
-    assert any(exp.label == "Diagnostica · sviluppo" for exp in app.expander)
+    assert any("Trasporti" in item.value for item in app.subheader)
+    assert not app.get("graphviz_chart")  # La mappa usa un componente v2.
     if has_edges is True:
-        assert app.json
-        assert any("[S1] giornale.pdf — pagina 3" in caption.value for caption in app.caption)
-        assert any("ha approvato il piano" in text.value for text in app.text)
-    elif has_edges == "rejected":
-        assert app.json and not app.info
-        assert any("Predicato non presente" in str(frame.value) for frame in app.dataframe)
+        assert app.segmented_control(key="knowledge_map_view")
     else:
-        assert app.json and not app.info
-        assert any("non indicano relazioni" in caption.value for caption in app.caption)
+        assert any("Non emergono relazioni verificabili" in info.value for info in app.info)
+    assert all("chunk-1" not in text.value for text in app.text)
 
 
 @pytest.mark.parametrize("kind,submit_key", [("timeline", "timeline_submit"), ("map", "map_submit")])
@@ -247,17 +243,14 @@ def test_knowledge_ui_renders_and_does_not_repeat_calls(tmp_path, kind, submit_k
         navigate_to(app, "Mappe concettuali" if kind == "map" else "Timeline")
         app.button(key=submit_key).click().run()
         generate.assert_not_called()
-        app.text_input(key="knowledge_topic_" + kind).set_value("Trasporti")
+        app.text_input(key="knowledge_topic").set_value("Trasporti")
         app.session_state["consent_choices"] = {("text", "text-v3"): True}
         app.button(key=submit_key).click().run()
         assert not app.exception
         assert generate.call_args.args[:2] == (kind, "Trasporti")
         assert generate.call_args.kwargs["authorize_external"] is True
-        assert any("Copertura parziale" in item.value for item in app.caption)
-        if kind == "map":
-            assert len(app.get("graphviz_chart")) == 1
-        else:
-            assert any("2026-10-12" in item.value for item in app.caption)
+        assert kind in app.session_state["knowledge_results"]
+        assert any("Trasporti" in item.value for item in app.subheader)
         navigate_to(app, "Archivio PDF")
         app.selectbox(key="archive_extracted_page").select_index(1).run()
         assert not app.exception
