@@ -21,6 +21,7 @@ from edicola.embeddings import DIMENSIONS, MODEL, GeminiEmbedder, api_key
 from edicola.evaluation_data import (CRITERIA, RUBRICS, SCALE, dataset_template, digest, read_json,
     snapshot, validate_dataset, validate_snapshot, write_json)
 from edicola.evaluation_metrics import rag_assessment, score_run, sources_from_hits
+from edicola.evaluation_judge import evaluate_run, judge_rows
 from edicola.evaluation_report import REVIEW_FIELDS, read_reviews, render_report, review_rows, write_csv
 from edicola.indexing import ROOT
 from edicola.personalization import recommend
@@ -181,10 +182,12 @@ def personalization_experiment(frozen, profiles_data):
     return {"snapshot_id": frozen["snapshot_id"], "origin": frozen["origin"], "provenance": provenance(), "records": records}, rows
 
 
-def report_run(out, dataset, frozen, run, reviews=None):
+def report_run(out, dataset, frozen, run, reviews=None, judge=None):
     warnings = validate_dataset(dataset, frozen)
     catalog = validate_snapshot(frozen)
     rows = score_run(dataset, frozen, run, catalog)
+    if judge is not None:
+        rows.extend(judge_rows(judge, dataset, frozen, run))
     run_id = digest(run)
     items = [f"{r['question_id']}#{r['repeat']}" for r in run["records"]]
     if reviews:
@@ -205,7 +208,7 @@ def new_directory(path):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Valutazione locale del prototipo; API solo nel sottocomando benchmark autorizzato.")
+    parser = argparse.ArgumentParser(description="Valutazione locale del prototipo; API solo nei comandi benchmark e judge autorizzati.")
     parser.add_argument("--root", type=Path, default=ROOT)
     commands = parser.add_subparsers(dest="command", required=True)
     export = commands.add_parser("snapshot", help="Esporta solo chunk già indicizzati e metadati, senza API.")
@@ -228,6 +231,15 @@ def main(argv=None):
         if name == "score":
             p.add_argument("--run", type=Path, required=True)
             p.add_argument("--reviews", type=Path)
+            p.add_argument("--judge-results", type=Path, help="Giudizi LLM precedentemente eseguiti; ricalcolo offline.")
+    judge = commands.add_parser("judge", help="Valuta una run RAG con Ground Truth e LLM giudice; solo su autorizzazione.")
+    judge.add_argument("--snapshot", type=Path, required=True)
+    judge.add_argument("--dataset", type=Path, required=True)
+    judge.add_argument("--run", type=Path, required=True)
+    judge.add_argument("--out", type=Path, required=True)
+    judge.add_argument("--model", required=True, help="Modello giudice effettivamente abilitato nel proprio progetto.")
+    judge.add_argument("--limit", type=int, default=20)
+    judge.add_argument("--authorize-external", action="store_true")
     personal = commands.add_parser("personalization", help="Esperimento locale, senza API e senza modificare profili salvati.")
     personal.add_argument("--snapshot", type=Path, required=True)
     personal.add_argument("--profiles", type=Path, required=True)
@@ -276,8 +288,23 @@ def main(argv=None):
                 else:
                     out = args.out
                     run = read_json(args.run)
-                report_run(out, dataset, frozen, run, getattr(args, "reviews", None))
+                report_run(out, dataset, frozen, run, getattr(args, "reviews", None),
+                           read_json(args.judge_results) if args.command == "score" and args.judge_results else None)
                 print(f"Report: {out / 'report.md'}")
+        elif args.command == "judge":
+            if not args.authorize_external:
+                raise ValueError("Usare --authorize-external per autorizzare il giudice.")
+            frozen, dataset, run = (read_json(args.snapshot), read_json(args.dataset),
+                                    read_json(args.run))
+            validate_dataset(dataset, frozen)
+            score_run(dataset, frozen, run, validate_snapshot(frozen))
+            out = new_directory(args.out)
+            judged = evaluate_run(dataset, frozen, run, root=args.root, model=args.model,
+                                  limit=args.limit, authorize_external=True)
+            write_json(out / "judge.json", judged)
+            report_run(out, dataset, frozen, run, judge=judged)
+            counts = Counter(item["status"] for item in judged["records"])
+            print(f"Giudice: {out / 'judge.json'}; esiti: {dict(counts)}")
         elif args.command == "personalization":
             frozen = read_json(args.snapshot)
             experiment, rows = personalization_experiment(frozen, read_json(args.profiles))

@@ -365,3 +365,165 @@ def test_cli_local_profile_comparison_without_persisting_profiles(tmp_path, stud
     assert main(["personalization", "--snapshot", str(frozen), "--profiles", str(profiles), "--out", str(tmp_path / "comparison")]) == 0
     assert read_json(tmp_path / "comparison/personalization.json")["origin"] == "simulated"
     assert not (tmp_path / "data/profiles.sqlite3").exists()
+
+
+
+def judge_payload(sources):
+    quote = sources[0].text
+    return {criterion: {"score": ("4" if criterion != "completeness" else "3"),
+                        "reason": "La risposta è sostenuta dalle prove documentate.",
+                        "source_id": sources[0].id if criterion in ("faithfulness", "citation_correctness") else "",
+                        "quote": quote if criterion in ("faithfulness", "citation_correctness") else ""}
+            for criterion in ("faithfulness", "completeness", "answer_relevance", "citation_correctness")}
+
+
+def test_ground_truth_template_accepts_future_reference_without_inventing_scores(study):
+    from edicola.evaluation_data import dataset_template
+    from edicola.evaluation_judge import CRITERIA
+    _, frozen, dataset = study
+    template = dataset_template(frozen["snapshot_id"])
+    assert template["questions"][0]["reference_answer"] == ""
+    assert template["questions"][0]["expected_points"] == []
+    assert all(name for name in CRITERIA)
+    dataset["questions"][0]["reference_answer"] = "Il Comune ha approvato le nuove corse."
+    assert validate_dataset(dataset, frozen) == []
+    dataset["questions"][0]["reference_answer"] = 7
+    with pytest.raises(ValueError, match="risposta di riferimento"):
+        validate_dataset(dataset, frozen)
+
+
+def test_llm_judge_compares_human_ground_truth_with_verified_response(tmp_path, study):
+    from edicola.evaluation_judge import evaluate_run, judge_rows
+    catalog, frozen, dataset = study
+    dataset["questions"][0]["reference_answer"] = "Testo di riferimento compilato manualmente."
+    run = run_mock(tmp_path, study)
+    client = Mock()
+    def reply(**kwargs):
+        payload = json.loads(kwargs["contents"])
+        assert payload["human_ground_truth"]["expected_points"] == dataset["questions"][0]["expected_points"]
+        assert payload["human_ground_truth"]["reference_answer"] == dataset["questions"][0]["reference_answer"]
+        assert payload["model_answer"] and payload["retrieved_sources"]
+        assert kwargs["config"].temperature == 0
+        assert kwargs["model"] == "judge-model"
+        sources = sources_from_hits(run["records"][0]["retrieved"])
+        return SimpleNamespace(
+            text=json.dumps(judge_payload(sources)),
+            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    client.models.generate_content.side_effect = reply
+    judged = evaluate_run(dataset, frozen, run, root=tmp_path, client=client,
+                          model="judge-model", limit=1, authorize_external=True)
+    assert client.models.generate_content.call_count == 1
+    assert judged["records"][0]["status"] == "judged"
+    assert judged["records"][0]["grades"]["completeness"]["score"] == 3
+    assert judged["dataset_id"] == digest(dataset)
+    rows = judge_rows(judged, dataset, frozen, run)
+    assert len(rows) == 4
+    assert next(x for x in rows if x["metric"] == "llm_judge:rag:faithfulness")["value"] == 4
+    out = tmp_path / "judge-report"
+    report_run(out, dataset, frozen, run, judge=judged)
+    csv_text = (out / "metrics.csv").read_text(encoding="utf-8-sig")
+    assert "llm_judge:rag:completeness" in csv_text
+    assert "human:rag:completeness" not in csv_text
+    assert "non ground truth umana" in csv_text
+    assert "non sostituiscono il riferimento umano" in (out / "report.md").read_text(encoding="utf-8")
+
+
+def test_llm_judge_missing_ground_truth_remains_unscored(tmp_path, study):
+    from edicola.evaluation_judge import evaluate_run, judge_rows
+    _, frozen, dataset = study
+    dataset["questions"][0]["expected_points"] = []
+    run = run_mock(tmp_path, study)
+    client = Mock()
+    judged = evaluate_run(dataset, frozen, run, root=tmp_path, client=client,
+                          model="judge-model", authorize_external=True)
+    assert judged["records"][0]["status"] == "missing_ground_truth"
+    client.models.generate_content.assert_not_called()
+    rows = judge_rows(judged, dataset, frozen, run)
+    assert len(rows) == 4 and all(row["value"] is None for row in rows)
+    out = tmp_path / "empty-judge"
+    report_run(out, dataset, frozen, run, judge=judged)
+    assert "llm_judge:rag:completeness" in (out / "summary.csv").read_text(encoding="utf-8-sig")
+
+
+def test_llm_judge_invalid_source_quote_is_rejected(tmp_path, study):
+    from edicola.evaluation_judge import evaluate_run, judge_rows
+    _, frozen, dataset = study
+    run = run_mock(tmp_path, study)
+    client = Mock()
+    invalid = judge_payload(sources_from_hits(run["records"][0]["retrieved"]))
+    invalid["faithfulness"]["quote"] = "Citazione fittizia non presente nelle fonti."
+    client.models.generate_content.return_value = SimpleNamespace(
+        text=json.dumps(invalid),
+        candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    judged = evaluate_run(dataset, frozen, run, root=tmp_path, client=client,
+                          model="judge-model", authorize_external=True)
+    assert judged["records"][0]["status"] == "invalid_judgment"
+    assert not judged["records"][0]["grades"]
+    assert all(x["value"] is None for x in judge_rows(judged, dataset, frozen, run))
+
+
+def test_llm_judge_handles_api_errors_without_exposing_private_payload(tmp_path, study):
+    from edicola.evaluation_judge import evaluate_run
+    _, frozen, dataset = study
+    run = run_mock(tmp_path, study)
+    client = Mock()
+    client.models.generate_content.side_effect = errors.ClientError(
+        429, {"error": {"code": 429, "message": "private-key"}})
+    judged = evaluate_run(dataset, frozen, run, root=tmp_path, client=client,
+                          model="judge-model", authorize_external=True)
+    assert judged["records"][0]["status"] == "api_error"
+    assert judged["records"][0]["http_status"] == 429
+    assert "private-key" not in json.dumps(judged, ensure_ascii=False)
+    assert client.models.generate_content.call_count == 1
+
+
+def test_llm_judge_requires_authorization_and_cannot_use_retrieval_only_run(tmp_path, study):
+    from edicola.evaluation_judge import evaluate_run
+    _, frozen, dataset = study
+    run = run_mock(tmp_path, study)
+    client = Mock()
+    with pytest.raises(ValueError, match="authorize"):
+        evaluate_run(dataset, frozen, run, root=tmp_path, client=client, model="judge")
+    run["mode"] = "retrieval"
+    with pytest.raises(ValueError, match="RAG"):
+        evaluate_run(dataset, frozen, run, root=tmp_path, client=client,
+                     model="judge", authorize_external=True)
+    client.models.generate_content.assert_not_called()
+
+
+def test_llm_judge_import_cannot_attach_to_different_dataset_or_fabricate_grade(tmp_path, study):
+    from edicola.evaluation_judge import evaluate_run, judge_rows
+    _, frozen, dataset = study
+    run = run_mock(tmp_path, study)
+    client = Mock()
+    client.models.generate_content.return_value = SimpleNamespace(
+        text=json.dumps(judge_payload(sources_from_hits(run["records"][0]["retrieved"]))),
+        candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    result = evaluate_run(dataset, frozen, run, root=tmp_path, client=client,
+                          model="judge-model", authorize_external=True)
+    altered = copy.deepcopy(result)
+    altered["dataset_id"] = "tampered"
+    with pytest.raises(ValueError, match="collegati"):
+        judge_rows(altered, dataset, frozen, run)
+    altered = copy.deepcopy(result)
+    altered["records"][0]["grades"]["faithfulness"]["score"] = 5
+    with pytest.raises(ValueError, match="fuori scala"):
+        judge_rows(altered, dataset, frozen, run)
+    altered = copy.deepcopy(result)
+    altered["records"][0]["grades"]["faithfulness"]["source_id"] = "S999"
+    with pytest.raises(ValueError, match="importata"):
+        judge_rows(altered, dataset, frozen, run)
+
+
+def test_evaluation_judge_cli_requires_permission_before_any_api_or_output(tmp_path, study):
+    frozen, dataset = study[1:]
+    run = run_mock(tmp_path, study)
+    snapshot_path, data_path, run_path = (tmp_path / name for name in
+                                          ("snapshot.json", "dataset.json", "run.json"))
+    for path, value in ((snapshot_path, frozen), (data_path, dataset), (run_path, run)):
+        write_json(path, value)
+    out = tmp_path / "judge-blocked"
+    args = ["judge", "--snapshot", str(snapshot_path), "--dataset", str(data_path),
+            "--run", str(run_path), "--out", str(out), "--model", "configured-judge"]
+    assert main(args) == 1
+    assert not out.exists()

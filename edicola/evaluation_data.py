@@ -46,7 +46,7 @@ def dataset_template(snapshot_id=""):
     return {"schema_version": 1, "snapshot_id": snapshot_id, "notes": "Compilare manualmente. Nessuna risposta o rilevanza è predefinita.",
             "questions": [{"id": "q01", "question": "", "annotator": "", "answerability": None,
                 "judgments_complete": False, "relevant_chunks": [], "nonrelevant_chunk_ids": [],
-                "expected_points": [], "annotation_notes": ""}]}
+                "expected_points": [], "reference_answer": "", "annotation_notes": ""}]}
 
 
 def validate_dataset(data, frozen):
@@ -88,6 +88,8 @@ def validate_dataset(data, frozen):
             raise ValueError(f"{identity}: indicare l'annotatore dei giudizi manuali.")
         if not isinstance(q.get("expected_points"), list) or any(not isinstance(p, str) or not p.strip() for p in q["expected_points"]):
             raise ValueError(f"{identity}: punti attesi non validi.")
+        if not isinstance(q.get("reference_answer", ""), str):
+            raise ValueError(f"{identity}: risposta di riferimento non valida.")
         if not q["judgments_complete"]:
             warnings.append(f"{identity}: giudizi incompleti; recall non calcolabile e risultati non giudicati non sono negativi.")
         if q["answerability"] is None:

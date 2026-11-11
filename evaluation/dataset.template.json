@@ -12,6 +12,7 @@
       "relevant_chunks": [],
       "nonrelevant_chunk_ids": [],
       "expected_points": [],
+      "reference_answer": "",
       "annotation_notes": ""
     }
   ]
