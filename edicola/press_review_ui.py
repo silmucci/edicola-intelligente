@@ -50,7 +50,9 @@ def render_press_review(catalog, context, metadata):
         with st.container(border=True):
             st.caption((info.get("title") or "Documento dell’archivio") + " · " + (info.get("date") or "Data non disponibile"))
             st.markdown("**" + readable(title if trusted_title else "Dalle notizie del quotidiano") + "**")
-            st.markdown(readable(excerpt(chunk.text, 340)))
+            # Una porzione più ampia del passaggio originale aiuta a capire
+            # l'articolo senza produrre una sintesi AI non verificata.
+            st.markdown(readable(excerpt(chunk.text, 520)))
             source_button(chunk.metadata["filename"], chunk.metadata["page"], context=context, chunk_id=chunk.id,
                           key=f"press_article_{index}", label="Leggi l’articolo")
             with st.popover("Leggi la fonte", key=f"press_original_{index}"):
