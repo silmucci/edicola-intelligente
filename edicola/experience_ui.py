@@ -122,23 +122,23 @@ def recent_editions(context, limit=3):
 
 
 def render_home(root, context):
-    identity.synchronize_identity()
-    metadata = edition_metadata(root, context.documents)
-    try:
-        catalog = read_catalog(root)
-    except Exception:
-        st.info("Le letture selezionate saranno disponibili quando l’archivio sarà pronto.")
-        return
-    from edicola.press_review_ui import render_press_review
-    render_press_review(catalog, context, metadata)
+    """Compatibilità: vecchi invii alla Rassegna aprono la vista completa."""
+    st.session_state["for_you_mode"] = "Tutte le notizie"
+    render_for_you(root, context)
 
 def render_for_you(root, context):
     """Feed compatto: titoli verificati, preferenze e fonti originali."""
     identity.synchronize_identity()
-    section_intro("Per te", "Le notizie delle tue edizioni, in un colpo d’occhio.", "La tua edicola")
+    section_intro("Per te", "Scopri le notizie, segui i tuoi interessi e consulta le fonti.", "La tua edicola")
+    modes = ("Consigliate", "Tutte le notizie")
+    if st.session_state.get("for_you_mode") not in (*modes, None):
+        st.session_state.pop("for_you_mode", None)
+    mode = st.segmented_control("Quali notizie vuoi leggere?", modes,
+                                default="Consigliate", key="for_you_mode",
+                                on_change=cancel_navigation_action) or "Consigliate"
 
     store, profile = None, None
-    if authenticated():
+    if mode == "Consigliate" and authenticated():
         try:
             if identity.local_demo():
                 profile = load_profile(root)
@@ -154,6 +154,11 @@ def render_for_you(root, context):
         catalog = None
 
     if catalog and catalog.chunks:
+        if mode == "Tutte le notizie":
+            from edicola.press_review_ui import render_press_review
+            st.caption("Consulta tutte le edizioni disponibili oppure cerca un argomento.")
+            render_press_review(catalog, context, edition_metadata(root, context.documents))
+            return
         interests = profile.interests if profile and profile.interests else []
         st.subheader("Notizie per i tuoi interessi" if interests else "Notizie da esplorare")
         if not interests:
@@ -198,18 +203,6 @@ def render_for_you(root, context):
                     st.session_state["for_you_more"] = True
                     st.rerun()
         else:
-            st.info("Non ci sono notizie leggibili per questa selezione. Prova un altro interesse oppure consulta la Rassegna stampa.")
+            st.info("Non ci sono notizie per questa selezione. Prova un altro interesse oppure scegli Tutte le notizie.")
     else:
         st.info("Le letture non sono disponibili in questo momento.")
-
-    if profile is None:
-        return
-    st.divider()
-    st.subheader("La tua raccolta")
-    # Le viste personali contengono già expander: evitare contenitori annidati.
-    if identity.local_demo():
-        from edicola.personalization_ui import render_demo_readings
-        render_demo_readings(root, context, profile, catalog)
-    else:
-        from edicola.account_ui import render_account_readings
-        render_account_readings(root, context, store, profile, catalog)
