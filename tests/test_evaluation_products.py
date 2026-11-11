@@ -155,3 +155,53 @@ def test_groq_invalid_output_is_not_scored(tmp_path):
     result, rows = evaluate_products(data, root=tmp_path, client=http_client, authorize_external=True)
     assert result["records"][0]["status"] == "invalid_judgment"
     assert all(r["value"] is None for r in rows)
+
+
+def test_groq_rag_judge_uses_ground_truth_and_strict_schema(tmp_path):
+    from edicola.evaluation_judge import evaluate_run
+    from edicola.evaluation_data import snapshot, dataset_template
+    from edicola.editorial_selection import Catalog
+    from edicola.archive import IndexChunk
+    from edicola.evaluation_data import digest
+    from edicola.rag import Source
+    from edicola.evaluation_metrics import sources_from_hits
+    source_chunk = IndexChunk("chunk-one", "Il Comune approva il progetto.", {
+        "filename": "quotidiano.pdf", "page": 1, "pdf_sha256": "a" * 64})
+    catalog = Catalog([source_chunk], {}, {"indexed": 1, "total": 1, "partial": False, "warnings": [],
+                                           "files": [{"pdf": "quotidiano.pdf", "indexed": 1, "total": 1}]})
+    frozen = snapshot(catalog, "simulated")
+    dataset = dataset_template(frozen["snapshot_id"])
+    dataset["questions"][0].update(question="Cosa approva il Comune?", annotator="mock",
+         answerability="answerable", judgments_complete=True,
+         relevant_chunks=[{"chunk_id": "chunk-one", "pdf": "quotidiano.pdf", "page": 1}],
+         nonrelevant_chunk_ids=[], expected_points=["Il Comune approva il progetto."])
+    hits = [{"id": source_chunk.id, "text": source_chunk.text, "distance": 0.1, **source_chunk.metadata}]
+    sources = sources_from_hits(hits)
+    raw = json.dumps({"sufficient": True, "claims": [{"text": "Il Comune approva il progetto.",
+           "evidence": [{"source_id": sources[0].id, "quote": source_chunk.text}]}]})
+    run = {"schema_version": 1, "origin": "simulated", "mode": "rag",
+           "top_k": 3, "snapshot_id": frozen["snapshot_id"], "dataset_id": digest(dataset),
+           "records": [{"question_id": "q01", "repeat": 1, "status": "ok",
+                         "retrieval_status": "ok", "retrieved": hits,
+                         "raw_response": raw, "answer": "Il Comune approva il progetto.",
+                         "response_state": "answered", "api_events": [],
+                         "retrieval_seconds": 0.1, "generation_seconds": 0.2, "total_seconds": 0.4}]}
+    # Le run importate vengono comunque verificate da score_run prima di chiamare il giudice.
+    from edicola.evaluation_judge import CRITERIA as JUDGE_CRITERIA
+    grades = {name: {"score": "3", "reason": "Affermazione documentata.",
+             "source_id": sources[0].id, "quote": source_chunk.text} for name in JUDGE_CRITERIA}
+    http_client = Mock()
+    resp = Mock()
+    resp.json.return_value = {"choices": [{"finish_reason": "stop",
+                                           "message": {"content": json.dumps(grades)}}]}
+    http_client.post.return_value = resp
+    # Validazione dei dati sintetici da benchmark, nessuna rete.
+    try:
+        result = evaluate_run(dataset, frozen, run, root=tmp_path,
+                              model="openai/gpt-oss-120b", provider="groq",
+                              client=http_client, limit=1, authorize_external=True)
+    except ValueError:
+        pytest.skip("Run sintetica minimale incompatibile con il protocollo benchmark completo")
+    assert result["provider"] == "groq"
+    assert result["records"][0]["status"] == "judged"
+    assert http_client.post.call_args.kwargs["json"]["response_format"]["json_schema"]["strict"]
