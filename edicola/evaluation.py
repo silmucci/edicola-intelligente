@@ -213,6 +213,30 @@ def new_directory(path):
     return path
 
 
+def product_review_rows(manifest):
+    """Schede per prodotti esistenti; nessuna valutazione o prova viene inventata."""
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+        raise ValueError("Manifest prodotti non valido.")
+    items = manifest.get("products")
+    if not isinstance(items, list) or not items:
+        raise ValueError("Inserire almeno un prodotto reale nel manifest.")
+    allowed = {"briefing", "podcast", "timeline", "map"}
+    seen, rows = set(), []
+    for item in items:
+        if not isinstance(item, dict) or set(item) != {"kind", "item_id", "origin"}:
+            raise ValueError("Ogni prodotto richiede kind, item_id e origin.")
+        kind, identity, origin = item["kind"], item["item_id"], item["origin"]
+        if (kind not in allowed or not isinstance(identity, str) or
+                not identity.strip() or len(identity) > 200 or origin not in ("real", "simulated")):
+            raise ValueError("Tipo, identità o provenienza del prodotto non validi.")
+        key = (kind, identity, origin)
+        if key in seen:
+            raise ValueError("Prodotto duplicato nel manifest.")
+        seen.add(key)
+        rows.extend(review_rows(kind, identity, origin))
+    return rows
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Valutazione locale del prototipo; API solo nei comandi benchmark e judge autorizzati.")
     parser.add_argument("--root", type=Path, default=ROOT)
@@ -255,6 +279,9 @@ def main(argv=None):
     review.add_argument("--item-id", required=True)
     review.add_argument("--origin", choices=("real", "simulated"), required=True)
     review.add_argument("--out", type=Path, required=True)
+    batch = commands.add_parser("prepare-product-reviews", help="Schede comparative vuote per Briefing, Podcast, Timeline e mappe.")
+    batch.add_argument("--manifest", type=Path, required=True, help="JSON con schema_version=1 e lista products: kind, item_id, origin.")
+    batch.add_argument("--out", type=Path, required=True)
     human = commands.add_parser("reviews", help="Report delle sole valutazioni umane compilate.")
     human.add_argument("--sheet", type=Path, required=True)
     human.add_argument("--out", type=Path, required=True)
@@ -325,6 +352,12 @@ def main(argv=None):
             write_csv(out / "human_review.csv", rows, REVIEW_FIELDS)
             write_json(out / "rubrics.json", {"scale": SCALE, "criteria": CRITERIA, "products": RUBRICS})
             print("Scheda vuota: allegare il prodotto e verificare le fonti originali.")
+        elif args.command == "prepare-product-reviews":
+            rows = product_review_rows(read_json(args.manifest))
+            out = new_directory(args.out)
+            write_csv(out / "human_review.csv", rows, REVIEW_FIELDS)
+            write_json(out / "rubrics.json", {"scale": SCALE, "criteria": CRITERIA, "products": RUBRICS})
+            print(f"Schede di valutazione: {len(rows)} criteri, nessun punteggio preassegnato.")
         elif args.command == "reviews":
             rows = read_reviews(args.sheet)
             render_report(new_directory(args.out), rows, metadata={"source": args.sheet.name, "type": "human_review"})
