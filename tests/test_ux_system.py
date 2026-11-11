@@ -66,6 +66,6 @@ def test_first_access_opens_preferences_and_organizes_personal_area(auth, backen
         app = AppTest.from_string(ui(tmp_path)).run()
     assert not app.exception
     assert app.session_state["personal_area"] == "Preferenze"
-    assert [tab.label for tab in app.tabs] == ["Per te", "Raccolta", "I miei briefing", "Preferenze", "Privacy"]
+    assert [tab.label for tab in app.tabs] == ["Preferenze", "Raccolta", "Privacy"]
     assert any("Cominciamo dai tuoi interessi" in h.value for h in app.subheader)
-    assert app.button(key="personal_briefing_submit").disabled
+    assert not [button for button in app.button if button.key == "personal_briefing_submit"]  # Raccolta non selezionata
