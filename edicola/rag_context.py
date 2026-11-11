@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from edicola.timeline_dates import publication_date
 from edicola.edition_dates import read_edition_metadata
+from edicola.chat_data import bounded_context
 
 
 def reference_day():
@@ -54,3 +55,13 @@ def temporal_notice(context):
         return "Non posso confermare aggiornamenti attuali con queste fonti." + detail + " La ricerca riguarda solo l’archivio, senza verifica in tempo reale."
     return (f"Consultazione dell’archivio al {context['reference_date']}: le fonti recuperate includono edizioni recenti, "
             "ma non costituiscono una verifica in tempo reale. Le date di pubblicazione sono indicate nelle fonti.")
+
+
+def retrieval_query(question, context):
+    previous = bounded_context(context)
+    if not previous:
+        return question
+    # Risoluzione locale, senza una seconda chiamata LLM di riscrittura.
+    topics = "\n".join(item["content"] for item in previous if item["role"] == "user")
+    last_answer = next((item["content"][:400] for item in reversed(previous) if item["role"] == "assistant"), "")
+    return f"Domande precedenti nella stessa conversazione:\n{topics}\nContesto tematico della risposta precedente:\n{last_answer}\nDomanda attuale: {question}"
