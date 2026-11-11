@@ -190,11 +190,11 @@ def openrouter_judgment(model, prompt, criteria, *, root=None, client=None):
             raise ValueError("Risposta non testuale.")
         return content
     finally:
-        if own and provider == "gemini":
+        if own:
             client.close()
 
 
-def evaluate_products(manifest, *, root, model, authorize_external=False, client=None, provider="gemini"):
+def evaluate_products(manifest, *, root, model=GROQ_MODEL, authorize_external=False, client=None, provider="groq"):
     items = validate_manifest(manifest)
     if not authorize_external:
         raise ValueError("Occorre autorizzare l'invio al giudice.")
