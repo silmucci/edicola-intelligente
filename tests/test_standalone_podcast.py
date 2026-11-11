@@ -259,7 +259,7 @@ def test_narrative_script_avoids_headings_and_keeps_verified_sources(standalone)
     news = []
     for i, source in enumerate(sources, 1):
         evidence = [{"source_id": source.id, "quote": source.text}]
-        news.append({"title": {"text": f"Titolo non pronunciato numero {i}", "evidence": evidence},
+        news.append({"title": {"text": "Titolo non pronunciato", "evidence": evidence},
                      "summary": {"text": source.text, "evidence": evidence}})
     script = script_from_response({"sufficient": True, "news": news}, sources,
                                   standalone.catalog.coverage, narrative=True,
