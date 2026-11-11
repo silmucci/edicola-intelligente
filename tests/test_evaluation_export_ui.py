@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from edicola.evaluation_export_ui import export_authorized, export_bytes
+from edicola.evaluation_export_ui import export_authorized, export_bytes, export_diagnostics
 
 
 def test_export_requires_configured_long_password():
@@ -30,3 +30,12 @@ def test_export_does_not_fabricate_products(tmp_path):
                return_value={"schema_version": 1, "products": []}):
         with pytest.raises(ValueError, match="Non sono disponibili"):
             export_bytes(tmp_path, limit_per_kind=1)
+
+
+def test_diagnostics_empty_cloud_runtime(tmp_path):
+    state = export_diagnostics(tmp_path)
+    assert state["archive"] is False
+    assert state["chroma"] is False
+    assert state["briefing_cache"] == 0
+    assert state["podcast_scripts"] == 0
+    assert state["knowledge_files"] == 0
