@@ -89,3 +89,18 @@ def test_general_feed_skips_unnecessary_corpus_tokenization():
     with patch("edicola.for_you.tokens", side_effect=AssertionError("Tokenizzazione non necessaria")):
         selected = select_feed(catalog(items))
     assert [item.chunk.id for item in selected] == ["one", "two"]
+
+
+def test_publication_date_is_parsed_once_per_edition():
+    from datetime import date
+    from unittest.mock import patch
+    items = [
+        chunk("old", "old.pdf", "Il Consiglio comunale approva un piano per la mobilità sostenibile."),
+        chunk("new-1", "new.pdf", "La Regione presenta nuove linee di trasporto pubblico per i cittadini."),
+        chunk("new-2", "new.pdf", "Il Comune rinnova il servizio scolastico per gli studenti della città."),
+    ]
+    with patch("edicola.for_you.date") as date_type:
+        date_type.fromisoformat.side_effect = date.fromisoformat
+        selected = select_feed(catalog(items))
+    assert [item.chunk.id for item in selected] == ["new-1", "old", "new-2"]
+    assert date_type.fromisoformat.call_count == 2

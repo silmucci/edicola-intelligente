@@ -95,12 +95,17 @@ def select_feed(catalog, profile=None, *, topic: str = "", limit: int = 16) -> l
         return tuple(name for name, expected in interest_words.items()
                      if expected and len(expected & words) / len(expected) >= 0.6)
 
+    parsed_dates = {}
+
     def publication_date(chunk):
-        value = editions.get(chunk.metadata["filename"], {}).get("date") or ""
-        try:
-            return date.fromisoformat(value).isoformat()
-        except ValueError:
-            return ""
+        filename = chunk.metadata["filename"]
+        if filename not in parsed_dates:
+            value = editions.get(filename, {}).get("date") or ""
+            try:
+                parsed_dates[filename] = date.fromisoformat(value).isoformat()
+            except ValueError:
+                parsed_dates[filename] = ""
+        return parsed_dates[filename]
 
     # Il feed non modifica il ranking dei briefing personali già in uso.
     preferred = recommend(catalog, profile, limit=min(len(chunks), 120)) if interests else []
