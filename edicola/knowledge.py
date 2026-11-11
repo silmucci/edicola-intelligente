@@ -17,7 +17,7 @@ from edicola.editorial_selection import read_catalog
 from edicola.article_evidence import source_articles, evidence_source_record
 from edicola.embeddings import api_key
 from edicola.indexing import ROOT
-from edicola.knowledge_validation import validate_map, validate_timeline
+from edicola.knowledge_validation import validate_map, validate_timeline, explicit_aliases
 from edicola.rag import DEFAULT_MODEL, Source, response_schema
 from edicola.search import semantic_search
 from edicola.timeline_dates import VERSION as TIMELINE_VERSION
@@ -26,7 +26,6 @@ from edicola.map_context import contiguous, select_map_chunks
 from edicola.knowledge_presentation import TIMELINE_CONTENT_VERSION
 from edicola.proposal_extraction import proposal_items
 from edicola.map_literal import literal_candidates, complete_nodes
-from edicola.map_aliases import explicit_aliases
 from edicola.knowledge_relevance import Topic, select_topic_chunks, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION, scope_timeline
 from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
                                        selection_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION)
