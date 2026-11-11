@@ -102,3 +102,54 @@ def test_shared_prompt_and_generation_defaults_remain_unchanged_for_other_produc
     client.models.generate_content.return_value = response()
     generate_response(client, "unchanged-model", prompt, {})
     assert client.models.generate_content.call_args.kwargs["config"].system_instruction == SYSTEM_INSTRUCTION
+
+
+def test_new_chat_question_does_not_include_old_insufficient_answers():
+    from edicola.rag_context import retrieval_query
+    history = [
+        {"role": "user", "content": "Quali notizie economiche di novembre?"},
+        {"role": "assistant", "content": "Le informazioni recuperate non sono sufficienti."},
+    ]
+    question = "Che cosa sta succedendo allo stabilimento Isringhausen di San Salvo?"
+    assert retrieval_query(question, history) == question
+
+
+def test_only_explicit_followup_uses_previous_user_question_not_ai_answer():
+    from edicola.rag_context import retrieval_query
+    history = [
+        {"role": "user", "content": "Che cosa dice l'articolo sulle scuole?"},
+        {"role": "assistant", "content": "Un'informazione inventata che non e' una fonte."},
+    ]
+    query = retrieval_query("Puoi approfondire questa notizia?", history)
+    assert "scuole" in query
+    assert "informazione inventata" not in query
+
+
+def test_independent_chat_uses_no_old_prompt_context_or_temporal_query(tmp_path):
+    from edicola.rag_context import retrieval_query
+    from unittest.mock import patch
+    import json
+    history = [
+        {"role": "user", "content": "Che cosa succede oggi in politica?"},
+        {"role": "assistant", "content": "Le informazioni recuperate non sono sufficienti."},
+    ]
+    question = "Che cosa succede allo stabilimento Isringhausen di San Salvo?"
+    assert retrieval_query(question, history) == question
+    with patch("edicola.rag.semantic_search", return_value=[{
+        "id": "test-chunk", "filename": "a.pdf", "page": 3,
+        "text": TEXT, "distance": .1
+    }]) as search:
+        client = Mock()
+        client.models.generate_content.return_value = response({
+            "sufficient": True, "claims": [{
+                "text": "Il quotidiano cita una previsione sui lavori.",
+                "evidence": [{"source_id": "S1", "quote": TEXT}]
+            }]
+        })
+        result = ask_question(question, authorize_external=True, root=tmp_path,
+                              client=client, conversation=history)
+    assert result.sufficient
+    assert search.call_args.args == (question,)
+    prompt = json.loads(client.models.generate_content.call_args.kwargs["contents"])
+    assert "conversation_context" not in prompt
+    assert prompt["temporal_context"]["recency_requested"] is False

@@ -58,10 +58,22 @@ def temporal_notice(context):
 
 
 def retrieval_query(question, context):
+    """La ricerca di una domanda autonoma non eredita domande e risposte precedenti.
+
+    Solo i riferimenti espliciti a una notizia già discussa usano l'ultima domanda
+    dell'utente per chiarire il soggetto. Le risposte AI non sono mai fonti.
+    """
     previous = bounded_context(context)
     if not previous:
         return question
-    # Risoluzione locale, senza una seconda chiamata LLM di riscrittura.
-    topics = "\n".join(item["content"] for item in previous if item["role"] == "user")
-    last_answer = next((item["content"][:400] for item in reversed(previous) if item["role"] == "assistant"), "")
-    return f"Domande precedenti nella stessa conversazione:\n{topics}\nContesto tematico della risposta precedente:\n{last_answer}\nDomanda attuale: {question}"
+    followup = bool(re.search(
+        r"\b(?:quest[oaie]|quell[oaie]|precedent[ei]|sopra|prima|stess[oaie]|"
+        r"citat[oaie]|menzionat[oaie]|approfondisc\w*|continua|prosegui)\b",
+        question, re.I))
+    if not followup:
+        return question
+    last_question = next(
+        (item["content"] for item in reversed(previous) if item["role"] == "user"), "")
+    if not last_question:
+        return question
+    return "Argomento precedente: " + last_question[:400] + "\nDomanda attuale: " + question

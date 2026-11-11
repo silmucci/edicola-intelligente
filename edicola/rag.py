@@ -271,7 +271,10 @@ def ask_question(
         request_id = uuid4().hex[:12]
         logger.info("request_id=%s phase=rag model=%r event=start mode=corpus_wide budget=%d", request_id, model, budget)
         context = bounded_context(conversation)
-        temporal_question = " ".join([m["content"] for m in context if m["role"] == "user"] + [question])
+        search_query = retrieval_query(question, context)
+        # Uno storico con risposte insufficienti non deve contaminare nuove domande.
+        prompt_context = context if search_query != question else []
+        temporal_question = search_query
         search_options = {}
         if selection is not None:
             from edicola.editorial_selection import read_catalog
@@ -279,7 +282,7 @@ def ask_question(
             catalog = filter_catalog(read_catalog(root), selection)
             search_options["allowed_ids"] = {c.id for c in catalog.chunks}
             search_options["filenames"] = {c.metadata["filename"] for c in catalog.chunks}
-        hits = semantic_search(retrieval_query(question, context), authorize_external=True, root=root,
+        hits = semantic_search(search_query, authorize_external=True, root=root,
                                top_k=top_k, request_id=request_id, corpus_wide=True,
                                **({"embedder": embedder} if embedder is not None else {}), **search_options)
         sources = []
@@ -311,7 +314,7 @@ def ask_question(
         def prompt_for(selected):
             metadata = {source.id: all_editions.get(source.id, {}) for source in selected}
             return build_prompt(question, selected, editions=metadata,
-                                temporal=temporal_context(temporal_question, metadata), conversation=context,
+                                temporal=temporal_context(temporal_question, metadata), conversation=prompt_context,
                                 articles=article_details)
         sources, _ = fit_context(candidates, lambda selected: CHAT_INSTRUCTION + prompt_for(selected), budget,
                                  max_source_chars=20000)
