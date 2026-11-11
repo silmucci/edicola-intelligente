@@ -25,6 +25,8 @@ def navigate(section):
     if section in SECTIONS:
         cancel_navigation_action()
         st.session_state["nav_section"] = section
+        if section == "Il mio profilo":
+            st.session_state["personal_area"] = "Preferenze"
 
 
 def authenticated():
@@ -162,7 +164,9 @@ def render_for_you(root, context):
         interests = profile.interests if profile and profile.interests else []
         st.subheader("Notizie per i tuoi interessi" if interests else "Notizie da esplorare")
         if not interests:
-            st.caption("Scegli i tuoi interessi nel Profilo per personalizzare questa selezione.")
+            st.caption("Scegli i tuoi interessi per ricevere una selezione più vicina a te.")
+            st.button("Personalizza le notizie", key="for_you_preferences",
+                      on_click=navigate, args=("Il mio profilo",), type="tertiary")
         selected_topic = ""
         if interests:
             choice = st.selectbox("Argomento", ["Tutti gli interessi", *interests],
@@ -198,6 +202,8 @@ def render_for_you(root, context):
                         save_reading_button(chunk, key=f"for_you_{index}",
                                             root=root if profile else None,
                                             profile=profile, store=store)
+            if profile:
+                st.caption("Le letture salvate sono nel Profilo, sezione Raccolta.")
             if len(entries) > 8 and not st.session_state.get("for_you_more"):
                 if st.button("Mostra altre notizie", key="for_you_show_more"):
                     st.session_state["for_you_more"] = True
