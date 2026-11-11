@@ -10,7 +10,7 @@ from collections import Counter
 from edicola.corpus_update import inspect_corpus
 from edicola.incremental import preview_all, preview_batch, require_local_manager, run_batch, reconcile_progress
 from edicola.incremental_all import run_all_missing
-from edicola.maintenance_store import MaintenanceStore, maintenance_lock, recent_batches
+from edicola.maintenance_store import MaintenanceStore, maintenance_lock, private_directory, recent_batches
 
 STATUS = {"completed": "completato", "running": "in esecuzione", "paused": "in pausa",
           "failed": "non completato", "interrupted": "interrotto", "nothing_pending": "nessun passaggio mancante"}
@@ -22,6 +22,22 @@ ERRORS = {"429": "Quota raggiunta: attendere almeno un minuto prima di autorizza
 DOCUMENTS = {"new": "nuovo", "modified": "modificato", "duplicate": "copia identica", "unchanged": "invariato",
              "ok": "testo disponibile", "partial": "estrazione parziale", "error": "non elaborabile",
              "no_text": "senza testo estraibile", "empty": "vuoto", "not_prepared": "da preparare"}
+
+
+
+def prepare_snapshot(root, filenames, *, authorize_distribution=False):
+    """Prepara soltanto uno snapshot locale di PDF distribuiti con autorizzazione."""
+    from uuid import uuid4
+    from edicola.cloud import export_seed, validate_seed
+
+    require_local_manager(root)
+    if authorize_distribution is not True:
+        raise PermissionError("Autorizzare la distribuzione dei PDF e dei dati derivati scelti.")
+    with maintenance_lock(root):
+        destination = private_directory(root) / ("snapshot-" + uuid4().hex[:12])
+        export_seed(root, destination, filenames, authorize_distribution=True)
+        manifest = validate_seed(destination)
+        return destination, manifest
 
 
 def prepare_changes(root):
@@ -165,7 +181,6 @@ def interactive(root, read=input, write=print):
                     confirm_metadata(root, name, publication, published, confirmed=True)
                     write("Metadati salvati. Le altre edizioni sono conservate; nessuna API.")
             elif choice == "5":
-                from edicola.maintenance_snapshot import prepare_snapshot
                 report = show_status(root, write)
                 for index, document in enumerate(report["documents"], 1):
                     write(f"{index}. {document['pdf']}")
