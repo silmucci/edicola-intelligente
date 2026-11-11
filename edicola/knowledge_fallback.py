@@ -19,6 +19,8 @@ SKIP = {"Regione", "Comune", "Provincia", "Abruzzo", "Chieti", "Pescara",
 
 def graph_candidates(raw, sources, topic):
     """Integra solo archi soggetto-verbo-oggetto leggibili letteralmente."""
+    from edicola.knowledge_relevance import Topic
+    matcher = Topic(topic)
     result = {"nodes": list(raw.get("nodes", [])), "edges": list(raw.get("edges", []))}
     labels = {n["label"]["text"].casefold(): n["id"] for n in result["nodes"]
               if isinstance(n, dict) and isinstance(n.get("label"), dict)}
@@ -32,10 +34,8 @@ def graph_candidates(raw, sources, topic):
         for segment in sentences:
             if len(result["edges"]) >= 24 or len(result["nodes"]) >= 16:
                 break
-            if not any(word in segment.casefold() for word in
-                       ("dissesto", "emergenza", "idrogeologic", "ricostruzion", "fran", "politic", "sanit", "econom")):
-                # Il tema può essere un soggetto diverso: in tal caso nessuna
-                # scorciatoia locale, resta la generazione del modello.
+            if matcher.score(segment) <= 0:
+                # Evita di recuperare un confronto fra persone fuori tema.
                 continue
             for match in RELATION.finditer(segment):
                 left, predicate, right = match.groups()
