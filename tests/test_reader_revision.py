@@ -7,12 +7,10 @@ from edicola.editorial_selection import Catalog
 from edicola.press_review import ranked_chunks, article_groups, filter_catalog, ReviewSelection
 from edicola.timeline_dates import resolve_date, event_status
 from edicola.timeline_events import compact_events
-from edicola.knowledge_scope import scope_timeline
 from edicola.map_relations import documented_relation
 from edicola.map_literal import complete_nodes, literal_candidates
-from edicola.map_aliases import explicit_aliases
-from edicola.knowledge_validation import validate_map, compact_map
-from edicola.knowledge_relevance import Topic, relevant_map
+from edicola.knowledge_validation import validate_map, compact_map, explicit_aliases
+from edicola.knowledge_relevance import Topic, relevant_map, scope_timeline
 from edicola.rag import Source
 
 
