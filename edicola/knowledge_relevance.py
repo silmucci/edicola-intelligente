@@ -282,7 +282,7 @@ def select_visual_evidence(kind, topic, chunks, hits, *, limit=28):
             filename = chunk.metadata["filename"]
             if pass_number == 0 and by_edition[filename] >= 2:
                 continue
-            signature = (filename, " ".join(chunk.text.casefold().split()))
+            signature = filename + "\\x00" + " ".join(chunk.text.casefold().split())
             if signature in seen:
                 continue
             chosen.append(chunk)
