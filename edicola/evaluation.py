@@ -269,7 +269,8 @@ def main(argv=None):
     judge.add_argument("--dataset", type=Path, required=True)
     judge.add_argument("--run", type=Path, required=True)
     judge.add_argument("--out", type=Path, required=True)
-    judge.add_argument("--model", required=True, help="Modello giudice effettivamente abilitato nel proprio progetto.")
+    judge.add_argument("--model", default="openai/gpt-oss-120b", help="Modello del giudice, predefinito Groq GPT-OSS 120B.")
+    judge.add_argument("--provider", choices=("groq", "gemini"), default="groq")
     judge.add_argument("--limit", type=int, default=20)
     judge.add_argument("--authorize-external", action="store_true")
     personal = commands.add_parser("personalization", help="Esperimento locale, senza API e senza modificare profili salvati.")
@@ -344,7 +345,7 @@ def main(argv=None):
             score_run(dataset, frozen, run, validate_snapshot(frozen))
             out = new_directory(args.out)
             judged = evaluate_run(dataset, frozen, run, root=args.root, model=args.model,
-                                  limit=args.limit, authorize_external=True)
+                                  limit=args.limit, authorize_external=True, provider=args.provider)
             write_json(out / "judge.json", judged)
             report_run(out, dataset, frozen, run, judge=judged)
             counts = Counter(item["status"] for item in judged["records"])
