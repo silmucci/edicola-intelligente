@@ -7,11 +7,21 @@ import re
 
 # Due soggetti nominati e un predicato esplicito, nello stesso segmento.
 # Le corrispondenze non trasformano dichiarazioni attribuite in fatti accertati.
+NAME = r"(?:[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ’'-]{2,}|D['’][A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ’'-]+)"
 RELATION = re.compile(
-    r"\b([A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ’'-]{2,})\s+"
+    rf"\b({NAME})\s+"
     r"(attacca|critica|accusa|convoca|incontra|sostiene|interroga|"
     r"risponde\s+a|replica\s+a|chiede\s+a)\s+"
-    r"([A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ’'-]{2,})\b"
+    rf"({NAME})\b"
+)
+# Costruzioni giornalistiche letterali con un provvedimento o incontro.
+ACTION = re.compile(
+    rf"\b({NAME}|presidente\s+della\s+Provincia)\s+"
+    r"(convoca|chiede|propone|annuncia|approva|finanzia)\s+"
+    r"(?:il\s+|la\s+|un\s+|una\s+|l['’])?"
+    r"((?:vertice|piano|assemblea|intervento|interventi|fondi|progetto|"
+    r"finanziamento|proposta|risposte)(?:\s+[a-zà-öø-ÿ'-]{3,})?)\b",
+    re.I
 )
 SKIP = {"Regione", "Comune", "Provincia", "Abruzzo", "Chieti", "Pescara",
         "Teramo", "Aquila", "Dissesto", "Emergenza", "Maltempo", "Politica"}
@@ -37,7 +47,7 @@ def graph_candidates(raw, sources, topic):
             if matcher.score(segment) <= 0:
                 # Evita di recuperare un confronto fra persone fuori tema.
                 continue
-            for match in RELATION.finditer(segment):
+            for match in list(RELATION.finditer(segment)) + list(ACTION.finditer(segment)):
                 left, predicate, right = match.groups()
                 if left in SKIP or right in SKIP or left == right:
                     continue
@@ -52,7 +62,11 @@ def graph_candidates(raw, sources, topic):
                     if key not in labels:
                         identity = f"N{next_id}"
                         next_id += 1
-                        result["nodes"].append({"id": identity, "kind": "person",
+                        category = ("event" if name == right and re.match(r"vertice|assemblea", name, re.I)
+                                    else "proposal" if name == right and re.match(r"piano|proposta|progetto", name, re.I)
+                                    else "measure" if name == right and re.match(r"fondi|finanziamento|interventi?", name, re.I)
+                                    else "person")
+                        result["nodes"].append({"id": identity, "kind": category,
                             "label": {"text": name, "evidence": [{"source_id": source.id, "quote": quote}]}})
                         labels[key] = identity
                     ids.append(labels[key])
