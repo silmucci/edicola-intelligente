@@ -9,9 +9,10 @@ from edicola.map_presentation import GROUPS, node_captions
 from edicola.knowledge_validation import map_focus
 
 CSS = scoped_css("""
-.viewport{max-width:100%;max-height:75vh;overflow:auto;overscroll-behavior:contain;border:1px solid var(--edi-border);border-radius:var(--edi-radius);background:var(--edi-paper);font-family:var(--edi-sans);color:var(--edi-ink)}
+.viewport{max-width:100%;max-height:75vh;overflow:auto;overscroll-behavior:contain;border:1px solid var(--edi-border);border-radius:var(--edi-radius);background:radial-gradient(circle at 20% 20%,var(--edi-surface),var(--edi-paper) 70%);font-family:var(--edi-sans);color:var(--edi-ink)}
 .canvas{position:relative;margin:0 auto}.canvas svg{position:absolute;inset:0;overflow:visible;pointer-events:none}
-.node{position:absolute;box-sizing:border-box;width:208px;padding:14px;border:1px solid var(--edi-border);border-radius:16px;color:var(--edi-ink);font:650 15px/1.4 var(--edi-sans);text-align:center;white-space:normal;overflow-wrap:anywhere;cursor:pointer;box-shadow:var(--edi-shadow)}
+.node{position:absolute;box-sizing:border-box;width:208px;padding:14px;border:1px solid var(--edi-border);border-radius:16px;color:var(--edi-ink);font:650 15px/1.4 var(--edi-sans);text-align:center;white-space:normal;overflow-wrap:anywhere;cursor:pointer;box-shadow:var(--edi-shadow);transition:transform .16s ease,box-shadow .16s ease,opacity .16s ease}
+.node:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(18,49,83,.13)}
 .node.person{border-radius:32px}.node.event,.node.proposal{border-left:4px solid var(--edi-accent)}
 .node .kind{display:block;font-size:11px;font-weight:500;color:var(--edi-muted);margin-bottom:6px}.node.active{outline:3px solid var(--edi-primary);outline-offset:2px}.node:focus-visible{outline:3px solid var(--edi-accent);outline-offset:3px}
 .edge-label{font:12px var(--edi-sans);fill:var(--edi-ink);paint-order:stroke;stroke:var(--edi-paper);stroke-width:5px;stroke-linejoin:round}
