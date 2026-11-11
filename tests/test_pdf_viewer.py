@@ -207,7 +207,7 @@ result=EditorialResult({kind!r}, "Titolo", [{{"heading":"Notizia [S1]","text":"S
         action = f'''
 from edicola.knowledge import KnowledgeResult
 from edicola.knowledge_validation import validate_timeline, validate_map
-from edicola.knowledge_ui import render_knowledge
+from edicola.knowledge_views import render_knowledge
 claim={{"text":"Seconda", "evidence":[{{"source_id":"S1","quote":source.text}}]}}
 if {kind!r} == "timeline":
     data, diagnostics=validate_timeline({{"events":[{{"title":claim,"description":claim,"event_date":None,"date_evidence":None}}]}}, [source], coverage)
