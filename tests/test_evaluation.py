@@ -323,6 +323,41 @@ def test_cli_product_review_has_all_audio_criteria_and_no_assigned_scores(tmp_pa
     assert (tmp_path / "empty-report/metrics.html").exists()
 
 
+
+def test_multi_product_reviews_validate_manifest_without_inventing_scores(tmp_path):
+    manifest = {"schema_version": 1, "products": [
+        {"kind": kind, "item_id": f"saved-{kind}", "origin": "real"}
+        for kind in ("briefing", "podcast", "timeline", "map")
+    ]}
+    path = tmp_path / "products.json"
+    write_json(path, manifest)
+    output = tmp_path / "products-review"
+    assert main(["prepare-product-reviews", "--manifest", str(path), "--out", str(output)]) == 0
+    import csv
+    with (output / "human_review.csv").open(encoding="utf-8-sig", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    assert {row["kind"] for row in rows} == {"briefing", "podcast", "timeline", "map"}
+    assert all(row["score"] == "" and row["evidence"] == "" for row in rows)
+    assert len(rows) == sum(len(read_json(output / "rubrics.json")["products"][kind]) for kind in ("briefing", "podcast", "timeline", "map"))
+    assert main(["reviews", "--sheet", str(output / "human_review.csv"), "--out", str(tmp_path / "report")]) == 0
+    assert (tmp_path / "report" / "metrics.csv").exists()
+
+
+@pytest.mark.parametrize("products", [
+    [],
+    [{"kind": "dossier", "item_id": "legacy", "origin": "real"}],
+    [{"kind": "podcast", "item_id": "", "origin": "real"}],
+    [{"kind": "briefing", "item_id": "a", "origin": "invalid"}],
+    [{"kind": "map", "item_id": "a", "origin": "real"}] * 2,
+])
+def test_multi_product_reviews_reject_invalid_manifests(tmp_path, products):
+    path = tmp_path / "products.json"
+    write_json(path, {"schema_version": 1, "products": products})
+    output = tmp_path / "bad-review"
+    assert main(["prepare-product-reviews", "--manifest", str(path), "--out", str(output)]) == 1
+    assert not output.exists()
+
+
 def test_benchmark_reuses_actual_search_and_preserves_sqlite_and_vectors(tmp_path):
     from edicola.archive import read_active_chunks
     from edicola.chunking import prepare_documents
