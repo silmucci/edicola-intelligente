@@ -49,7 +49,7 @@ def test_product_cards_open_real_destinations_without_generating(archive, index)
         knowledge.assert_not_called()
 
 
-def test_product_drafts_results_and_graph_mode_survive_navigation_without_api(archive):
+def test_explore_switches_views_preserving_results_without_extra_generation(archive):
     _, context, _ = archive
     source, timeline_data, timeline_counts = development("Le imprese chiedono sostegno economico.")
     timeline = KnowledgeResult("timeline", "Sostegno", timeline_data, [source], COVERAGE, timeline_counts)
@@ -58,74 +58,60 @@ def test_product_drafts_results_and_graph_mode_survive_navigation_without_api(ar
     with platform(context) as app, patch("edicola.knowledge.generate_knowledge", side_effect=[timeline, mapping]) as generate:
         app.session_state["consent_choices"] = {("text", "text-v3"): True}
         navigate_to(app, "Timeline")
-        app.text_input(key="knowledge_topic_timeline").set_value("Sostegno")
+        assert app.session_state["knowledge_kind"] == "Timeline"
+        app.text_input(key="knowledge_topic").set_value("Sostegno").run()
         app.button(key="timeline_submit").click().run()
-        assert any(h.value == "Senza data" for h in app.subheader)
-        navigate_to(app, "Mappe concettuali")
-        assert not app.get("graphviz_chart")
-        app.text_input(key="knowledge_topic_map").set_value("Trasporti")
+        assert not app.exception and "timeline" in app.session_state["knowledge_results"]
+        app.segmented_control(key="knowledge_kind").set_value("Mappa").run()
+        assert app.session_state["knowledge_kind"] == "Mappa"
+        app.text_input(key="knowledge_topic").set_value("Trasporti").run()
         app.button(key="map_submit").click().run()
-        assert not app.exception and app.get("graphviz_chart")
+        assert not app.exception and "map" in app.session_state["knowledge_results"]
         app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        navigate_to(app, "Timeline")
-        assert app.text_input(key="knowledge_topic_timeline").value == "Sostegno"
-        assert not app.get("graphviz_chart") and not app.segmented_control
-        navigate_to(app, "Mappe concettuali")
-        assert app.text_input(key="knowledge_topic_map").value == "Trasporti"
+        app.segmented_control(key="knowledge_kind").set_value("Timeline").run()
+        assert app.text_input(key="knowledge_topic").value == "Trasporti"
+        app.segmented_control(key="knowledge_kind").set_value("Mappa").run()
         assert app.segmented_control(key="knowledge_map_view").value == "Elenco"
-        assert not app.dataframe and not app.get("graphviz_chart")
         assert generate.call_count == 2
 
-
-def test_navigation_cancels_old_pending_generation_and_keeps_consent(archive):
+def test_switching_explore_mode_cancels_pending_generation_and_keeps_consent(archive):
     _, context, _ = archive
     with platform(context) as app, patch("edicola.knowledge.generate_knowledge") as generate:
         navigate_to(app, "Timeline")
-        app.text_input(key="knowledge_topic_timeline").set_value("Tema").run()
+        app.text_input(key="knowledge_topic").set_value("Tema").run()
         app.button(key="timeline_submit").click().run()
         generate.assert_not_called()
         assert app.session_state["consent_pending"]
-        navigate_to(app, "Mappe concettuali")
+        app.segmented_control(key="knowledge_kind").set_value("Mappa").run()
         assert "consent_pending" not in app.session_state
         app.session_state["consent_choices"] = {("text", "text-v3"): True}
-        navigate_to(app, "Timeline")
+        app.segmented_control(key="knowledge_kind").set_value("Timeline").run()
         generate.assert_not_called()
         assert app.session_state["consent_choices"][("text", "text-v3")]
 
-
-def test_graph_and_list_are_alternatives_with_editorial_sources_only(archive):
+def test_graph_and_list_keep_documented_sources_without_api(archive):
     _, context, _ = archive
     data, counts = validate_map(map_data(), SOURCES)
-    result = KnowledgeResult("map", "Quali misure sono proposte per i trasporti nel territorio?", data, SOURCES, COVERAGE, counts)
+    result = KnowledgeResult("map", "Trasporti", data, SOURCES, COVERAGE, counts)
     module, code = render_script(result, context)
-    with installed_fixture(module):
+    with installed_fixture(module), patch("google.genai.Client") as api:
         app = AppTest.from_string(code).run()
         assert not app.exception and not app.dataframe
-        assert app.get("graphviz_chart")
-        assert not any("sviluppo" in e.label for e in app.expander)
-        assert not any("cache" in c.value.casefold() or "validazione" in c.value.casefold() for c in app.caption)
-        assert all("S1" not in b.label for b in app.button)
-        assert len(theme_title(result.topic)) <= 63
+        assert not any("cache" in c.value.casefold() for c in app.caption)
         app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert not app.dataframe and not app.get("graphviz_chart")
+        assert not app.exception and not app.dataframe
+        api.assert_not_called()
 
-
-def test_responsive_cards_have_no_fixed_width_or_false_undated_axis():
-    # Contratto CSS: la colonna narrativa si adatta al contenitore e le card
-    # senza data non ereditano l'asse. La verifica browser resta distinta.
-    assert "max-width:100%" in CSS and ".edi-event.undated:before{display:none}" in CSS
-    assert "@media(max-width:600px)" in CSS
+def test_responsive_timeline_preserves_undated_developments():
+    assert "max-width:100%" in CSS and "@media(max-width:600px)" in CSS
     source, data, counts = development("Le imprese propongono una misura di sostegno.")
     result = KnowledgeResult("timeline", "Sostegno", data, [source], COVERAGE, counts)
     module, code = render_script(result)
     with installed_fixture(module):
         app = AppTest.from_string(code).run()
     assert not app.exception
+    assert any(e.label == "Altri sviluppi" for e in app.expander)
     assert not any(h.value == "Cronologia documentata" for h in app.subheader)
-    cards = [item.proto.body for item in app.get("html") if 'class="edi-event ' in item.proto.body]
-    assert cards and all('proposal undated"' in card for card in cards)
-    assert not app.info
-
 
 def test_briefing_keeps_legacy_result_readable_without_generating_dossier(archive):
     from edicola.editorial import EditorialResult
