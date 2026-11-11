@@ -188,7 +188,7 @@ def test_saved_chat_new_session_retrieves_sources_without_generating(auth, backe
     db, actor, factory = chats
     personal = backend[2]
     factory().set_history_enabled(True)
-    personal().set_consent("text", "text-v2", True)
+    personal().set_consent("text", "text-v3", True)
     with patch("edicola.chat_sessions.ChatStore", side_effect=lambda _: factory()), patch(
         "edicola.consent.PostgresPersonalStore", side_effect=lambda _: personal()), patch(
         "edicola.rag.ask_question", return_value=RESULT) as ask:
@@ -286,7 +286,7 @@ def test_switch_cancels_pending_consent_without_model_call(tmp_path):
 def test_failed_save_visible_manual_retry_never_regenerates(auth, backend, chats, tmp_path, result):
     _, _, factory = chats
     factory().set_history_enabled(True)
-    backend[2]().set_consent("text", "text-v2", True)
+    backend[2]().set_consent("text", "text-v3", True)
     with patch("edicola.chat_sessions.ChatStore", side_effect=lambda _: factory()), patch(
         "edicola.consent.PostgresPersonalStore", side_effect=lambda _: backend[2]()), patch(
         "edicola.rag.ask_question", return_value=result) as ask, patch.object(
