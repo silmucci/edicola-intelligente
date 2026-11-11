@@ -67,12 +67,12 @@ def render_account_profile(root, archive=None):
         if not profile.interests:
             st.subheader("Cominciamo dai tuoi interessi")
             st.caption("Scegli qualche tema e il tempo che hai: troverai qui letture dedicate ai tuoi interessi.")
-        if st.session_state.get("personal_area") not in (None, "Preferenze", "Privacy"):
+        if st.session_state.get("personal_area") not in (None, "Preferenze", "Raccolta", "Privacy"):
             st.session_state.pop("personal_area", None)
-        areas = st.tabs(["Preferenze", "Privacy"],
+        areas = st.tabs(["Preferenze", "Raccolta", "Privacy"],
                         default="Preferenze",
                         key="personal_area", on_change="rerun")
-        with areas[1]:
+        with areas[2]:
             if st.session_state.get("personal_area") == "Privacy":
                 privacy_controls()
             privacy_notice()
@@ -151,6 +151,16 @@ def render_account_profile(root, archive=None):
                 st.session_state.pop("account_export", None)
                 st.toast("Preferenze salvate")
                 st.rerun()
+        with areas[1]:
+            if archive is None:
+                st.info("Le tue letture saranno disponibili quando l'archivio è aperto.")
+            else:
+                try:
+                    from edicola.editorial_selection import read_catalog
+                    catalog = read_catalog(root)
+                except (OSError, ValueError, RuntimeError):
+                    catalog = None
+                render_account_readings(root, archive, store, profile, catalog)
     except PersonalStoreError:
         st.error("Il tuo spazio personale non è disponibile in questo momento. Riprova più tardi: nessun nuovo salvataggio è stato confermato.")
     except (PermissionDenied, RagError, PodcastError) as exc:
@@ -160,7 +170,7 @@ def render_account_profile(root, archive=None):
 
 
 def render_account_readings(root, archive, store, profile, catalog):
-    """Letture e briefing personali presentati in Per te, fuori dalle impostazioni."""
+    """Letture e briefing personali disponibili nella Raccolta del Profilo."""
     from edicola.experience_ui import excerpt, readable
     from edicola.personalization_ui import cached_audio, show_product
     try:
