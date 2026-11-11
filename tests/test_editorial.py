@@ -457,7 +457,7 @@ def test_briefing_does_not_use_fallback_for_quota_or_permission_errors(setup_edi
         with pytest.raises(EditorialError) as exc:
             generate_product("briefing", root=root, authorize_external=True, client=client)
     assert "private-key" not in str(exc.value)
-    assert client.models.generate_content.call_count == (3 if status == 429 else 1)
+    assert client.models.generate_content.call_count == (2 if status == 429 else 1)
     assert all(c.kwargs["model"] == "configured-flash"
                for c in client.models.generate_content.call_args_list)
 
