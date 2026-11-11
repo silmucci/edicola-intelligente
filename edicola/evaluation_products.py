@@ -118,6 +118,42 @@ def validate_grades(raw, item):
 
 
 
+GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "openai/gpt-oss-120b"
+
+
+def groq_judgment(model, prompt, criteria, *, root=None, client=None):
+    """Groq Structured Outputs, un invio esplicito senza retry automatici."""
+    key = setting("GROQ_API_KEY", root=root)
+    if not key and client is None:
+        raise ValueError("GROQ_API_KEY mancante.")
+    schema = grade_schema(criteria)
+    payload = {"model": model, "messages": [
+        {"role": "system", "content": INSTRUCTION},
+        {"role": "user", "content": prompt}],
+        "response_format": {"type": "json_schema", "json_schema": {
+            "name": "editorial_grades", "strict": True, "schema": schema}},
+        "reasoning_effort": "low", "max_completion_tokens": 3072}
+    own = client is None
+    if own:
+        client = httpx.Client(timeout=90, follow_redirects=False)
+    try:
+        response = client.post(GROQ_ENDPOINT,
+                              headers={"Authorization": "Bearer " + (key or "injected-test-key"),
+                                       "Content-Type": "application/json"}, json=payload)
+        response.raise_for_status()
+        choice = response.json()["choices"][0]
+        if choice.get("finish_reason") != "stop":
+            raise ValueError("Giudizio incompleto.")
+        result = choice["message"]["content"]
+        if not isinstance(result, str):
+            raise ValueError("Giudizio non testuale.")
+        return result
+    finally:
+        if own:
+            client.close()
+
+
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_FREE_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
@@ -164,10 +200,12 @@ def evaluate_products(manifest, *, root, model, authorize_external=False, client
         raise ValueError("Occorre autorizzare l'invio al giudice.")
     if not isinstance(model, str) or not model.strip():
         raise ValueError("Modello giudice non valido.")
-    if provider not in ("gemini", "openrouter"):
+    if provider not in ("gemini", "openrouter", "groq"):
         raise ValueError("Provider giudice non valido.")
     if provider == "openrouter" and not model.endswith(":free"):
         raise ValueError("OpenRouter gratuito richiede un modello :free.")
+    if provider == "groq" and model not in ("openai/gpt-oss-120b", "openai/gpt-oss-20b"):
+        raise ValueError("Modello Groq non supportato per output strutturati.")
     if client is None and any(x["origin"] != "real" for x in items):
         raise ValueError("Non inviare dati simulati al servizio reale.")
     own = client is None
@@ -194,7 +232,11 @@ def evaluate_products(manifest, *, root, model, authorize_external=False, client
             else:
                 start = time.perf_counter()
                 try:
-                    if provider == "openrouter":
+                    if provider == "groq":
+                        response_text = groq_judgment(model, prompt, criteria, root=root, client=client)
+                        record["grades"] = validate_grades(response_text, item)
+                        record["status"] = "judged"
+                    elif provider == "openrouter":
                         response_text = openrouter_judgment(model, prompt, criteria, root=root, client=client)
                         record["grades"] = validate_grades(response_text, item)
                         record["status"] = "judged"
