@@ -5,11 +5,12 @@ from collections import Counter
 
 from edicola.press_review import ReviewSelection, filter_catalog, review_groups, ranked_chunks, article_groups
 from edicola.editorial_selection import read_catalog
+from edicola.for_you import article_preview
 
 
 def render_press_review(catalog, context, metadata):
     """Un invio locale esplicito, nessuna API durante digitazione o navigazione."""
-    from edicola.experience_ui import excerpt, readable
+    from edicola.experience_ui import readable
     from edicola.pdf_viewer import source_button
     for suffix in ("files", "scope", "from", "to", "latest", "group", "limit", "keyword"):
         st.session_state.pop("editorial_review_" + suffix, None)
@@ -43,16 +44,19 @@ def render_press_review(catalog, context, metadata):
         return
     limit = len(groups) if st.session_state.get("editorial_press_more") else 12
     for index, members in enumerate(groups[:limit]):
-        chunk = members[0]
+        # Stesso criterio di Per te: non inventare titoli e non iniziare
+        # un'anteprima a metà parola quando il chunk è una continuazione.
+        display = next((item for member in members
+                        if (item := article_preview(member)) is not None), None)
+        chunk = display.chunk if display else members[0]
         info = metadata.get(chunk.metadata["filename"], {})
-        title = chunk.metadata.get("article_title", "")
-        trusted_title = chunk.metadata.get("article_title_verified") is True and title and title in chunk.text
         with st.container(border=True):
             st.caption((info.get("title") or "Documento dell’archivio") + " · " + (info.get("date") or "Data non disponibile"))
-            st.markdown("**" + readable(title if trusted_title else "Dalle notizie del quotidiano") + "**")
-            # Una porzione più ampia del passaggio originale aiuta a capire
-            # l'articolo senza produrre una sintesi AI non verificata.
-            st.markdown(readable(excerpt(chunk.text, 520)))
+            st.markdown("**" + readable(display.title if display else "Dall'edizione originale") + "**")
+            if display and display.preview:
+                st.markdown(readable(display.preview))
+            elif not display:
+                st.caption("Leggi il passaggio completo direttamente nella fonte originale.")
             source_button(chunk.metadata["filename"], chunk.metadata["page"], context=context, chunk_id=chunk.id,
                           key=f"press_article_{index}", label="Leggi l’articolo")
             with st.popover("Leggi la fonte", key=f"press_original_{index}"):
