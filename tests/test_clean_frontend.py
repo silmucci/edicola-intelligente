@@ -23,15 +23,15 @@ def test_classic_blue_red_theme_and_minimal_streamlit_toolbar():
     assert theme["borderColor"] == COLORS["border"]
 
 
-def test_seven_full_cards_restore_descriptions_and_keep_accessibility():
-    assert ".cards.products{grid-template-columns:repeat(7" in CARD_CSS
+def test_six_full_cards_keep_descriptions_and_accessibility():
+    assert ".cards.products{grid-template-columns:repeat(6" in CARD_CSS
     assert ".products .card p{font-size:12px" in CARD_CSS
     assert ".cards.products{display:grid;grid-template-columns:repeat(2" in CARD_CSS
     assert "item.id" in CARD_JS
     assert "aria-current" in CARD_JS
     assert "setTriggerValue('selected'" in CARD_JS
     assert [p["id"] for p in PRODUCTS if p["id"] != "profile"] == [
-        "archive", "home", "chat", "briefing", "timeline", "map", "podcast"
+        "archive", "for_you", "chat", "briefing", "podcast", "explore"
     ]
 
 
