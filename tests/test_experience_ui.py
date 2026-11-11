@@ -104,7 +104,8 @@ def test_cards_save_remove_and_preferences_feedback(archive):
         app.button(key=save.key).click().run()
     assert not app.exception
     assert len(load_profile(root).saved) == 1
-    assert any("Lettura salvata" in success.value for success in app.success)
+    # La notifica viene mostrata nella Raccolta al primo accesso al profilo.
+    assert "Lettura salvata" in app.session_state.get("personal_notice", "")
     identity = next(iter(load_profile(root).saved))
     navigate_to(app, "Il mio profilo")
     app.button(key=f"personal_remove_{identity}").click().run()

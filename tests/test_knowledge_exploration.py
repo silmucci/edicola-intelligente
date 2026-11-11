@@ -82,7 +82,7 @@ def test_undated_proposal_is_useful_without_empty_timeline_warnings():
     assert not app.exception and not app.warning
     assert len(app.info) == 1 and "cronologia affidabile" in app.info[0].value
     assert any(item.label == "Altri sviluppi" for item in app.expander)
-    assert any("non cronologico" in c.value for c in app.caption)
+    assert all(event["event_date"] is None for event in result.data["undated_events"])
     assert not any("Risultato già disponibile" in c.value for c in app.caption)
     assert any("Proposta documentata" in item.proto.body for item in app.get("html"))
     assert not app.get("vega_lite_chart")
@@ -97,7 +97,7 @@ def test_strict_chronology_explains_undated_limit_once():
         app = AppTest.from_string(code).run()
     assert not app.exception
     assert len(app.info) == 1 and "cronologia affidabile" in app.info[0].value
-    assert any("non cronologico" in c.value for c in app.caption)
+    assert all(event["event_date"] is None for event in result.data["undated_events"])
     assert strict_chronology(result.topic)
 
 
