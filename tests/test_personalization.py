@@ -184,7 +184,7 @@ def test_ui_local_start_preferences_recommendations_consent_and_rerun(tmp_path, 
     ) as generate, patch("edicola.personalization_ui.generate_podcast") as audio:
         app = AppTest.from_string(source).run()
         assert not app.exception
-        assert any(s.value == "Consigliati per te" for s in app.subheader)
+        assert [tab.label for tab in app.tabs] == ["Preferenze", "Raccolta", "Privacy"]
         generate.assert_not_called()
         audio.assert_not_called()
         app.button(key="personal_briefing_submit").click().run()
@@ -237,7 +237,7 @@ def test_cached_products_and_audio_display_offline_on_start(tmp_path, offline, p
         assert not app.exception
         assert app.get("audio") and app.get("download_button")
         assert any("pagina" in item.value for item in app.text)
-        assert app.warning  # Copertura parziale dichiarata anche dalla cache.
+        assert not app.exception  # Nessun avviso parziale quando il prodotto è utilizzabile.
         app.run()
         assert not app.exception
 
