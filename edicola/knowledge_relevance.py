@@ -235,3 +235,60 @@ def scope_timeline(catalog, question):
     chunks = [c for c in catalog.chunks if c.metadata["filename"] in names]
     return type(catalog)(chunks, {c.id: catalog.vectors[c.id] for c in chunks if c.id in catalog.vectors},
                          {**catalog.coverage, "files": files, "requested_editions": [start, end]})
+
+
+# Selezione dedicata ai prodotti visuali: mantiene il retrieval generale invariato.
+VISUAL_RETRIEVAL_VERSION = "visual-retrieval-v1"
+TEMPORAL_CUES = re.compile(r"\\b(?:ieri|oggi|domani|successivamente|precedentemente|dopo|prima|annunciato|convocato|approvato|replica|incontro|vertice|emergenza|(?:\\d{1,2}\\s+)?(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\\s+\\d{4})\\b", re.I)
+RELATION_CUES = re.compile(r"\\b(?:ha|hanno|chiede|chiedono|critica|criticano|attacca|replica|convoca|finanzia|approva|riguarda|coinvolge|colpisce|provoca|sostiene|accusa|risponde|propone|annuncia|prevede)\\b", re.I)
+
+
+def select_visual_evidence(kind, topic, chunks, hits, *, limit=28):
+    """Recall selettivo per eventi o relazioni, senza mutare indice e validatori.
+
+    I candidati devono rispettare i vincoli tematici locali. Il segnale
+    temporale/relazionale è un bonus, mai una prova sufficiente da solo.
+    Si evita che un'unica edizione consumi l'intero budget di contesto.
+    """
+    if kind not in {"timeline", "map"}:
+        raise ValueError("Prodotto visuale sconosciuto")
+    positions = {hit["id"]: i for i, hit in enumerate(hits)}
+    distances = {hit["id"]: float(hit.get("distance", 1.0)) for hit in hits}
+    matched = []
+    for chunk in chunks:
+        lexical = topic.score(chunk.text)
+        if lexical <= 0:
+            continue
+        # La posizione semantica fa da preferenza, non da esclusione:
+        # un articolo pertinente può non essere nei primi risultati vettoriali.
+        pos = positions.get(chunk.id)
+        semantic_bonus = 6 / (1 + pos / 6) if pos is not None else 0
+        evidence_cues = TEMPORAL_CUES if kind == "timeline" else RELATION_CUES
+        signal = min(3, len(evidence_cues.findall(chunk.text)))
+        score = lexical + semantic_bonus + signal * 0.65
+        matched.append((score, distances.get(chunk.id, 1.0), chunk))
+    matched.sort(key=lambda item: (-item[0], item[1], item[2].id))
+    if not matched:
+        return []
+    # Impedisce ai risultati con una sola parola generica di prevalere
+    # sul nucleo tematico, senza imporre una soglia assoluta tra argomenti.
+    floor = matched[0][0] * 0.38
+    matched = [item for item in matched if item[0] >= floor]
+    chosen, seen, by_edition = [], set(), Counter()
+    for pass_number in (0, 1):
+        for _, _, chunk in matched:
+            if chunk.id in seen:
+                continue
+            filename = chunk.metadata["filename"]
+            if pass_number == 0 and by_edition[filename] >= 2:
+                continue
+            signature = (filename, " ".join(chunk.text.casefold().split()))
+            if signature in seen:
+                continue
+            chosen.append(chunk)
+            seen.add(chunk.id)
+            seen.add(signature)
+            by_edition[filename] += 1
+            if len(chosen) >= limit:
+                return chosen
+    return chosen
