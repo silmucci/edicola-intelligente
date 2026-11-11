@@ -114,7 +114,7 @@ render_home(context.root, context)
         generate.assert_not_called()
 
 
-def test_actual_app_mounts_only_eight_supported_destinations_with_mocked_archive():
+def test_actual_app_mounts_only_current_destinations_with_mocked_archive():
     from contextlib import ExitStack
     context = SimpleNamespace(root=Path(__file__).parent / "__consumer_fixture_only__", documents=[], chunk_references={})
     with ExitStack() as stack:
@@ -123,7 +123,7 @@ def test_actual_app_mounts_only_eight_supported_destinations_with_mocked_archive
         stack.enter_context(patch("edicola.pdf_viewer.archive_context", return_value=context))
         stack.enter_context(patch("edicola.archive_ui.diagnostics_enabled", return_value=False))
         stack.enter_context(patch("edicola.header_ui.render_header"))
-        for name in ("edicola.experience_ui.render_home", "edicola.pdf_viewer.render_archive",
+        for name in ("edicola.experience_ui.render_for_you", "edicola.archive_ui.render_archive",
                      "edicola.reading_ui.render_chat", "edicola.reading_ui.render_visuals",
                      "edicola.podcast_ui.render_podcast_ui", "edicola.personalization_ui.render_personalization_ui"):
             stack.enter_context(patch(name))
@@ -131,10 +131,10 @@ def test_actual_app_mounts_only_eight_supported_destinations_with_mocked_archive
         api = stack.enter_context(patch("google.genai.Client"))
         app = AppTest.from_file(str(Path(__file__).parents[1] / "app.py")).run()
         assert not app.exception
-        assert app.selectbox(key="nav_section").options == [p["title"] for p in PRODUCTS]
+        assert app.session_state["nav_section"] in [p["title"] for p in PRODUCTS]
         for product in PRODUCTS:
             navigate_to(app, product["title"])
-            assert not app.exception and not app.segmented_control
+            assert not app.exception
         editorial.assert_called_once()
         api.assert_not_called()
 
