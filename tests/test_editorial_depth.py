@@ -73,7 +73,7 @@ def test_shared_editorial_depth_is_document_based():
     assert EDITORIAL_DEPTH_INSTRUCTION in BRIEFING_INSTRUCTION
     assert EDITORIAL_DEPTH_INSTRUCTION in CHAT_INSTRUCTION
     assert "numero minimo" in MAP_INSTRUCTIONS
-    assert KNOWLEDGE_VERSION == "knowledge-v6"
+    assert KNOWLEDGE_VERSION == "knowledge-v7"
     assert len(KNOWLEDGE_SYSTEM + MAP_INSTRUCTIONS + COMPARISON_INSTRUCTION
                + EDITORIAL_DEPTH_INSTRUCTION) < 4400
     assert len(KNOWLEDGE_SYSTEM + TIMELINE_INSTRUCTIONS + COMPARISON_INSTRUCTION
