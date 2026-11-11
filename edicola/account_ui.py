@@ -9,6 +9,7 @@ from edicola.identity import current_identity, synchronize_identity
 from edicola.personal_audio import audio_scope, prepare_audio, remove_audio
 from edicola.personal_store import PersonalStoreError, PostgresPersonalStore
 from edicola.personalization import generate_personal_briefing
+from edicola.editorial_selection import read_catalog
 from edicola.pdf_viewer import source_button
 from edicola.podcast import VOICES, generate_podcast
 from edicola.podcast_text import PodcastError
@@ -152,15 +153,16 @@ def render_account_profile(root, archive=None):
                 st.toast("Preferenze salvate")
                 st.rerun()
         with areas[1]:
-            if archive is None:
-                st.info("Le tue letture saranno disponibili quando l'archivio è aperto.")
-            else:
-                try:
-                    from edicola.editorial_selection import read_catalog
-                    catalog = read_catalog(root)
-                except (OSError, ValueError, RuntimeError):
-                    catalog = None
-                render_account_readings(root, archive, store, profile, catalog)
+            # Streamlit monta anche schede non visibili: carica solo quella scelta.
+            if st.session_state.get("personal_area") == "Raccolta":
+                if archive is None:
+                    st.info("Le tue letture saranno disponibili quando l'archivio è aperto.")
+                else:
+                    try:
+                        catalog = read_catalog(root)
+                    except (OSError, ValueError, RuntimeError):
+                        catalog = None
+                    render_account_readings(root, archive, store, profile, catalog)
     except PersonalStoreError:
         st.error("Il tuo spazio personale non è disponibile in questo momento. Riprova più tardi: nessun nuovo salvataggio è stato confermato.")
     except (PermissionDenied, RagError, PodcastError) as exc:
