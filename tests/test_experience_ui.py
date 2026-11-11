@@ -13,6 +13,7 @@ from editorial_adapter import navigate_to
 from edicola.archive import read_active_chunks
 from edicola.chunking import prepare_documents
 from edicola.editorial_selection import Catalog
+from edicola.for_you import select_feed
 from edicola.experience_ui import SECTIONS, excerpt, home_selection, readable, recent_editions
 from edicola.ingestion import ingest_directory
 from edicola.pdf_viewer import archive_context
@@ -60,9 +61,11 @@ def test_identity_home_and_logout_are_not_fake_authentication(archive, logged_in
     with patch("streamlit.user", SimpleNamespace(is_logged_in=logged_in)), patch("streamlit.logout") as logout:
         app = AppTest.from_string(script(root), default_timeout=15).run()
         assert not app.exception
-        assert ("Consigliati per te" in [h.value for h in app.subheader]) is logged_in
+        navigate_to(app, "Per te")
+        assert any(h.value == ("Notizie per i tuoi interessi" if logged_in else "Notizie da esplorare")
+                   for h in app.subheader)
         navigate_to(app, "Il mio profilo")
-        assert app.button(key="account_logout").disabled is (not logged_in)
+        assert bool([button for button in app.button if button.key == "account_logout"]) is logged_in
         # La homepage personalizzata usa SOLO la sessione nativa verificata.
         home_headers = [h.value for h in app.subheader]
         assert home_headers
@@ -79,7 +82,7 @@ def test_identity_home_and_logout_are_not_fake_authentication(archive, logged_in
 
 
 @pytest.mark.parametrize("button,destination", [("home_products_test_2", "Chat AI"), ("home_products_test_3", "Briefing"),
-                                                ("home_products_test_6", "Podcast"), ("home_products_test_7", "Il mio profilo")])
+                                                ("home_products_test_4", "Podcast"), ("home_products_test_5", "Esplora")])
 def test_shortcuts_keep_consents_and_do_not_generate(archive, button, destination):
     root, _, _ = archive
     with patch("edicola.rag.ask_question", side_effect=AssertionError("RAG automatico")), patch(
@@ -93,20 +96,21 @@ def test_shortcuts_keep_consents_and_do_not_generate(archive, button, destinatio
         assert app.session_state["nav_section"] == destination
         assert len(app.chat_input) == (1 if destination == "Chat AI" else 0)
         assert app.session_state["consent_choices"][("text", "text-v3")]
-        assert app.selectbox(key="nav_section").options == SECTIONS
+        assert app.session_state["nav_section"] in SECTIONS
 
 
 def test_cards_save_remove_and_preferences_feedback(archive):
     root, _, catalog = archive
     save_profile(root, Profile(interests=["trasporti"]))
     app = AppTest.from_string(script(root), default_timeout=15).run()
-    navigate_to(app, "Il mio profilo")
+    navigate_to(app, "Per te")
     save = next(button for button in app.button if button.label == "Salva lettura")
     app.button(key=save.key).click().run()
     assert not app.exception
     assert len(load_profile(root).saved) == 1
     assert any("Lettura salvata" in success.value for success in app.success)
     identity = next(iter(load_profile(root).saved))
+    navigate_to(app, "Il mio profilo")
     app.button(key=f"personal_remove_{identity}").click().run()
     assert not load_profile(root).saved
     assert any("rimossa" in success.value for success in app.success)
@@ -137,15 +141,17 @@ def test_recent_editions_use_verified_dates_and_handle_missing_metadata(archive)
     assert recent_editions(context) == context.documents
 
 
-def test_home_source_opens_original_page_without_api(archive):
+def test_recommended_news_open_original_page_without_api(archive):
     root, _, catalog = archive
-    expected = home_selection(catalog)[0]
     app = AppTest.from_string(script(root), default_timeout=15).run()
-    app.button(key="home_highlights_test_0").click().run()
+    navigate_to(app, "Per te")
+    entries = select_feed(catalog, None)
+    assert entries
+    app.button(key="for_you_0_pdf").click().run()
     assert not app.exception
-    assert app.session_state["nav_section"] == "Archivio PDF"
-    assert app.session_state["archive_pdf"] == expected.metadata["filename"]
-    assert app.session_state["archive_page"] == expected.metadata["page"]
+    assert app.session_state["nav_section"] == "In edicola"
+    assert app.session_state["archive_pdf"] == entries[0].chunk.metadata["filename"]
+    assert app.session_state["archive_page"] == entries[0].chunk.metadata["page"]
 
 
 def test_conversational_history_does_not_repeat_requests_and_handles_failure(archive):
@@ -183,7 +189,8 @@ def test_empty_home_and_guest_have_clear_states_and_no_fake_content(archive):
     with patch("streamlit.user", SimpleNamespace(is_logged_in=False)):
         app = AppTest.from_string(script(root), default_timeout=15).run()
     assert not app.exception
-    assert any("Non ci sono letture disponibili" in message.value for message in app.caption)
+    navigate_to(app, "Per te")
+    assert any("non sono disponibili" in message.value for message in app.info)
     assert not any("account personale" in item.value and "non" not in item.value for item in app.caption)
     assert not app.get("file_uploader")
 
@@ -206,7 +213,7 @@ def test_cards_and_shortcuts_wrap_for_narrow_containers(archive):
     assert horizontal and all(block.proto.flex_container.wrap for block in horizontal)
     from edicola.editorial_components import CARD_CSS
     assert "overflow-x:auto" in CARD_CSS and "@media(max-width:600px)" in CARD_CSS
-    assert "scroll-snap-align:start" in CARD_CSS
+    assert ".cards.products{display:grid;grid-template-columns:repeat(2" in CARD_CSS
 
 
 
@@ -218,9 +225,10 @@ def test_untrusted_session_flags_do_not_authenticate(archive):
         app.session_state["user_id"] = "another-user"
         app.run()
         assert not app.exception
-        assert not any(h.value == "Consigliati per te" for h in app.subheader)
+        navigate_to(app, "Per te")
+        assert not any(h.value == "Notizie per i tuoi interessi" for h in app.subheader)
         navigate_to(app, "Il mio profilo")
-        assert app.button(key="account_logout").disabled
+        assert not [b for b in app.button if b.key == "account_logout"]
         assert any("condivis" in c.value for c in app.caption)
         logout.assert_not_called()
 
