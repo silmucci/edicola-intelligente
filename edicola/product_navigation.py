@@ -15,7 +15,7 @@ for product in PRODUCTS:
     product["section"] = product["title"]
 
 SECTIONS = [product["title"] for product in PRODUCTS]
-EDITORIAL_SECTIONS = SECTIONS[:-1]
+EDITORIAL_SECTIONS = [p["section"] for p in PRODUCTS if p["id"] != "profile"]
 # Alias mantenuti per bozze, collegamenti e sessioni create prima del restyling.
 LEGACY_SECTIONS = {
     "Archivio PDF": "In edicola", "Dossier": "Briefing",
