@@ -43,6 +43,13 @@ if cloud_demo:
         st.error("L’archivio non è disponibile in questo momento. Riprova più tardi.")
         st.stop()
 
+# Esportazione solo amministrativa e su richiesta: non appare nella UI ordinaria.
+# Usa ROOT runtime del cloud, non la directory sorgente del repository.
+if st.query_params.get("evaluation_export") == "1":
+    from edicola.evaluation_export_ui import render_export
+    render_export(ROOT)
+    st.stop()
+
 # La versione pubblicata usa uno snapshot immutabile: la inbox è solo locale.
 # Una copia PDF depositata in data/inbox viene preparata senza Gemini al reload.
 intake_report = {"added": []}
