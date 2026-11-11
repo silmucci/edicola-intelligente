@@ -124,7 +124,7 @@ def test_intrinsic_graph_size_and_readable_fonts_prevent_fitting_two_nodes_to_th
     assert not app.exception and not app.dataframe
     # Nessun grafo riuscito viene simulato quando il risultato non ha relazioni.
     assert len(app.get("graphviz_chart")) == 0
-    assert any("Non emergono relazioni verificabili" in message.value for message in app.info)
+    assert not app.info
     data["edges"] = [{"from_id": "N0", "to_id": "N1", "kind": "documented", "label": "riguarda", "source_ids": []}]
     with installed_fixture(module), patch("edicola.map_component.graph_component") as graph:
         AppTest.from_string(code).run()
