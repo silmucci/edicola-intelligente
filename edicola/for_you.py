@@ -89,7 +89,7 @@ def select_feed(catalog, profile=None, *, topic: str = "", limit: int = 16) -> l
     interest_words = {name: tokens(name) for name in interests}
     denied = [interest_words[name] for name, value in (profile.feedback.items() if profile else ())
               if value == -1 and name in interest_words]
-    wordsets = {chunk.id: tokens(chunk.text) for chunk in chunks}
+    needs_topic_matching = bool(interest_words)
 
     def matched(words):
         return tuple(name for name, expected in interest_words.items()
@@ -107,11 +107,15 @@ def select_feed(catalog, profile=None, *, topic: str = "", limit: int = 16) -> l
     preferred_scores = {item.chunk.id: item.score for item in preferred}
     prepared = []
     for chunk in chunks:
-        words = wordsets[chunk.id]
-        if any(blocked and len(blocked & words) / len(blocked) >= 0.6
-               for blocked in denied):
-            continue
-        topics = matched(words)
+        # Senza interessi, il feed generale non deve tokenizzare tutto il corpus.
+        if needs_topic_matching:
+            words = tokens(chunk.text)
+            if any(blocked and len(blocked & words) / len(blocked) >= 0.6
+                   for blocked in denied):
+                continue
+            topics = matched(words)
+        else:
+            topics = ()
         if topic and topic not in topics:
             continue
         item = _feed_item(chunk, topics)

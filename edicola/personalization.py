@@ -69,23 +69,31 @@ def recommend(catalog, profile: Profile, limit=None):
     """Corrispondenze lessicali dichiarate; non genera embedding della domanda."""
     validate(profile)
     limit = limit if limit is not None else {2: 3, 5: 5, 10: 8}[profile.minutes]
+    # Le preferenze non cambiano tra i chunk: normalizzarle una sola volta.
+    interest_terms = [(topic, tokens(topic)) for topic in profile.interests]
     ranked = []
     for chunk in catalog.chunks:
         words = tokens(chunk.text)
+        matches = []
+        for topic, topic_words in interest_terms:
+            if topic_words:
+                overlap = len(topic_words & words) / len(topic_words)
+                if overlap >= 0.6:
+                    matches.append((topic, overlap))
         # Un argomento escluso esplicitamente prevale sui boost positivi.
-        matches = [topic for topic in profile.interests if tokens(topic) and
-                   len(tokens(topic) & words) / len(tokens(topic)) >= 0.6]
-        if not matches or any(profile.feedback.get(t) == -1 for t in matches):
+        if not matches or any(profile.feedback.get(topic) == -1 for topic, _ in matches):
             continue
-        score = sum(len(tokens(t) & words) / len(tokens(t)) * (2 if profile.feedback.get(t) == 1 else 1) for t in matches)
+        score = sum(overlap * (2 if profile.feedback.get(topic) == 1 else 1)
+                    for topic, overlap in matches)
         saved = chunk.id in profile.saved
         score += 0.5 if saved else 0
-        reason = "Corrispondenza nel testo: " + ", ".join(matches)
-        if any(profile.feedback.get(t) == 1 for t in matches):
+        topics = [topic for topic, _ in matches]
+        reason = "Corrispondenza nel testo: " + ", ".join(topics)
+        if any(profile.feedback.get(topic) == 1 for topic in topics):
             reason += ". Priorità aumentata dal tuo feedback"
         if saved:
             reason += ". Passaggio salvato (+0,5)"
-        ranked.append(Recommendation(chunk, matches, score, reason))
+        ranked.append(Recommendation(chunk, topics, score, reason))
     ranked.sort(key=lambda item: (-item.score, item.chunk.id))
     editions = {f["pdf"]: (f.get("publication") or f["pdf"], f.get("date", "")) for f in catalog.coverage.get("files", [])}
     groups = defaultdict(deque)

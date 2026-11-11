@@ -78,3 +78,14 @@ def test_interests_and_negative_feedback_filter_the_feed():
     assert [item.chunk.id for item in result] == ["school"]
     assert result[0].topics == ("scuola",)
     assert select_feed(catalog(items), profile, topic="sport") == []
+
+
+def test_general_feed_skips_unnecessary_corpus_tokenization():
+    from unittest.mock import patch
+    items = [
+        chunk("one", "new.pdf", "Il Comune presenta un nuovo piano per la mobilità urbana e i trasporti."),
+        chunk("two", "old.pdf", "La Regione finanzia una nuova biblioteca per i cittadini e gli studenti."),
+    ]
+    with patch("edicola.for_you.tokens", side_effect=AssertionError("Tokenizzazione non necessaria")):
+        selected = select_feed(catalog(items))
+    assert [item.chunk.id for item in selected] == ["one", "two"]

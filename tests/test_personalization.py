@@ -327,3 +327,12 @@ def test_personal_briefing_excluded_topic_stays_excluded(offline):
     selected = balanced_briefing_selection(catalog, profile)
     assert catalog.chunks[0].id in [chunk.id for chunk in selected]
     assert catalog.chunks[1].id not in [chunk.id for chunk in selected]
+
+
+def test_recommend_normalizes_interests_once_for_whole_catalog(offline):
+    from edicola.personalization import tokens
+    catalog = make_catalog()
+    profile = Profile(interests=["trasporti", "scuola"])
+    with patch("edicola.personalization.tokens", wraps=tokens) as normalize:
+        recommend(catalog, profile)
+    assert normalize.call_count == len(profile.interests) + len(catalog.chunks)
