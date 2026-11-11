@@ -421,3 +421,72 @@ def test_one_cited_pdf_does_not_misreport_four_selected_pdfs(setup_editorial):
     assert result.diagnostics["cited_pdfs"] == 1
     assert len(result.used_source_ids) == 1
     assert len(result.sections) == 1
+
+
+
+def test_briefing_switches_model_only_after_two_server_503_errors(setup_editorial, monkeypatch, caplog):
+    root, _, client, _, _ = setup_editorial
+    monkeypatch.setenv("GEMINI_RAG_FALLBACK_MODEL", "backup-flash")
+    def maybe_busy(**kwargs):
+        if kwargs["model"] == "configured-flash":
+            raise errors.ServerError(503, {"error": {"code": 503, "message": "private-key"}})
+        return simulated_response(**kwargs)
+    client.models.generate_content.side_effect = maybe_busy
+    with patch("edicola.briefing.time.sleep", return_value=None), caplog.at_level("INFO", logger="edicola"):
+        result = generate_product("briefing", root=root, authorize_external=True, client=client)
+    assert result.sufficient
+    assert [c.kwargs["model"] for c in client.models.generate_content.call_args_list] == [
+        "configured-flash", "configured-flash", "backup-flash"
+    ]
+    assert len({c.kwargs["contents"] for c in client.models.generate_content.call_args_list}) == 1
+    assert all(c.kwargs["config"].response_mime_type == "application/json"
+               for c in client.models.generate_content.call_args_list)
+    assert result.used_source_ids
+    assert "phase=briefing_generation event=model_fallback" in caplog.text
+    assert "private-key" not in caplog.text
+    assert generate_product("briefing", root=root, authorize_external=True, client=client).from_cache
+
+
+@pytest.mark.parametrize("status", [403, 429])
+def test_briefing_does_not_use_fallback_for_quota_or_permission_errors(setup_editorial, monkeypatch, status):
+    root, _, client, _, _ = setup_editorial
+    monkeypatch.setenv("GEMINI_RAG_FALLBACK_MODEL", "backup-flash")
+    client.models.generate_content.side_effect = errors.ClientError(
+        status, {"error": {"code": status, "message": "private-key"}})
+    with patch("edicola.briefing.time.sleep", return_value=None):
+        with pytest.raises(EditorialError) as exc:
+            generate_product("briefing", root=root, authorize_external=True, client=client)
+    assert "private-key" not in str(exc.value)
+    assert client.models.generate_content.call_count == (3 if status == 429 else 1)
+    assert all(c.kwargs["model"] == "configured-flash"
+               for c in client.models.generate_content.call_args_list)
+
+
+def test_briefing_fallback_disabled_retries_primary_only(setup_editorial, monkeypatch):
+    root, _, client, _, _ = setup_editorial
+    monkeypatch.setenv("GEMINI_RAG_FALLBACK_MODEL", "off")
+    client.models.generate_content.side_effect = errors.ServerError(
+        503, {"error": {"code": 503, "message": "private-key"}})
+    with patch("edicola.briefing.time.sleep", return_value=None):
+        with pytest.raises(EditorialError, match="503"):
+            generate_product("briefing", root=root, authorize_external=True, client=client)
+    assert client.models.generate_content.call_count == 3
+
+
+def test_briefing_rejects_invalid_fallback_citations(setup_editorial, monkeypatch):
+    root, _, client, _, _ = setup_editorial
+    monkeypatch.setenv("GEMINI_RAG_FALLBACK_MODEL", "backup-flash")
+    def maybe_busy(**kwargs):
+        if kwargs["model"] == "configured-flash":
+            raise errors.ServerError(503, {"error": {"code": 503, "message": "private-key"}})
+        return SimpleNamespace(
+            text=json.dumps({"sufficient": True, "news": [{
+                key: {"text": "Dato non verificato", "evidence": [
+                    {"source_id": "S999", "quote": "Citazione non presente in alcuna fonte"}]}
+                for key in ("title", "summary")}] }),
+            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    client.models.generate_content.side_effect = maybe_busy
+    with patch("edicola.briefing.time.sleep", return_value=None):
+        result = generate_product("briefing", root=root, authorize_external=True, client=client)
+    assert not result.sufficient and result.diagnostics["status"] == "citation_validation_failed"
+    assert not (root / "data/editorial.sqlite3").exists()

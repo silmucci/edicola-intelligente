@@ -19,6 +19,7 @@ from edicola.editorial_selection import Catalog, balanced_briefing, read_catalog
 from edicola.article_evidence import source_articles
 from edicola.embeddings import api_key
 from edicola.indexing import ROOT
+from edicola.settings import setting
 from edicola.rag import (DEFAULT_MODEL, INSUFFICIENT, RagError, Source, build_prompt,
                          generate_response, response_schema, validate_response)
 from edicola.search import semantic_search
@@ -262,7 +263,9 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
                                        selection_coverage(catalog.coverage, candidates, []))
             prompt_chars = len(BRIEFING_INSTRUCTION) + len(prompt)
             logger.info("request_id=%s phase=briefing_context prompt_chars=%d budget=%d", request_id, prompt_chars, prompt_budget)
-            draft = generate_briefing_response(client, model, prompt, sources, request_id=request_id)
+            fallback_model = setting("GEMINI_RAG_FALLBACK_MODEL", "gemini-3.8-flash", root=root)
+            draft = generate_briefing_response(client, model, prompt, sources, request_id=request_id,
+                                              fallback_model=fallback_model)
             result = briefing_result(draft, sources, selection_coverage(catalog.coverage, candidates, sources),
                                      articles={source.id: article_details[source.id] for source in sources
                                                if source.id in article_details})
