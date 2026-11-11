@@ -1,0 +1,80 @@
+"""Regressioni del feed Per te: solo metadati e passaggi locali."""
+
+from types import SimpleNamespace
+
+from edicola.archive import IndexChunk
+from edicola.for_you import _feed_item, select_feed
+from edicola.profiles import Profile
+
+
+def chunk(identifier, filename, text, *, title=None, article_id=None, position=1):
+    metadata = {"filename": filename, "page": 3, "position": position,
+                "start": 0, "pdf_sha256": filename.ljust(64, "0"),
+                "article_id": article_id}
+    if title is not None:
+        metadata.update(article_title=title, article_title_verified=True)
+    return IndexChunk(identifier, text, metadata)
+
+
+def catalog(chunks):
+    files = [
+        {"pdf": "old.pdf", "publication": "Testata", "date": "2026-10-20"},
+        {"pdf": "new.pdf", "publication": "Testata", "date": "2026-11-09"},
+    ]
+    return SimpleNamespace(chunks=chunks, coverage={"files": files})
+
+
+def test_real_verified_headline_survives_truncated_chunk():
+    item = _feed_item(chunk("one", "new.pdf",
+                      "dicata alla sicurezza. Il Comune ha annunciato il programma scolastico per il nuovo anno.",
+                      title="Un programma di sicurezza nelle scuole"), ("Scuola",))
+    assert item is not None
+    assert item.verified_title
+    assert item.title == "Un programma di sicurezza nelle scuole"
+    assert "dicata" not in item.preview
+    assert item.preview.startswith("Il Comune")
+
+
+def test_unverified_excerpts_never_start_midword_or_invent_headline():
+    item = _feed_item(chunk("two", "new.pdf",
+                      "dicata alla sicurezza della scuola. I ragazzi hanno preparato elaborati grafici per un concorso nazionale. "
+                      "L'iniziativa racconta il valore della prevenzione sul lavoro e della formazione degli studenti."), ())
+    assert item is not None
+    assert not item.verified_title
+    assert item.title.startswith("I ragazzi hanno preparato")
+    assert "dicata" not in item.title
+    assert "L'iniziativa" in item.preview
+    assert _feed_item(chunk("bad", "new.pdf", "zione e di e per la."), ()) is None
+
+
+def test_recent_articles_are_listed_before_old_ones():
+    items = [
+        chunk("old", "old.pdf", "Il Consiglio ha approvato un nuovo piano dei trasporti per la mobilità urbana."),
+        chunk("new", "new.pdf", "Il Comune ha presentato nuovi servizi di trasporto pubblico per il territorio."),
+    ]
+    result = select_feed(catalog(items), limit=10)
+    assert [item.chunk.id for item in result] == ["new", "old"]
+
+
+def test_duplicate_article_chunks_are_not_displayed_twice():
+    news = (
+        "Il Comune ha annunciato il progetto di riqualificazione per gli edifici scolastici. "
+        "Le scuole coinvolte riceveranno interventi di manutenzione nei prossimi mesi."
+    )
+    items = [
+        chunk("one", "new.pdf", news, article_id="article-1", position=1),
+        chunk("two", "new.pdf", news + " La misura riguarda diversi quartieri della città.", article_id="article-1", position=2),
+    ]
+    assert len(select_feed(catalog(items))) == 1
+
+
+def test_interests_and_negative_feedback_filter_the_feed():
+    items = [
+        chunk("school", "new.pdf", "La scuola organizza incontri per gli studenti sul tema della prevenzione."),
+        chunk("sport", "new.pdf", "Lo sport giovanile torna nel calendario delle attività organizzate nel quartiere."),
+    ]
+    profile = Profile(interests=["scuola", "sport"], feedback={"sport": -1})
+    result = select_feed(catalog(items), profile)
+    assert [item.chunk.id for item in result] == ["school"]
+    assert result[0].topics == ("scuola",)
+    assert select_feed(catalog(items), profile, topic="sport") == []
