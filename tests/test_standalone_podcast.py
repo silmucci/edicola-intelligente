@@ -250,8 +250,14 @@ def test_topic_podcast_does_not_accept_weak_semantic_match_alone(standalone):
 
 
 def test_new_podcast_targets_four_to_five_minutes_without_padding():
-    from edicola.podcast_draft import INSTRUCTION, V3_INSTRUCTION, V4_INSTRUCTION, VERSION, V4_VERSION
-    assert VERSION != V4_VERSION
+    from edicola.podcast_draft import (
+        INSTRUCTION, V3_INSTRUCTION, V4_INSTRUCTION, V5_INSTRUCTION,
+        VERSION, V4_VERSION, V5_VERSION,
+    )
+    assert VERSION == "standalone-podcast-v6"
+    assert VERSION not in {V4_VERSION, V5_VERSION}
+    assert len(INSTRUCTION) < 2100
+    assert "500-650" in V5_INSTRUCTION
     assert "500-650" in INSTRUCTION
     assert "280-330" in V4_INSTRUCTION
     assert "180-210" in V3_INSTRUCTION
@@ -261,8 +267,8 @@ def test_new_podcast_targets_four_to_five_minutes_without_padding():
 
 def test_previous_podcast_strategy_retains_topic_audio_identity():
     from edicola.standalone_podcast import draft_context
-    from edicola.podcast_draft import V3_VERSION, V4_VERSION, VERSION
-    for strategy in (V3_VERSION, V4_VERSION, VERSION):
+    from edicola.podcast_draft import V3_VERSION, V4_VERSION, V5_VERSION, VERSION
+    for strategy in (V3_VERSION, V4_VERSION, V5_VERSION, VERSION):
         draft = SimpleNamespace(strategy=strategy, source_identity="test",
                                 model="fake-model", key="test-key", topic="ambiente")
         assert draft_context(draft)["topic"] == "ambiente"
