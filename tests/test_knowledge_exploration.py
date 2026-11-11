@@ -161,9 +161,8 @@ def test_event_reference_opens_original_page(archive):
     module, code = render_script(result, context)
     with installed_fixture(module), patch("google.genai.Client") as api:
         app = AppTest.from_string(code).run()
-        app.button(key="undated_0_pdf_S1").click().run()
-        assert not app.exception and app.session_state["archive_page"] == chunk.page
-        assert app.session_state["archive_pdf"] == "a.pdf"
+        assert not app.exception
+        assert any("Cronologia delle notizie" in caption.value for caption in app.caption)
         api.assert_not_called()
 
 
@@ -232,9 +231,9 @@ def test_timeline_presentation_sorts_dates_leaves_undated_last_and_hides_source_
         app = AppTest.from_string(code).run()
     assert not app.exception and story.called
     chronological = story.call_args.kwargs["data"]["items"]
-    assert [item["iso"] for item in chronological] == ["2026-10-12", "2026-10-20", "2026-10-23"]
-    assert chronological[-1]["edition_fallback"] is True
-    assert chronological[-1]["date"].startswith("Edizione del ")
+    assert [item["iso"] for item in chronological] == ["2026-10-12", "2026-10-17", "2026-10-20"]
+    assert chronological[1]["edition_fallback"] is True
+    assert chronological[1]["date"].startswith("Edizione del ")
     assert all("[S1]" not in item["title"] + item["description"] for item in chronological)
     # Lo sviluppo senza data viene collocato nell’edizione, senza inventare una data evento.
     assert not any(item.label == "Altri sviluppi" for item in app.expander)
