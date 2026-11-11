@@ -427,7 +427,7 @@ def test_ui_two_new_sessions_recover_only_current_profile(auth, backend, tmp_pat
     with patch("edicola.account_ui.PostgresPersonalStore", side_effect=lambda _: factory()), patch(
         "edicola.account_ui.read_catalog", return_value=make_catalog()):
         first = AppTest.from_string(ui(tmp_path)).run()
-        first.session_state["account_interest_chips"] = ["scuola"]
+        first.session_state["account_interest_chips"] = ["Scuola"]
         first.run()
         assert not first.exception and factory().load_profile().interests == ["Scuola"]
         actor[0] = B
