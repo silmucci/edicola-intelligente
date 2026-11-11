@@ -15,7 +15,7 @@ from test_podcast_ui import ui_script, grant
 
 
 @pytest.mark.parametrize('previous,expected', [(None, 'In edicola'), ('Archivio PDF', 'In edicola'),
-    ('Rassegna stampa', 'Rassegna stampa'), ('Timeline', 'Timeline')])
+    ('Rassegna stampa', 'Per te'), ('Timeline', 'Esplora')])
 def test_start_and_previous_sessions(previous, expected):
     with patch('edicola.editorial_components.cards_component') as cards:
         app = AppTest.from_string('from edicola.product_navigation import render_navigation\nrender_navigation()')
@@ -24,7 +24,7 @@ def test_start_and_previous_sessions(previous, expected):
         app.run()
         assert not app.exception and app.session_state['nav_section'] == expected
         items = cards.call_args.kwargs['data']['items']
-        assert [p['id'] for p in items] == ['archive', 'home', 'chat', 'briefing', 'timeline', 'map', 'podcast']
+        assert [p['id'] for p in items] == ['archive', 'for_you', 'chat', 'briefing', 'podcast', 'explore']
         assert sum(p['active'] for p in items) == 1
         assert all(p['icon'] and p['description'] for p in items)
     assert destination('Archivio PDF') == 'In edicola'
@@ -44,7 +44,7 @@ def test_card_callbacks_use_stable_ids_and_accept_old_indices(choice):
             opened.assert_called_once_with(('home', 'archive')[choice] if type(choice) is int else choice)
 
 
-def test_all_seven_cards_navigate_and_preserve_drafts_without_ai():
+def test_all_six_cards_navigate_and_preserve_drafts_without_ai():
     def adapter(**kwargs):
         import streamlit as st
         def click(identifier):
@@ -57,24 +57,30 @@ def test_all_seven_cards_navigate_and_preserve_drafts_without_ai():
         app = AppTest.from_string('from edicola.product_navigation import render_navigation\nrender_navigation()').run()
         app.session_state['podcast_topic'] = 'Una bozza da conservare'
         app.session_state['knowledge_result_map'] = 'Risultato esistente'
-        for product in PRODUCTS[:7]:
+        for product in (p for p in PRODUCTS if p["id"] != "profile"):
             app.button(key='card_'+product['id']).click().run()
             assert not app.exception and app.session_state['nav_section'] == product['section']
             assert app.session_state['podcast_topic'] == 'Una bozza da conservare'
             assert app.session_state['knowledge_result_map'] == 'Risultato esistente'
 
 
-def test_rassegna_mounts_only_its_search_and_not_the_pdf_gallery(standalone):
-    from types import SimpleNamespace
-    from edicola.experience_ui import render_home
-    context = SimpleNamespace(documents=[])
-    with patch('edicola.experience_ui.identity.synchronize_identity'), \
-         patch('edicola.experience_ui.read_catalog', return_value=standalone.catalog), \
-         patch('edicola.experience_ui.authenticated', return_value=False), \
-         patch('edicola.experience_ui.identity.local_demo', return_value=False), \
-         patch('edicola.press_review_ui.render_press_review') as review, \
-         patch('edicola.archive_ui.gallery_component') as gallery:
-        render_home(standalone.root, context)
+def test_legacy_rassegna_opens_full_news_not_pdf_gallery(standalone):
+    from types import ModuleType, SimpleNamespace
+    fixture = ModuleType("edicola.rassegna_fixture")
+    fixture.root = standalone.root
+    fixture.context = SimpleNamespace(root=standalone.root, documents=[])
+    code = """from edicola.rassegna_fixture import root, context
+from edicola.experience_ui import render_home
+render_home(root, context)
+"""
+    with patch.dict("sys.modules", {"edicola.rassegna_fixture": fixture}), patch(
+        "edicola.experience_ui.identity.synchronize_identity"), patch(
+        "edicola.experience_ui.read_catalog", return_value=standalone.catalog), patch(
+        "edicola.press_review_ui.render_press_review") as review, patch(
+        "edicola.archive_ui.gallery_component") as gallery:
+        app = AppTest.from_string(code).run()
+        assert not app.exception
+        assert app.session_state["for_you_mode"] == "Tutte le notizie"
         review.assert_called_once()
         gallery.assert_not_called()
 
