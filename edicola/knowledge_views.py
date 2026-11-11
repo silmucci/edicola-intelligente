@@ -52,6 +52,7 @@ def compact_sources(ids, sources, archive, key, *, articles=None):
 def render_knowledge(result, archive=None):
     technical = diagnostics_enabled(archive.root if archive else Path(__file__).resolve().parents[1])
     data = result.data or {}
+    articles = getattr(result, "source_articles", None) or {}
     useful = (data.get("events") or data.get("undated_events")) if result.kind == "timeline" else data.get("nodes")
     if not useful:
         st.caption(theme_title(result.topic))
@@ -68,16 +69,16 @@ def render_knowledge(result, archive=None):
     if result.kind == "timeline":
         if data["events"]:
             render_timeline(sorted(data["events"], key=lambda item: item["event_date"]), result.sources, archive,
-                            articles=result.source_articles)
+                            articles=articles)
         else:
             st.info("Le fonti disponibili non permettono di ricostruire una cronologia affidabile. Puoi consultare le fonti e gli altri sviluppi.")
             compact_sources([s.id for s in result.sources], result.sources, archive, "timeline_unresolved",
-                            articles=result.source_articles)
+                            articles=articles)
         if data["undated_events"]:
             with st.expander("Altri sviluppi"):
                 st.caption("Sviluppi documentati sul tema, senza una data certa. L’ordine non è cronologico.")
                 for index, event in enumerate(undated_order(data["undated_events"], result.sources)):
-                    render_event(event, result.sources, archive, f"undated_{index}", articles=result.source_articles)
+                    render_event(event, result.sources, archive, f"undated_{index}", articles=articles)
     else:
         render_map(result, archive, technical)
     if technical:
@@ -89,6 +90,7 @@ def render_knowledge(result, archive=None):
 def render_map(result, archive, technical):
     from edicola.experience_ui import readable
     data, diagnostics = result.data, result.diagnostics
+    articles = getattr(result, "source_articles", None) or {}
     captions = node_captions(data["nodes"])
     view = compact_map(data)
     if not data["edges"]:
@@ -123,9 +125,9 @@ def render_map(result, archive, technical):
                 st.caption(NODE_TYPES[selected["kind"]])
                 st.text(selected["label"])
                 compact_sources(selected["source_ids"], result.sources, archive, "map_selected_" + focus,
-                                articles=result.source_articles)
+                                articles=articles)
                 render_node_connections(selected, data, {n["id"]: n["label"] for n in data["nodes"]}, result.sources, archive,
-                                        articles=result.source_articles)
+                                        articles=articles)
     if mode == "Grafo" and len(view["nodes"]) < len(data["nodes"]):
         st.caption("Altri concetti disponibili nella vista Elenco.")
     nodes = {n["id"]: n["label"] for n in data["nodes"]}
@@ -137,8 +139,8 @@ def render_map(result, archive, technical):
                     st.caption(NODE_TYPES[kind])
                     st.text(node["label"])
                     compact_sources(node["source_ids"], result.sources, archive, "map_node_" + node["id"],
-                                    articles=result.source_articles)
-                    render_node_connections(node, data, nodes, result.sources, archive, articles=result.source_articles)
+                                    articles=articles)
+                    render_node_connections(node, data, nodes, result.sources, archive, articles=articles)
     if technical:
         with st.expander("Relazioni · sviluppo"):
             st.caption("Nodi nel grafo: " + ", ".join(n["id"] for n in view["nodes"]))
