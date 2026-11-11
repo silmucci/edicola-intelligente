@@ -36,12 +36,14 @@ def test_concept_only_map_is_visual_but_has_no_factual_or_decorative_edges():
     assert '"N1"' in dot and '"N2"' in dot
     assert "->" not in dot and not result.data["edges"]
     module, code = render_script(result)
-    with installed_fixture(module), patch("google.genai.Client") as api:
+    with installed_fixture(module), patch("google.genai.Client") as api, patch(
+        "edicola.knowledge_views.render_graph") as graph:
         app = AppTest.from_string(code).run()
-        assert not app.exception and len(app.get("graphviz_chart")) == 1
-        assert any("non indicano relazioni" in c.value for c in app.caption)
-        app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert not app.exception and not app.get("graphviz_chart") and not app.dataframe
+        assert not app.exception and not graph.called
+        assert any("Non emergono relazioni verificabili" in message.value for message in app.info)
+        # Senza archi documentati si mostrano i concetti consultabili, non grafi decorativi.
+        assert app.get("popover") and not app.dataframe
+        assert not app.segmented_control
         api.assert_not_called()
 
 

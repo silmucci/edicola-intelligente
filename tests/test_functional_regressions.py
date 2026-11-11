@@ -162,11 +162,17 @@ def test_native_node_focus_changes_only_graph_and_keeps_sources_without_ai(monke
     monkeypatch.setenv("EDICOLA_ARCHIVE_DIAGNOSTICS", "0")
     data, counts = validate_map(map_data(), SOURCES)
     fixture, code = render_script(KnowledgeResult("map", "Trasporti", data, SOURCES, COVERAGE, counts))
-    with installed_fixture(fixture), patch("google.genai.Client") as api, patch("streamlit.graphviz_chart", wraps=st.graphviz_chart) as graph:
+    def graph_adapter(data, *, topic, selected, on_select):
+        st.button("Seleziona N1", key="test_map_select_n1", on_click=on_select, args=("N1",))
+
+    with installed_fixture(fixture), patch("google.genai.Client") as api, patch(
+        "edicola.knowledge_views.render_graph", side_effect=graph_adapter) as graph:
         app = AppTest.from_string(code).run()
-        app.selectbox(key="knowledge_map_focus").set_value("N1").run()
-        assert not app.exception and '"N3"' not in graph.call_args.args[0]
+        app.button(key="test_map_select_n1").click().run()
+        assert not app.exception and app.session_state["knowledge_map_focus"] == "N1"
+        assert graph.call_args.kwargs["selected"] == "N1"
         assert any(SOURCES[0].text in text.value for text in app.text)
+        graph.reset_mock()
         app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert not app.get("graphviz_chart")
+        assert not graph.called and not app.dataframe
         api.assert_not_called()

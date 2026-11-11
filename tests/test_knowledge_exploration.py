@@ -137,11 +137,13 @@ def test_map_switch_to_readable_list_keeps_evidence_without_api():
     data, diagnostics = validate_map(raw, sources, contexts=contexts)
     result = KnowledgeResult("map", "Opere pubbliche", data, sources, COVERAGE, diagnostics)
     module, code = render_script(result)
-    with installed_fixture(module), patch("google.genai.Client") as api:
+    with installed_fixture(module), patch("google.genai.Client") as api, patch(
+        "edicola.knowledge_views.render_graph") as graph:
         app = AppTest.from_string(code).run()
-        assert len(app.get("graphviz_chart")) == 1
+        assert not app.exception and graph.called
+        graph.reset_mock()
         app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert not app.exception and not app.get("graphviz_chart") and not app.dataframe
+        assert not app.exception and not graph.called and not app.dataframe
         assert any("stanzia oltre quattro milioni" in t.value for t in app.text)
         api.assert_not_called()
 

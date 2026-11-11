@@ -128,13 +128,14 @@ def test_display_uses_existing_cache_and_switches_views_without_regeneration(set
     cache = next((root / "data/knowledge_cache").glob("*.json"))
     saved = cache.read_bytes()
     module, code = render_script(result)
-    with installed_fixture(module):
+    with installed_fixture(module), patch("edicola.knowledge_views.render_graph") as graph:
         app = AppTest.from_string(code).run()
-        assert not app.exception and app.get("graphviz_chart") and not app.dataframe
+        assert not app.exception and graph.called and not app.dataframe
+        graph.reset_mock()
         app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert not app.dataframe and not app.get("graphviz_chart")
+        assert not app.dataframe and not graph.called
         app.segmented_control(key="knowledge_map_view").set_value("Grafo").run()
-        assert app.get("graphviz_chart") and not app.dataframe
+        assert graph.called and not app.dataframe
     assert generate_knowledge("map", "Trasporti", authorize_external=True, root=root, client=client).from_cache
     assert cache.read_bytes() == saved
     search.assert_called_once()
