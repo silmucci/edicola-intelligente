@@ -231,11 +231,25 @@ def render_editorial_product(product, root, context):
 
 
 def render_visuals(root, context, *, kind=None):
+    """Due letture dello stesso tema, con risultati e consensi indipendenti."""
     standalone = kind is None
     if standalone:
-        kind = st.segmented_control("Come vuoi esplorare?", ["Timeline", "Mappa"], default="Timeline", key="knowledge_kind") or "Timeline"
-    section_intro("Timeline" if kind == "Timeline" else "Mappe concettuali",
-                  "Segui gli eventi e gli sviluppi nelle fonti." if kind == "Timeline" else "Esplora i concetti e i loro collegamenti.")
+        from edicola.product_navigation import cancel_navigation_action
+        section_intro("Esplora", "Ricostruisci gli eventi o scopri i collegamenti tra i protagonisti.", "La tua edicola")
+        modes = ("Timeline", "Mappa")
+        if st.session_state.get("knowledge_kind") not in (*modes, None):
+            st.session_state.pop("knowledge_kind", None)
+        kind = st.segmented_control("Come vuoi esplorare?", modes, default="Timeline",
+                                    key="knowledge_kind", on_change=cancel_navigation_action) or "Timeline"
+        # Riconosce le vecchie bozze senza ricreare sezioni separate.
+        old_key = "knowledge_topic_timeline" if kind == "Timeline" else "knowledge_topic_map"
+        if "knowledge_topic" not in st.session_state and isinstance(st.session_state.get(old_key), str):
+            st.session_state["knowledge_topic"] = st.session_state[old_key]
+        st.caption("Eventi in ordine cronologico, con date verificate." if kind == "Timeline"
+                   else "Soggetti, concetti e relazioni documentate dalle fonti.")
+    else:
+        section_intro("Timeline" if kind == "Timeline" else "Mappe concettuali",
+                      "Segui gli eventi e gli sviluppi nelle fonti." if kind == "Timeline" else "Esplora i concetti e i loro collegamenti.")
     result_kind = "timeline" if kind == "Timeline" else "map"
     results = st.session_state.setdefault("knowledge_results", {})
     previous = st.session_state.get("knowledge_result")
