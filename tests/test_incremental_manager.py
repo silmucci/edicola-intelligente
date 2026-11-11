@@ -246,7 +246,7 @@ def test_curated_metadata_require_confirmation_and_preserve_other_editions(prepa
 
 
 def test_source_version_changes_even_with_equal_counts(prepared):
-    from edicola.corpus_versions import source_version
+    from edicola.corpus_cache import source_version
     root, _ = prepared
     chunks = read_catalog(root).chunks
     changed = [replace(chunks[0], text=chunks[0].text + " Una correzione documentata.")]
