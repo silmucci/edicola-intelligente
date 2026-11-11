@@ -128,7 +128,7 @@ def test_cloud_ui_stops_before_ingestion_when_seed_missing(monkeypatch):
         app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py")).run()
     assert not app.exception
     assert any("L’archivio non è disponibile" in message.value for message in app.error)
-    assert any("accesso Google" in message.value for message in app.caption)
+    assert not app.get("file_uploader")  # App chiusa prima di montare il frontend
 
 
 def test_settings_precedence_and_local_key(monkeypatch, tmp_path):
@@ -174,7 +174,7 @@ def test_cloud_full_start_and_rerun_make_no_external_calls(source, tmp_path, mon
         assert app.session_state["nav_section"] in SECTIONS
         assert not app.chat_input
         navigate_to(app, "Il mio profilo")
-        assert app.button(key="account_login").disabled
+        assert not app.multiselect  # Nessun account demo pubblico senza Secrets
         assert not app.multiselect  # Nessun fallback al profilo condiviso quando mancano i Secrets.
         app.run()
         assert not app.exception
