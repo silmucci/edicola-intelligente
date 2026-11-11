@@ -16,8 +16,7 @@ from google.genai import errors, types
 from edicola.embeddings import EmbeddingError, api_key
 from edicola.indexing import ROOT
 from edicola.search import semantic_search
-from edicola.rag_context import source_editions, temporal_context, temporal_notice, retrieval_query, requested_publication_interval
-from edicola.edition_dates import read_edition_metadata
+from edicola.rag_context import source_editions, temporal_context, temporal_notice, retrieval_query
 from edicola.chat_data import bounded_context
 from edicola.article_evidence import verified_article, duplicate_article_hit, evidence_source_record
 from edicola.context_selection import fit_context, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION
@@ -42,7 +41,7 @@ Non aggiungere spiegazioni o conoscenze non documentate fuori dai claims."""
 
 # Il dossier riutilizza generate_response: queste istruzioni aggiuntive riguardano
 # soltanto ask_question e non cambiano prompt o validatori degli altri prodotti.
-CHAT_INSTRUCTION = SYSTEM_INSTRUCTION.replace("una sequenza breve e coerente", "una sequenza coerente e proporzionata alla domanda") + """
+CHAT_INSTRUCTION = SYSTEM_INSTRUCTION + """
 Scrivi una risposta naturale e diretta, adattando la profondità alla domanda.
 Per richieste fattuali semplici rispondi in modo conciso. Per domande che chiedono
 perché, come, l'evoluzione di una vicenda o il confronto tra fonti, sviluppa
@@ -199,55 +198,6 @@ def validate_response(raw: str, sources: list[Source]) -> RagResult:
         return fallback
 
 
-def prioritize_chat_hits(hits: list[dict], *, max_candidates=96, max_editions=12) -> list[dict]:
-    """Ricerca in tutto l'archivio, ma sceglie i passaggi migliori per la Chat.
-
-    La selezione non usa l'ordine alfabetico dei PDF come criterio di rilevanza.
-    Non cambia il ranking o la copertura degli altri prodotti editoriali.
-    """
-    if len(hits) <= max_candidates:
-        return hits
-    ranked = sorted(hits, key=lambda hit: (hit["distance"], hit["id"]))
-    editions = []
-    for hit in ranked:
-        if hit["filename"] not in editions:
-            editions.append(hit["filename"])
-        if len(editions) >= max_editions:
-            break
-    allowed = set(editions)
-    return [hit for hit in ranked if hit["filename"] in allowed][:max_candidates]
-
-
-def validate_chat_response(raw: str, sources: list[Source]) -> RagResult:
-    """Pubblica solo singole affermazioni verificate, senza perdere le altre valide.
-
-    Il validatore dei prodotti editoriali rimane rigoroso e invariato.
-    """
-    fallback = RagResult(INSUFFICIENT, sources, [], False)
-    try:
-        data = json.loads(raw)
-        if (not isinstance(data, dict) or set(data) != {"sufficient", "claims"}
-                or data["sufficient"] is not True or not isinstance(data["claims"], list)
-                or not 1 <= len(data["claims"]) <= 12):
-            return fallback
-        paragraphs, used = [], []
-        for claim in data["claims"]:
-            checked = validate_response(
-                json.dumps({"sufficient": True, "claims": [claim]}, ensure_ascii=False), sources)
-            if not checked.sufficient:
-                continue
-            paragraphs.append(checked.answer)
-            used.extend(identity for identity in checked.used_source_ids if identity not in used)
-        if not paragraphs:
-            return fallback
-        if len(paragraphs) != len(data["claims"]):
-            logger.warning("phase=chat_validation event=discarded_invalid_claims count=%d",
-                           len(data["claims"]) - len(paragraphs))
-        return RagResult("\n\n".join(paragraphs), sources, used, True)
-    except (ValueError, TypeError, KeyError):
-        return fallback
-
-
 def generate_response(client, model: str, prompt: str, schema: dict, *, sleep=time.sleep, request_id="-", system_instruction=SYSTEM_INSTRUCTION) -> str:
     for attempt in range(3):
         logger.info("request_id=%s phase=generation model=%r event=start attempt=%d max_attempts=3",
@@ -315,14 +265,13 @@ def ask_question(
                 raise RagError("GEMINI_RAG_TOP_K deve essere un intero da 1 a 5.") from None
         if type(top_k) is not int or not 1 <= top_k <= 5:
             raise RagError("Il numero di chunk RAG deve essere un intero da 1 a 5.")
-        budget = int(os.environ.get("GEMINI_RAG_MAX_PROMPT_CHARS", "30000"))
+        budget = int(os.environ.get("GEMINI_RAG_MAX_PROMPT_CHARS", "20000"))
         if not 4000 <= budget <= 40000:
             raise RagError("Budget del contesto fuori intervallo.")
         request_id = uuid4().hex[:12]
         logger.info("request_id=%s phase=rag model=%r event=start mode=corpus_wide budget=%d", request_id, model, budget)
         context = bounded_context(conversation)
-        search_query = retrieval_query(question, context)
-        temporal_question = search_query
+        temporal_question = " ".join([m["content"] for m in context if m["role"] == "user"] + [question])
         search_options = {}
         if selection is not None:
             from edicola.editorial_selection import read_catalog
@@ -330,26 +279,9 @@ def ask_question(
             catalog = filter_catalog(read_catalog(root), selection)
             search_options["allowed_ids"] = {c.id for c in catalog.chunks}
             search_options["filenames"] = {c.metadata["filename"] for c in catalog.chunks}
-        if selection is None:
-            interval = requested_publication_interval(question)
-            if interval is not None:
-                metadata = read_edition_metadata(root)
-                if metadata:
-                    start, end = interval
-                    search_options["filenames"] = {
-                        name for name, item in metadata.items()
-                        if isinstance(item, dict) and isinstance(item.get("date"), str)
-                        and start <= item["date"] <= end
-                    }
-                    logger.info("request_id=%s phase=edition_filter event=applied editions=%d",
-                                request_id, len(search_options["filenames"]))
-        hits = semantic_search(search_query, authorize_external=True, root=root,
+        hits = semantic_search(retrieval_query(question, context), authorize_external=True, root=root,
                                top_k=top_k, request_id=request_id, corpus_wide=True,
                                **({"embedder": embedder} if embedder is not None else {}), **search_options)
-        initial_hits = len(hits)
-        hits = prioritize_chat_hits(hits)
-        logger.info("request_id=%s phase=chat_ranking candidates=%d selected=%d editions=%d",
-                    request_id, initial_hits, len(hits), len({h["filename"] for h in hits}))
         sources = []
         references = {}
         article_details = {}
@@ -399,9 +331,11 @@ def ask_question(
             own_client = True
         raw = generate_response(client, model, prompt_for(sources),
                                 chat_response_schema(sources), request_id=request_id, system_instruction=CHAT_INSTRUCTION)
-        result = validate_chat_response(raw, sources)
+        result = validate_response(raw, sources)
         result = replace(result, source_editions=editions, temporal_notice=temporal_notice(temporal), source_references=references, source_articles=article_details)
-        # Non mostrare avvisi generici sul campionamento, soprattutto dopo astensione.
+        if len(sources) < len(candidates):
+            result = replace(result, temporal_notice=(result.temporal_notice + " " if result.temporal_notice else "") +
+                             "La risposta è una selezione: puoi approfondire nelle edizioni originali.")
         logger.info("request_id=%s phase=rag event=complete sufficient=%s", request_id, result.sufficient)
         return result
     except RagError:
