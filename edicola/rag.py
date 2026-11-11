@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import time
+from collections import Counter
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from uuid import uuid4
@@ -34,6 +35,10 @@ Se i passaggi non permettono una risposta pertinente, imposta sufficient=false e
 Altrimenti restituisci sufficient=true e una sequenza breve e coerente di affermazioni
 in italiano. Per ciascuna affermazione fornisci evidence con source_id e una citazione
 letterale quote del passaggio che la sostiene (almeno 20 caratteri, se disponibili).
+La citazione quote deve essere una sequenza CONTIGUA copiata esattamente dal campo
+text della fonte con il source_id indicato: conserva maiuscole, punteggiatura,
+apostrofi, numeri e parole originali. Non correggere refusi e non parafrasare
+quote. Se non puoi copiare una prova letterale, ometti quella specifica affermazione.
 Non inventare dati o citazioni, non inferire fatti assenti dai passaggi. Segnala eventuali
 contraddizioni attribuendole alle rispettive fonti. Usa solo gli identificativi ricevuti.
 Il campo text non deve contenere identificativi, citazioni tra parentesi quadre o riferimenti
@@ -271,6 +276,38 @@ def prioritize_chat_hits(hits: list[dict], *, limit=64, max_edition_seeds=6) -> 
     return chosen[:limit]
 
 
+def _chat_claim_rejection_reason(claim, sources: list[Source]) -> str:
+    """Codice diagnostico, senza contenuti del quotidiano nei log.
+
+    Il controllo autorevole resta validate_response: questa funzione diagnostica
+    soltanto un'affermazione che quel validatore ha già respinto.
+    """
+    if not isinstance(claim, dict) or set(claim) != {"text", "evidence"}:
+        return "claim_structure"
+    text, evidence = claim["text"], claim["evidence"]
+    if (not isinstance(text, str) or not text.strip() or len(text) > 3000
+            or re.search(r"[\[\]]|\bS\d+\b", text)):
+        return "claim_text"
+    if not isinstance(evidence, list) or not 1 <= len(evidence) <= 5:
+        return "evidence_structure"
+    available = {source.id: source for source in sources}
+    for item in evidence:
+        if not isinstance(item, dict) or set(item) != {"source_id", "quote"}:
+            return "evidence_structure"
+        identity, quote = item["source_id"], item["quote"]
+        if not isinstance(identity, str) or identity not in available:
+            return "source_id"
+        if not isinstance(quote, str):
+            return "quote_structure"
+        original = " ".join(available[identity].text.split())
+        excerpt = " ".join(quote.split())
+        if not excerpt or len(excerpt) < min(20, len(original)):
+            return "quote_short"
+        if excerpt not in original:
+            return "quote_mismatch"
+    return "other"
+
+
 def validate_chat_response(raw: str, sources: list[Source], *, request_id="-") -> RagResult:
     """Verifica le evidenze per affermazione, senza pubblicare frasi non provate.
 
@@ -293,7 +330,7 @@ def validate_chat_response(raw: str, sources: list[Source], *, request_id="-") -
     if not isinstance(claims, list) or not 1 <= len(claims) <= 12:
         logger.info("request_id=%s phase=chat_validation event=invalid_claims_structure", request_id)
         return fallback
-    paragraphs, used = [], []
+    paragraphs, used, rejection_counts = [], [], Counter()
     for claim in claims:
         try:
             checked = validate_response(
@@ -303,11 +340,14 @@ def validate_chat_response(raw: str, sources: list[Source], *, request_id="-") -
         except (TypeError, ValueError):
             checked = fallback
         if not checked.sufficient:
+            reason = _chat_claim_rejection_reason(claim, sources)
+            rejection_counts[reason] += 1
             continue
         paragraphs.append(checked.answer)
         used.extend(identity for identity in checked.used_source_ids if identity not in used)
-    logger.info("request_id=%s phase=chat_validation event=checked total=%d valid=%d invalid=%d",
-                request_id, len(claims), len(paragraphs), len(claims) - len(paragraphs))
+    logger.info("request_id=%s phase=chat_validation event=checked total=%d valid=%d invalid=%d reasons=%s",
+                request_id, len(claims), len(paragraphs), len(claims) - len(paragraphs),
+                dict(sorted(rejection_counts.items())))
     if not paragraphs:
         return fallback
     return RagResult("\n\n".join(paragraphs), sources, used, True)

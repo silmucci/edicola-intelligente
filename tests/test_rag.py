@@ -291,3 +291,29 @@ def test_chat_rejects_malformed_or_fabricated_material():
     data["claims"].append({"text": "Informazione non presente.",
                            "evidence": [{"source_id": "S1", "quote": "Non compare in alcuna fonte."}]})
     assert not validate_response(json.dumps(data), [SOURCE]).sufficient
+
+
+
+@pytest.mark.parametrize("bad_claim,expected_reason", [
+    ({"text": "Fatto inventato.", "evidence": [{"source_id": "S1", "quote": "Una frase che non compare nel quotidiano."}]}, "quote_mismatch"),
+    ({"text": "Fatto inventato.", "evidence": [{"source_id": "S99", "quote": TEXT}]}, "source_id"),
+    ({"text": "Fatto inventato.", "evidence": []}, "evidence_structure"),
+    ({"text": "Fatto inventato.", "evidence": [{"source_id": "S1", "quote": "breve"}]}, "quote_short"),
+    ({"text": "Fatto inventato. [S1]", "evidence": [{"source_id": "S1", "quote": TEXT}]}, "claim_text"),
+])
+def test_chat_reports_safe_validation_reason_without_leaking_sources(bad_claim, expected_reason, caplog):
+    data = answer_data()
+    data["claims"].append(bad_claim)
+    with caplog.at_level("INFO", logger="edicola.rag"):
+        result = validate_chat_response(json.dumps(data), [SOURCE], request_id="public-request")
+    assert result.sufficient and result.used_source_ids == ["S1"]
+    assert "total=2 valid=1 invalid=1" in caplog.text
+    assert f"'{expected_reason}': 1" in caplog.text
+    assert TEXT not in caplog.text
+    assert bad_claim["text"] not in caplog.text
+    assert "public-request" in caplog.text
+
+
+def test_chat_instruction_requires_literal_source_quote():
+    assert "sequenza CONTIGUA" in SYSTEM_INSTRUCTION
+    assert "non parafrasare" in SYSTEM_INSTRUCTION
