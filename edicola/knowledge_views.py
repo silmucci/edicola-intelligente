@@ -91,7 +91,7 @@ def render_map(result, archive, technical):
     captions = node_captions(data["nodes"])
     view = compact_map(data)
     if not data["edges"]:
-        mode = "Elenco"
+        mode = "Grafo" if len(view["nodes"]) >= 2 else "Elenco"
     else:
         mode = st.segmented_control("Vista della mappa", ["Grafo", "Elenco"], default="Grafo", key="knowledge_map_view") or "Grafo"
     focus = ""
@@ -191,7 +191,7 @@ def render_timeline(events, sources, archive, *, articles=None):
         label = f"{date.day} {months[date.month-1]} {date.year}"
         payload.append({"iso": display_iso, "date": ("Edizione · " if is_edition else "") + label,
                         "edition_fallback": is_edition,
-                        "title": event_text(event["title"]), "summary": short_text(description, 280),
+                        "title": short_text(event_text(event["title"]), 115), "summary": short_text(description, 210),
                         "description": description, "status": ""
                         if event.get("development_kind") != "undetermined" else "", "sources": refs})
         references.append(selected)
