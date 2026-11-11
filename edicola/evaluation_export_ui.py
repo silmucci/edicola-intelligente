@@ -5,6 +5,8 @@ esclusivamente nei Secrets dell'istanza, mai nell'URL o nel file esportato.
 """
 import hmac
 import json
+import sqlite3
+from pathlib import Path
 
 from edicola.settings import setting
 
@@ -26,6 +28,30 @@ def export_bytes(root, *, limit_per_kind: int) -> bytes:
     validate_manifest(manifest)
     return (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
+
+
+def export_diagnostics(root) -> dict:
+    """Soli conteggi per aiutare l'amministratore, senza testi o credenziali."""
+    data = Path(root) / "data"
+    state = {
+        "archive": (data / "archive.sqlite3").is_file(),
+        "chroma": (data / "chroma").is_dir(),
+        "briefing_cache": 0,
+        "podcast_scripts": 0,
+        "knowledge_files": 0,
+    }
+    db = data / "editorial.sqlite3"
+    if db.is_file():
+        try:
+            with sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True) as conn:
+                state["briefing_cache"] = conn.execute(
+                    "SELECT COUNT(*) FROM products").fetchone()[0]
+        except sqlite3.Error:
+            state["briefing_cache"] = -1
+    state["podcast_scripts"] = len(list(
+        (data / "podcast_cache/standalone/scripts").glob("*.json")))
+    state["knowledge_files"] = len(list((data / "knowledge_cache").glob("*.json")))
+    return state
 
 def render_export(root):
     """Pagina separata: accessibile soltanto tramite URL esplicito e password."""
@@ -49,10 +75,25 @@ def render_export(root):
     if st.button("Prepara file JSON", type="primary"):
         try:
             payload = export_bytes(root, limit_per_kind=int(amount))
-        except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError, sqlite3.Error):
             # Nessun dettaglio del corpus o delle credenziali nei messaggi pubblici.
             st.session_state.pop("_eval_export_payload", None)
-            st.warning("Nessun prodotto esportabile con le fonti correnti, oppure archivio non disponibile.")
+            st.warning("Nessun prodotto esportabile con le fonti correnti.")
+            state = export_diagnostics(root)
+            if not state["archive"] or not state["chroma"]:
+                st.info("Archivio o indice vettoriale non disponibile nel runtime attuale.")
+            elif not any(state[k] > 0 for k in ("briefing_cache", "podcast_scripts", "knowledge_files")):
+                st.info("Non ci sono prodotti salvati in questa istanza: genera prima un prodotto nell'app, poi torna qui.")
+            else:
+                st.info("Esistono cache, ma nessun prodotto è risultato esportabile: le fonti potrebbero non corrispondere all'indice corrente.")
+            with st.expander("Diagnostica esportazione"):
+                st.write({
+                    "Archivio presente": state["archive"],
+                    "Indice presente": state["chroma"],
+                    "Prodotti nella cache editoriale": state["briefing_cache"],
+                    "Copioni podcast": state["podcast_scripts"],
+                    "File timeline/mappe": state["knowledge_files"],
+                })
         else:
             st.session_state["_eval_export_payload"] = payload
 
