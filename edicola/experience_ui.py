@@ -179,7 +179,7 @@ def render_for_you(root, context):
                            f"pagina {chunk.metadata['page']}"]
                 if entry.topics:
                     details.append(", ".join(entry.topics[:2]))
-                elif not entry.verified_title:
+                if not entry.verified_title:
                     details.append("Estratto originale")
                 with st.container(border=True):
                     st.caption(" · ".join(details))
