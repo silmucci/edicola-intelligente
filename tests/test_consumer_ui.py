@@ -123,7 +123,7 @@ def test_actual_app_mounts_only_current_destinations_with_mocked_archive():
         stack.enter_context(patch("edicola.pdf_viewer.archive_context", return_value=context))
         stack.enter_context(patch("edicola.archive_ui.diagnostics_enabled", return_value=False))
         stack.enter_context(patch("edicola.header_ui.render_header"))
-        for name in ("edicola.experience_ui.render_for_you", "edicola.archive_ui.render_archive",
+        for name in ("edicola.experience_ui.render_for_you", "edicola.pdf_viewer.render_archive",
                      "edicola.reading_ui.render_chat", "edicola.reading_ui.render_visuals",
                      "edicola.podcast_ui.render_podcast_ui", "edicola.personalization_ui.render_personalization_ui"):
             stack.enter_context(patch(name))
