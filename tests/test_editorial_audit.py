@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
+from editorial_adapter import navigate_to
 from edicola.editorial import generate_product
 from edicola.press_review import ReviewSelection, filter_catalog, review_groups
 from edicola.map_presentation import focused_map
@@ -107,7 +108,7 @@ def test_changing_review_filters_or_navigation_cancels_pending_send(archive):
     with patch("edicola.press_review_ui.read_catalog", return_value=make_catalog()), patch(
         "edicola.editorial.generate_product") as generate:
         with platform(context) as app:
-            app.selectbox(key="nav_section").set_value("Briefing").run()
+            navigate_to(app, "Briefing")
             app.text_input(key="editorial_review_keyword").set_value("trasporti")
             app.button(key="briefing_submit").click().run()
             assert app.session_state["consent_pending"]
@@ -115,9 +116,9 @@ def test_changing_review_filters_or_navigation_cancels_pending_send(archive):
             assert "consent_pending" not in app.session_state
             app.button(key="briefing_submit").click().run()
             assert app.session_state["consent_pending"]
-            app.selectbox(key="nav_section").set_value("Timeline").run()
+            navigate_to(app, "Timeline")
             assert "consent_pending" not in app.session_state
             app.session_state["consent_choices"] = {("text", "text-v2"): True}
-            app.selectbox(key="nav_section").set_value("Briefing").run()
+            navigate_to(app, "Briefing")
             assert not app.exception
             generate.assert_not_called()
