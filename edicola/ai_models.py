@@ -64,7 +64,10 @@ def run_text_request(send, model: str, *, fallbacks=(), sleep=time.sleep,
             logger.info("request_id=%s phase=%s model=%r event=start attempt=%d max_attempts=%d",
                         request_id, phase, active, attempt + 1, attempts)
             try:
-                return send(active)
+                response = send(active)
+                logger.info("request_id=%s phase=%s model=%r event=success attempt=%d",
+                            request_id, phase, active, attempt + 1)
+                return response
             except errors.APIError as exc:
                 failure = exc
                 code = exc.code
