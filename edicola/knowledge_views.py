@@ -192,8 +192,7 @@ def render_timeline(events, sources, archive, *, articles=None):
         payload.append({"iso": display_iso, "date": ("Edizione · " if is_edition else "") + label,
                         "edition_fallback": is_edition,
                         "title": short_text(event_text(event["title"]), 115), "summary": short_text(description, 210),
-                        "description": description, "status": ""
-                        if event.get("development_kind") != "undetermined" else "", "sources": refs})
+                        "description": description, "status": "", "sources": refs})
         references.append(selected)
     identity = hashlib.sha256(json.dumps([payload, [[s.chunk_id for s in refs] for refs in references]], sort_keys=True).encode()).hexdigest()[:16]
     key = "knowledge_timeline_story_" + identity
