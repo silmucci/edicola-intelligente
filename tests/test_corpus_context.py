@@ -144,7 +144,7 @@ def test_visual_products_consider_more_than_five_editions_without_writing_empty_
         "edicola.knowledge.semantic_search", return_value=hits_for(value)) as search, patch(
         "edicola.knowledge.generate_data", return_value=raw) as generate, patch(
         "edicola.knowledge.tempfile.NamedTemporaryFile", side_effect=AssertionError("Scrittura vietata")):
-        result = generate_knowledge(kind, "trasporti", root=ROOT, authorize_external=True, client=Mock())
+        result = generate_knowledge(kind, "trasporti", root=ROOT, authorize_external=True, client=Mock(), cache_enabled=False)
     assert len(result.sources) == 12 and result.coverage["context_selection"]["included_editions"] == 12
     assert search.call_args.kwargs["corpus_wide"]
     generate.assert_called_once()
