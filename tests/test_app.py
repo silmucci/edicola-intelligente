@@ -161,7 +161,7 @@ def test_editorial_ui_only_generates_on_authorized_submit(tmp_path):
 
 def test_timeline_ui_shows_context_date_and_announced_state_without_api():
     script = '''
-from edicola.knowledge_ui import render_event
+from edicola.knowledge_views import render_event
 from edicola.knowledge_validation import validate_timeline
 from edicola.rag import Source
 text = "Mercoledì 21 ottobre si terrà l'incontro sui trasporti del Comune di Roma."
@@ -189,7 +189,7 @@ render_event(data["events"][0])
 def test_map_ui_uses_compact_list_when_no_links_and_preserves_evidence(has_edges):
     script = '''
 from types import SimpleNamespace
-from edicola.knowledge_ui import render_knowledge
+from edicola.knowledge_views import render_knowledge
 from edicola.knowledge_validation import validate_map
 from edicola.rag import Source
 text = "Il Comune di Roma ha approvato il piano per i trasporti."
