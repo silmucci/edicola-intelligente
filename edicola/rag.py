@@ -107,7 +107,7 @@ def response_schema(sources: list[Source]) -> dict:
         "required": ["sufficient", "claims"],
         "properties": {
             "sufficient": {"type": "boolean"},
-            "claims": {"type": "array", "maxItems": 12, "items": {
+            "claims": {"type": "array", "maxItems": 8, "items": {
                 "type": "object", "additionalProperties": False,
                 "required": ["text", "evidence"],
                 "properties": {
@@ -124,6 +124,13 @@ def response_schema(sources: list[Source]) -> dict:
             }},
         },
     }
+
+
+def chat_response_schema(sources: list[Source]) -> dict:
+    """Limite Chat distinto dallo schema comune usato da Timeline, Mappe e Dossier."""
+    schema = response_schema(sources)
+    schema["properties"]["claims"]["maxItems"] = 12
+    return schema
 
 
 def build_prompt(question: str, sources: list[Source], *, editions=None, temporal=None, conversation=None, articles=None) -> str:
@@ -324,7 +331,7 @@ def ask_question(
             ))
             own_client = True
         raw = generate_response(client, model, prompt_for(sources),
-                                response_schema(sources), request_id=request_id, system_instruction=CHAT_INSTRUCTION)
+                                chat_response_schema(sources), request_id=request_id, system_instruction=CHAT_INSTRUCTION)
         result = validate_response(raw, sources)
         result = replace(result, source_editions=editions, temporal_notice=temporal_notice(temporal), source_references=references, source_articles=article_details)
         if len(sources) < len(candidates):
