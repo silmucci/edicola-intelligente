@@ -3,22 +3,26 @@
 import streamlit as st
 
 PRODUCTS = [
-    dict(id="for_you", title="Per te", description="Letture selezionate in base ai tuoi interessi.", icon="person"),
-    dict(id="archive", title="In edicola", description="Sfoglia i quotidiani e scopri le edizioni disponibili.", icon="archive"),
-    dict(id="home", title="Rassegna stampa", description="Esplora le notizie dei quotidiani.", icon="paper"),
+    dict(id="archive", title="In edicola", description="Sfoglia i quotidiani originali.", icon="archive"),
+    dict(id="for_you", title="Per te", description="Notizie consigliate e rassegna completa.", icon="paper"),
     dict(id="chat", title="Chat AI", description="Fai domande e approfondisci le notizie.", icon="chat"),
-    dict(id="briefing", title="Briefing", description="Leggi una sintesi organizzata per argomento.", kind="Briefing", icon="list"),
-    dict(id="timeline", title="Timeline", description="Segui l'evoluzione degli eventi.", kind="Timeline", icon="clock"),
-    dict(id="map", title="Mappe concettuali", description="Scopri collegamenti tra persone e argomenti.", kind="Mappa", icon="map"),
-    dict(id="podcast", title="Podcast", description="Ascolta le notizie.", icon="audio"),
-    dict(id="profile", title="Il mio profilo", description="Preferenze di lettura e privacy.", icon="person"),
+    dict(id="briefing", title="Briefing", description="Approfondimenti con fonti verificate.", kind="Briefing", icon="list"),
+    dict(id="podcast", title="Podcast", description="Ascolta gli approfondimenti.", icon="audio"),
+    dict(id="explore", title="Esplora", description="Eventi nel tempo e mappe di concetti.", icon="map"),
+    dict(id="profile", title="Il mio profilo", description="Preferenze, raccolta e privacy.", icon="person"),
 ]
-# Alias derivato per i componenti esistenti: il nome ha un'unica definizione.
 for product in PRODUCTS:
     product["section"] = product["title"]
+
 SECTIONS = [product["title"] for product in PRODUCTS]
-EDITORIAL_SECTIONS = [product["title"] for product in PRODUCTS if product["id"] != "profile"]
-LEGACY_SECTIONS = {"Archivio PDF": "In edicola", "Dossier": "Briefing"}
+EDITORIAL_SECTIONS = SECTIONS[:-1]
+# Alias mantenuti per bozze, collegamenti e sessioni create prima del restyling.
+LEGACY_SECTIONS = {
+    "Archivio PDF": "In edicola", "Dossier": "Briefing",
+    "Rassegna stampa": "Per te", "Timeline": "Esplora",
+    "Mappe concettuali": "Esplora",
+}
+LEGACY_IDS = {"home": "for_you", "timeline": "explore", "map": "explore"}
 
 
 def canonical_section(section):
@@ -26,11 +30,22 @@ def canonical_section(section):
 
 
 def destination(identifier):
-    return next(p["section"] for p in PRODUCTS if p["id"] == identifier or p["title"] == canonical_section(identifier))
+    """Risolve ID e nomi moderni o storici senza cambiare lo stato."""
+    target = LEGACY_IDS.get(identifier, identifier)
+    name = canonical_section(target)
+    return next(p["section"] for p in PRODUCTS
+                if p["id"] == target or p["title"] == name)
 
 
 def active_product(section):
-    return next(p for p in PRODUCTS if p["title"] == canonical_section(section))
+    return next(p for p in PRODUCTS if p["section"] == canonical_section(section))
+
+
+def _legacy_mode(section):
+    if section == "Rassegna stampa":
+        st.session_state["for_you_mode"] = "Tutte le notizie"
+    elif section in {"Timeline", "Mappe concettuali"}:
+        st.session_state["knowledge_kind"] = "Timeline" if section == "Timeline" else "Mappa"
 
 
 # Interrompe il cleanup dei soli input persistenti delle viste non montate.
@@ -49,7 +64,9 @@ def render_navigation():
     for key in VIEW_INPUTS:
         if key in st.session_state:
             st.session_state[key] = st.session_state[key]
-    st.session_state["nav_section"] = canonical_section(st.session_state.get("nav_section"))
+    requested = st.session_state.get("nav_section")
+    _legacy_mode(requested)
+    st.session_state["nav_section"] = canonical_section(requested)
     if st.session_state.get("nav_section") not in SECTIONS:
         st.session_state["nav_section"] = SECTIONS[0]
     # Import locale: il componente riusa PRODUCTS e open_product di questo modulo.
@@ -61,9 +78,10 @@ def render_navigation():
 
 def select_editorial_section():
     selected = st.session_state.get("_editorial_navigation")
-    if selected in EDITORIAL_SECTIONS:
+    if canonical_section(selected) in EDITORIAL_SECTIONS:
         cancel_navigation_action()
-        st.session_state["nav_section"] = selected
+        _legacy_mode(selected)
+        st.session_state["nav_section"] = canonical_section(selected)
 
 
 def cancel_navigation_action():
@@ -87,5 +105,13 @@ def open_product(index):
 
 
 def open_product_id(identifier):
-    index = next((i for i, p in enumerate(PRODUCTS) if p["id"] == identifier), None)
-    return open_product(index) if index is not None else False
+    """Apre anche gli ID storici, scegliendo la sottovista giusta."""
+    target = LEGACY_IDS.get(identifier, identifier)
+    index = next((i for i, p in enumerate(PRODUCTS) if p["id"] == target), None)
+    if index is None:
+        return False
+    if identifier == "home":
+        st.session_state["for_you_mode"] = "Tutte le notizie"
+    elif identifier in {"timeline", "map"}:
+        st.session_state["knowledge_kind"] = "Timeline" if identifier == "timeline" else "Mappa"
+    return open_product(index)
