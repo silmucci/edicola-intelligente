@@ -9,7 +9,7 @@ from pathlib import Path
 from edicola.api_guard import PermissionDenied, permission_scope
 from edicola.indexing import ROOT
 from edicola.podcast import generate_script_audio, wav_duration, atomic_write, audio_identity
-from edicola.podcast_draft import prepare_draft, load_draft, digest, VERSION, V3_VERSION, TOPIC_VERSION
+from edicola.podcast_draft import prepare_draft, load_draft, digest, VERSION, V4_VERSION, V3_VERSION, TOPIC_VERSION
 from edicola.podcast_text import PodcastError, Script, list_products
 from edicola.rag import Source
 from edicola.personal_store import PersonalStoreError
@@ -17,7 +17,7 @@ from edicola.personal_store import PersonalStoreError
 
 def draft_context(draft):
     context = {"strategy": draft.strategy, "corpus": draft.source_identity, "script_model": draft.model, "draft": draft.key}
-    if draft.strategy in {VERSION, V3_VERSION, TOPIC_VERSION}:
+    if draft.strategy in {VERSION, V4_VERSION, V3_VERSION, TOPIC_VERSION}:
         context["topic"] = draft.topic
     return context
 
@@ -44,7 +44,7 @@ class PodcastAudioError(PodcastError):
 
 def generate_standalone_podcast(*, root=ROOT, voice=None, authorize_text=False, authorize_audio=False,
                                 text_check=None, audio_check=None, client=None, tts_client=None, retry_key=None,
-                                topic="", embedder=None):
+                                topic="", embedder=None, selection=None):
     if not authorize_text or not authorize_audio:
         raise PermissionDenied("Autorizzare preparazione del testo e sintesi audio prima di continuare.")
     text_check = text_check or (lambda: authorize_text)
@@ -56,7 +56,8 @@ def generate_standalone_podcast(*, root=ROOT, voice=None, authorize_text=False, 
         pass
     with permission_scope(text_check, "text"):
         try:
-            draft = prepare_draft(root, client=client, retry_key=retry_key, topic=topic, embedder=embedder)
+            draft = prepare_draft(root, client=client, retry_key=retry_key, topic=topic,
+                                  embedder=embedder, selection=selection)
         except (PermissionDenied, PodcastError):
             raise
         except (OSError, ValueError, RuntimeError):

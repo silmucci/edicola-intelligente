@@ -233,19 +233,131 @@ def test_topic_podcast_does_not_accept_weak_semantic_match_alone(standalone):
     assert selected == []
 
 
-def test_new_podcast_targets_two_to_three_minutes_without_padding():
-    from edicola.podcast_draft import INSTRUCTION, V3_INSTRUCTION, VERSION, V3_VERSION
-    assert VERSION != V3_VERSION
-    assert "280-330" in INSTRUCTION
-    assert "180-210" not in INSTRUCTION
+def test_new_podcast_targets_four_to_five_minutes_without_padding():
+    from edicola.podcast_draft import INSTRUCTION, V3_INSTRUCTION, V4_INSTRUCTION, VERSION, V4_VERSION
+    assert VERSION != V4_VERSION
+    assert "500-650" in INSTRUCTION
+    assert "280-330" in V4_INSTRUCTION
     assert "180-210" in V3_INSTRUCTION
-    assert "non ripetere frasi" in INSTRUCTION
+    assert "Non diluire il testo" in INSTRUCTION
+    assert "titoli recitati" in INSTRUCTION
 
 
 def test_previous_podcast_strategy_retains_topic_audio_identity():
     from edicola.standalone_podcast import draft_context
-    from edicola.podcast_draft import V3_VERSION, VERSION
-    for strategy in (V3_VERSION, VERSION):
+    from edicola.podcast_draft import V3_VERSION, V4_VERSION, VERSION
+    for strategy in (V3_VERSION, V4_VERSION, VERSION):
         draft = SimpleNamespace(strategy=strategy, source_identity="test",
                                 model="fake-model", key="test-key", topic="ambiente")
         assert draft_context(draft)["topic"] == "ambiente"
+
+
+def test_narrative_script_avoids_headings_and_keeps_verified_sources(standalone):
+    from edicola.rag import Source
+    sources = [Source(f"S{i}", chunk.id, chunk.metadata["filename"], chunk.metadata["page"],
+                      chunk.text, 0.) for i, chunk in enumerate(standalone.catalog.chunks, 1)]
+    news = []
+    for i, source in enumerate(sources, 1):
+        evidence = [{"source_id": source.id, "quote": source.text}]
+        news.append({"title": {"text": "Titolo non pronunciato", "evidence": evidence},
+                     "summary": {"text": source.text, "evidence": evidence}})
+    script = script_from_response({"sufficient": True, "news": news}, sources,
+                                  standalone.catalog.coverage, narrative=True,
+                                  max_words=690, max_chars=6900)
+    assert "Titolo non pronunciato" not in script.text
+    assert "4 milioni" in script.text and "trasporto pubblico" in script.text
+    assert [x["id"] for x in script.sources] == ["S1", "S2"]
+    assert script.selected_sections == 2 and not script.excerpt
+    assert "[S1]" not in script.text and ".pdf" not in script.text
+
+
+def test_longform_audio_stitches_all_segments_without_losing_script(tmp_path, monkeypatch):
+    from edicola.podcast import generate_script_audio, tts_segments, wav_duration
+    from edicola.podcast_text import Script
+    monkeypatch.setenv("GEMINI_API_KEY", "offline")
+    text = " ".join(["Il servizio pubblico è al centro della cronaca locale."] * 58)
+    parts = tts_segments(text)
+    assert len(parts) >= 3
+    assert " ".join(" ".join(parts).split()) == " ".join(text.split())
+    tts = Mock()
+    tts.models.generate_content.return_value = tts_response(long_wav(45))
+    script = Script(text, [], {"files": []}, 1, 1)
+    result = generate_script_audio(script, "test", root=tmp_path, client=tts,
+                                   authorize_external=True,
+                                   cache_context={"strategy": "standalone-podcast-v5"},
+                                   minimum_seconds=100.)
+    assert tts.models.generate_content.call_count == len(parts)
+    sent = [call.kwargs["contents"][0].parts[0].text
+            for call in tts.models.generate_content.call_args_list]
+    assert sent == parts
+    assert " ".join(" ".join(sent).split()) == " ".join(text.split())
+    assert result.seconds == pytest.approx(45 * len(parts))
+    assert wav_duration(result.audio_path.read_bytes()) == pytest.approx(result.seconds)
+    assert generate_script_audio(script, "test", root=tmp_path, client=tts,
+                                 authorize_external=True,
+                                 cache_context={"strategy": "standalone-podcast-v5"},
+                                 minimum_seconds=100.).from_cache
+    assert tts.models.generate_content.call_count == len(parts)
+
+
+def test_longform_audio_failure_does_not_cache_partial_wav(tmp_path, monkeypatch):
+    from edicola.podcast import generate_script_audio
+    from edicola.podcast_text import Script
+    monkeypatch.setenv("GEMINI_API_KEY", "offline")
+    text = " ".join(["L'indagine segue i documenti pubblicati dalle edizioni."] * 42)
+    tts = Mock()
+    tts.models.generate_content.side_effect = [tts_response(long_wav(45)), TimeoutError()]
+    script = Script(text, [], {"files": []}, 1, 1)
+    with pytest.raises(PodcastError):
+        generate_script_audio(script, "test", root=tmp_path, client=tts,
+                              authorize_external=True,
+                              cache_context={"strategy": "standalone-podcast-v5"})
+    assert tts.models.generate_content.call_count == 2
+    assert not list((tmp_path / "data/podcast_cache").glob("*.wav"))
+    assert not list((tmp_path / "data/podcast_cache").glob("*.json"))
+    assert not list((tmp_path / "data/podcast_cache").glob("*.lock"))
+
+
+def test_longform_audio_rejects_a_truncated_segment(tmp_path, monkeypatch):
+    from edicola.podcast import generate_script_audio
+    from edicola.podcast_text import Script
+    monkeypatch.setenv("GEMINI_API_KEY", "offline")
+    text = " ".join(["Le fonti raccontano gli sviluppi delle vicende locali."] * 32)
+    tts = Mock()
+    tts.models.generate_content.return_value = tts_response(long_wav(2))
+    with pytest.raises(PodcastError, match="incompleta"):
+        generate_script_audio(Script(text, [], {}, 1, 1), "test", root=tmp_path,
+                              client=tts, authorize_external=True,
+                              cache_context={"strategy": "standalone-podcast-v5"})
+    assert not list((tmp_path / "data/podcast_cache").glob("*.wav"))
+
+
+def test_podcast_respects_explicit_briefing_edition_filters(standalone):
+    from edicola.press_review import ReviewSelection
+    episode = generate(standalone, selection=ReviewSelection(filenames=("giornale-0.pdf",)))
+    assert [s["filename"] for s in episode.script.sources] == ["giornale-0.pdf"]
+    request = json.loads(standalone.text.models.generate_content.call_args.kwargs["contents"])
+    assert {source["pdf"] for source in request["sources"]} == {"giornale-0.pdf"}
+
+
+def test_v4_cached_podcast_script_remains_readable(standalone):
+    from edicola.rag import Source
+    from edicola.podcast_draft import V4_VERSION, V4_INSTRUCTION, digest
+    src = Source("S1", "legacy-chunk", "vecchio.pdf", 2,
+                 "La Regione ha approvato un piano per il trasporto pubblico.", 0.)
+    claim = lambda text: {"text": text, "evidence": [{"source_id": "S1", "quote": src.text}]}
+    raw = json.dumps({"sufficient": True, "news": [{
+        "title": claim("Piano per il trasporto pubblico"), "summary": claim(src.text)}]})
+    topic = "trasporti"
+    expected = script_from_response(raw, [src], {"files": []}, topic,
+                                    max_words=350, max_chars=5000)
+    config, identity, model = {}, "corpus-prima", "text-model"
+    key = digest([V4_VERSION, identity, model, config, V4_INSTRUCTION, topic])
+    path = standalone.root / "data/podcast_cache/standalone/scripts" / (key + ".json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"version": V4_VERSION, "key": key, "topic": topic,
+        "source_identity": identity, "model": model, "config": config, "raw": raw,
+        "sources": [vars(src)], "coverage": {"files": []},
+        "script": vars(expected), "title": "Storico",
+        "created_at": "2026-11-10T10:00:00+00:00"}, ensure_ascii=False), encoding="utf-8")
+    assert load_draft(standalone.root, key).script == expected

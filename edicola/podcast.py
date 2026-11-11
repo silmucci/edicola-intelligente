@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import os
+import re
 import tempfile
 import wave
 from dataclasses import asdict, dataclass
@@ -42,13 +43,13 @@ def wav_duration(data: bytes) -> float:
             raise ValueError
         with wave.open(io.BytesIO(data), "rb") as audio:
             channels, width, rate, frames = audio.getnchannels(), audio.getsampwidth(), audio.getframerate(), audio.getnframes()
-            if channels != 1 or width != 2 or not 8000 <= rate <= 48000 or not 0 < frames / rate <= 180:
+            if channels != 1 or width != 2 or not 8000 <= rate <= 48000 or not 0 < frames / rate <= 420:
                 raise ValueError
             if len(audio.readframes(frames)) != frames * channels * width:
                 raise ValueError
             return frames / rate
     except (wave.Error, EOFError, ValueError, OverflowError):
-        raise PodcastError("Audio WAV vuoto, incompleto, non supportato o oltre il limite di tre minuti; risultato non salvato.") from None
+        raise PodcastError("Audio WAV vuoto, incompleto, non supportato o oltre il limite consentito; risultato non salvato.") from None
 
 
 def audio_bytes(response) -> bytes:
@@ -107,6 +108,71 @@ def synthesize(client, model, voice, script):
     except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
         logger.warning("phase=podcast_tts model=%r event=connection_error", model)
         raise PodcastError("Connessione TTS assente o timeout; nessun nuovo tentativo automatico.") from None
+
+
+def tts_segments(text, *, max_words=115, max_chars=1000):
+    """Segmenti completi per evitare il troncamento TTS di copioni lunghi."""
+    if not text.strip():
+        raise PodcastError("Il copione non contiene testo leggibile.")
+    # Mantiene le parole originali, compresa la punteggiatura; niente riassunti o tagli.
+    sentences = re.split(r"(?<=[.!?])\s+|\n\s*\n+", text.strip())
+    units = []
+    for sentence in sentences:
+        words = sentence.split()
+        while words:
+            count = 0
+            chars = 0
+            for word in words:
+                next_chars = chars + len(word) + (1 if count else 0)
+                if count and (count + 1 > max_words or next_chars > max_chars):
+                    break
+                if not count and next_chars > max_chars:
+                    raise PodcastError("Il copione contiene una parola troppo lunga per la sintesi.")
+                chars = next_chars
+                count += 1
+            units.append(" ".join(words[:count]))
+            words = words[count:]
+    segments, current = [], []
+    for unit in units:
+        candidate = " ".join(current + [unit])
+        if current and (len(candidate.split()) > max_words or len(candidate) > max_chars):
+            segments.append(" ".join(current))
+            current = []
+        current.append(unit)
+    if current:
+        segments.append(" ".join(current))
+    if " ".join(" ".join(segments).split()) != " ".join(text.split()):
+        raise PodcastError("Il copione è stato suddiviso in modo incompleto.")
+    if len(segments) > 12:
+        raise PodcastError("Copione troppo lungo per la sintesi audio.")
+    return segments
+
+
+def join_wav_segments(parts):
+    """Unisce soltanto PCM WAV omogenei, senza duplicare intestazioni."""
+    if not parts:
+        raise PodcastError("Gemini non ha restituito segmenti audio.")
+    target = io.BytesIO()
+    sound_format = None
+    with wave.open(target, "wb") as output:
+        for part in parts:
+            if wav_duration(part) > 180:
+                raise PodcastError("Un segmento TTS supera il limite di durata.")
+            with wave.open(io.BytesIO(part), "rb") as source:
+                params = (source.getnchannels(), source.getsampwidth(),
+                          source.getframerate(), source.getcomptype())
+                if sound_format is None:
+                    sound_format = params
+                    output.setnchannels(params[0])
+                    output.setsampwidth(params[1])
+                    output.setframerate(params[2])
+                    output.setcomptype(params[3], "not compressed")
+                elif params != sound_format:
+                    raise PodcastError("I segmenti TTS hanno formati audio incompatibili.")
+                output.writeframesraw(source.readframes(source.getnframes()))
+    result = target.getvalue()
+    wav_duration(result)
+    return result
 
 
 def atomic_write(path, data):
@@ -181,13 +247,24 @@ def generate_script_audio(script: Script, product_key: str, *, voice=None, autho
             data = cached_audio()  # Un altro processo potrebbe averlo appena completato.
             from_cache = data is not None
             if data is None:
+                longform = isinstance(cache_context, dict) and cache_context.get("strategy") == "standalone-podcast-v5"
                 if client is None:
                     if not key:
                         raise PodcastError("Configurare GEMINI_API_KEY in .env per la sintesi TTS.")
                     client = genai.Client(api_key=key, vertexai=False, http_options=types.HttpOptions(
-                        timeout=60000, retry_options=types.HttpRetryOptions(attempts=1)))
+                        timeout=120000 if longform else 60000,
+                        retry_options=types.HttpRetryOptions(attempts=1)))
                     own_client = True
-                data = synthesize(client, model, voice, script.text)
+                segments = tts_segments(script.text) if longform else [script.text]
+                audio_parts = []
+                for segment in segments:
+                    sound = synthesize(client, model, voice, segment)
+                    # Controllo prudente: un testo lungo non deve produrre pochi secondi
+                    # per un output parziale. Non fornisce una trascrizione automatica.
+                    if longform and wav_duration(sound) < max(1., len(segment.split()) / 3.5):
+                        raise PodcastError("La sintesi vocale di un segmento è incompleta; audio non salvato.")
+                    audio_parts.append(sound)
+                data = join_wav_segments(audio_parts) if len(audio_parts) > 1 else audio_parts[0]
                 if wav_duration(data) < minimum_seconds:
                     raise PodcastError("L’audio ricevuto è troppo breve per il copione; risultato non salvato.")
                 atomic_write(audio_path, data)

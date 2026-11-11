@@ -14,8 +14,10 @@ L'applicazione comprende queste sezioni:
 - **Briefing:** ottenere una sintesi organizzata di un argomento, scegliendo anche le fonti da considerare.
 - **Timeline:** seguire gli eventi in ordine cronologico quando le date sono verificabili.
 - **Mappe concettuali:** esplorare temi, soggetti e collegamenti ricavati dai documenti.
-- **Podcast:** generare un episodio audio sulle notizie disponibili, con la possibilità di indicare un tema.
+- **Podcast:** ascoltare un approfondimento narrativo sulle notizie disponibili, anche su un tema specifico. Se le fonti lo permettono, il copione punta a circa 4–5 minuti, altrimenti resta più breve. Le citazioni rimangono accessibili insieme al testo; la sintesi vocale suddivide i copioni lunghi in segmenti verificati e produce un solo file WAV.
 - **Il mio profilo:** gestire preferenze, letture e impostazioni personali, secondo la modalità di accesso configurata.
+
+Il Podcast utilizza anche le scelte delle edizioni e i filtri già impostati nel Briefing, quando presenti, senza richiedere che sia stato generato prima un Briefing. Il testo e l'audio vengono preparati soltanto su richiesta e dopo le autorizzazioni richieste. Gli episodi già salvati restano consultabili.
 
 Le funzioni AI lavorano sui contenuti disponibili e indicizzati: non effettuano automaticamente ricerche di notizie in tempo reale sul web.
 
