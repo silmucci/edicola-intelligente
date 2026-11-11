@@ -127,24 +127,24 @@ def test_valid_empty_ai_output_can_use_local_verified_enumeration_and_cache(setu
     search.return_value = [{"id": chunk.id, "distance": .1}]
     client.models.generate_content.side_effect = None
     client.models.generate_content.return_value = SimpleNamespace(text='{"events":[]}', candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
-    result = generate_knowledge("timeline", "Misure economiche", authorize_external=True, root=root, client=client)
+    result = generate_knowledge("timeline", "credito di imposta", authorize_external=True, root=root, client=client)
     assert result.diagnostics["candidate_events"] == 0
     assert result.diagnostics["extracted_developments"] == 2
     assert result.diagnostics["rejected_events"] == 0 and len(result.data["undated_events"]) == 2
-    assert generate_knowledge("timeline", "Misure economiche", authorize_external=True, root=root, client=client).from_cache
+    assert generate_knowledge("timeline", "credito di imposta", authorize_external=True, root=root, client=client).from_cache
     search.assert_called_once()
     client.models.generate_content.assert_called_once()
 
 
 def test_wrong_product_in_cache_fails_without_regeneration(setup_knowledge):
     root, _, client, _, search = setup_knowledge
-    generate_knowledge("timeline", "Test cache", authorize_external=True, root=root, client=client)
+    generate_knowledge("timeline", "Trasporti", authorize_external=True, root=root, client=client)
     path = next((root / "data/knowledge_cache").glob("*.json"))
     data = json.loads(path.read_text(encoding="utf-8"))
     data["kind"] = "map"
     path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(KnowledgeError, match="Cache non coerente"):
-        generate_knowledge("timeline", "Test cache", authorize_external=True, root=root, client=client)
+        generate_knowledge("timeline", "Trasporti", authorize_external=True, root=root, client=client)
     search.assert_called_once()
     client.models.generate_content.assert_called_once()
 

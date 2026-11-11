@@ -178,15 +178,16 @@ def test_neighbor_lookup_distinguishes_same_hash_other_filename_and_article_boun
 def test_timeline_budget_keeps_whole_original_chunks(setup_knowledge):
     root, catalog, client, _, search = setup_knowledge
     original = catalog.chunks[0]
-    large = IndexChunk("too-large", "Testo molto lungo del quotidiano. " * 800, {**original.metadata, "filename": "b.pdf"})
+    large = IndexChunk("too-large", "Un passaggio molto lungo sui trasporti pubblici. " * 800,
+                       {**original.metadata, "filename": "b.pdf"})
     catalog.chunks = [original, large]
     search.return_value = [{"id": original.id, "distance": .1}, {"id": large.id, "distance": .2}]
-    result = generate_knowledge("timeline", "Misure per la pesca", authorize_external=True, root=root, client=client)
+    result = generate_knowledge("timeline", "Trasporti", authorize_external=True, root=root, client=client)
     assert len(result.sources) == 1 and result.sources[0].text == original.text
     assert result.diagnostics["chunks_dropped_for_budget"] == 1
     prompt = client.models.generate_content.call_args.kwargs
     assert len(prompt["contents"]) + len(prompt["config"].system_instruction) <= 12000
-    second = generate_knowledge("timeline", "Misure per la pesca", authorize_external=True, root=root, client=client)
+    second = generate_knowledge("timeline", "Trasporti", authorize_external=True, root=root, client=client)
     assert second.from_cache
     search.assert_called_once()
     client.models.generate_content.assert_called_once()
@@ -258,7 +259,8 @@ def test_timeline_strategy_invalidates_only_timeline_cache(setup_knowledge, monk
 def test_first_oversized_source_does_not_discard_other_useful_chunks(setup_knowledge):
     root, catalog, client, _, search = setup_knowledge
     original = catalog.chunks[0]
-    large = IndexChunk("too-large", "Un passaggio troppo lungo del quotidiano. " * 800, {**original.metadata, "filename": "b.pdf"})
+    large = IndexChunk("too-large", "Un passaggio molto lungo sui trasporti pubblici. " * 800,
+                       {**original.metadata, "filename": "b.pdf"})
     catalog.chunks = [large, original]
     search.return_value = [{"id": large.id, "distance": .1}, {"id": original.id, "distance": .2}]
     from types import SimpleNamespace
