@@ -95,6 +95,7 @@ def build_chunks(document: Document, config: ChunkConfig) -> dict:
     """Genera dati indipendenti dal nome file per condividere copie e rinomine."""
     chunks = []
     skipped = {}
+    signature = config.signature
     pages = {page.number: page for page in document.pages}
     for number in range(1, document.total_pages + 1):
         page = pages.get(number)
@@ -107,7 +108,7 @@ def build_chunks(document: Document, config: ChunkConfig) -> dict:
             continue
         for start, end, content in split_text(text, config):
             position = len(chunks) + 1
-            identity = f"{document.sha256}:{config.signature}:{number}:{start}:{end}"
+            identity = f"{document.sha256}:{signature}:{number}:{start}:{end}"
             chunks.append({
                 "id": hashlib.sha256(identity.encode()).hexdigest(),
                 "page": number, "position": position,
@@ -121,15 +122,16 @@ def prepare_documents(
 ) -> list[ChunkedDocument]:
     """Riusa per hash/configurazione; sostituisce atomicamente solo i set cambiati."""
     prepared = []
+    signature = config.signature
     with open_registry(Path(registry)) as connection:
         for document in documents:
             if document.sha256 is None:
                 prepared.append(ChunkedDocument(document.filename))
                 continue
-            result = load_chunks(connection, document.sha256, config.signature)
+            result = load_chunks(connection, document.sha256, signature)
             if result is None:
                 result = build_chunks(document, config)
-                save_chunks(connection, document.sha256, config.signature, result)
+                save_chunks(connection, document.sha256, signature, result)
             prepared.append(ChunkedDocument(
                 filename=document.filename,
                 chunks=[Chunk(filename=document.filename, pdf_sha256=document.sha256, **item)

@@ -172,3 +172,26 @@ def test_zero_chunk_results_are_cached(tmp_path):
     assert 1 in initial[0].skipped_pages
     with patch("edicola.chunking.build_chunks", side_effect=AssertionError("chunking ripetuto")):
         assert prepare_documents([doc], registry) == initial
+
+
+def test_signature_is_computed_once_per_document_preparation(tmp_path):
+    """Chunk multipli riusano la firma senza alterare gli ID persistenti."""
+    calls = []
+
+    class CountingConfig(ChunkConfig):
+        @property
+        def signature(self):
+            calls.append(1)
+            return super().signature
+
+    config = CountingConfig(size=200, overlap=20)
+    first = document()
+    result = build_chunks(first, config)
+    assert len(result["chunks"]) > 1
+    assert len(calls) == 1
+
+    calls.clear()
+    second = document("b" * 64, "altro.pdf")
+    prepare_documents([first, second], tmp_path / "registry.sqlite3", config)
+    # Una firma per la preparazione e una per ogni documento mai visto.
+    assert len(calls) == 3

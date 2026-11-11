@@ -80,9 +80,6 @@ def render_knowledge(result, archive=None):
                     render_event(event, result.sources, archive, f"undated_{index}", articles=result.source_articles)
     else:
         render_map(result, archive, technical)
-    items = (data.get("events", []) + data.get("undated_events", []) if result.kind == "timeline" else
-             data.get("nodes", []) + data.get("edges", []) + data.get("context_edges", []))
-    used_ids = {identity for item in items for identity in item.get("source_ids", [])}
     if technical:
         with st.expander("Diagnostica · sviluppo"):
             st.json(result.diagnostics)

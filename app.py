@@ -34,7 +34,8 @@ logging.getLogger("edicola").setLevel(logging.INFO)
 
 st.set_page_config(page_title="Edicola Digitale Intelligente", layout="wide", page_icon="📰")
 synchronize_identity()
-if setting("EDICOLA_CLOUD_DEMO", "0") == "1":
+cloud_demo = setting("EDICOLA_CLOUD_DEMO", "0") == "1"
+if cloud_demo:
     try:
         with st.spinner("Apro l’Edicola…"):
             ROOT = prepare_cloud(ROOT)
@@ -45,7 +46,7 @@ if setting("EDICOLA_CLOUD_DEMO", "0") == "1":
 # La versione pubblicata usa uno snapshot immutabile: la inbox è solo locale.
 # Una copia PDF depositata in data/inbox viene preparata senza Gemini al reload.
 intake_report = {"added": []}
-if setting("EDICOLA_CLOUD_DEMO", "0") != "1":
+if not cloud_demo:
     try:
         intake_report = process_inbox(ROOT)
         if intake_report["added"]:
@@ -64,7 +65,7 @@ except (OSError, RuntimeError):
 
 # Completa le date dei quotidiani locali usando il nome del PDF.
 # Aggiorna anche le edizioni già caricate, senza toccare lo snapshot cloud.
-if setting("EDICOLA_CLOUD_DEMO", "0") != "1":
+if not cloud_demo:
     try:
         updated_dates = sync_filename_dates(ROOT, documents)
         if updated_dates:
