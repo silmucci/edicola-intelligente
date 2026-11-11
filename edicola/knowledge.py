@@ -86,8 +86,9 @@ un arco verso il caro carburante solo perché è menzionato nello stesso articol
 Puoi distinguere anche person, measure e proposal: una proposta non è una misura
 approvata. Etichette brevi ma letterali, senza abbreviazioni inventate. Nessun nodo
 centrale aggiunto artificialmente: scegli concetti già provati e pertinenti al tema.
-Non riempire la mappa fino a un numero prefissato di nodi o archi: seleziona
-soltanto soggetti, decisioni, misure e relazioni utili al tema e sostenuti
+Per questa mappa mantieni massimo 10 nodi, senza numero minimo obbligatorio.
+Non riempire la mappa con nodi o archi decorativi: seleziona soltanto soggetti,
+decisioni, misure e relazioni utili al tema e sostenuti
 da prove. Se la vicenda ha più sviluppi verificati, rappresentali senza
 appiattire annunci, proposte e approvazioni in un unico fatto.
 Usa esclusivamente gli identificativi S1, S2, ecc. ricevuti per evidence.source_id;
@@ -254,8 +255,8 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
         key = api_key(root)
         model = os.getenv("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
         top_k = int(os.getenv("KNOWLEDGE_CHUNKS", "5"))  # Compatibilità; non limita il recupero corpus_wide.
-        budget = int(os.getenv("KNOWLEDGE_MAX_PROMPT_CHARS", "18000"))
-        neighbors = int(os.getenv("MAP_ADJACENT_CHUNKS", "3")) if kind == "map" else 0
+        budget = int(os.getenv("KNOWLEDGE_MAX_PROMPT_CHARS", "12000"))
+        neighbors = int(os.getenv("MAP_ADJACENT_CHUNKS", "2")) if kind == "map" else 0
         if not 0 <= neighbors <= 4:
             raise KnowledgeError("MAP_ADJACENT_CHUNKS: da 0 a 4.")
         if not 1 <= top_k <= 5 or not 4000 <= budget <= 24000:
