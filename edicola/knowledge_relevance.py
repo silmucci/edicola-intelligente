@@ -6,10 +6,12 @@ Nessuna query aggiuntiva, modello locale o riscrittura dei contenuti.
 
 import math
 import re
+from datetime import date
 from collections import Counter
 from types import SimpleNamespace
 
 from edicola.map_context import joined_proofs
+from edicola.timeline_dates import MONTHS
 
 VERSION = "knowledge-relevance-v3"
 STOP = set("a ad al alla alle allo ai agli all di del della delle dello dei degli da dal dalla dalle dei in nel nella nelle negli sul sulla sulle su per con contro tra fra e ed o il lo la le gli i un una uno l d che quali quale qual come cosa quando dove quanto sono è stato stata stati state si non più questo questa questi queste ci se attraverso usando entro fino".split())
@@ -216,3 +218,20 @@ def relevant_timeline(data, sources, topic):
     filtered = {name: [e for e in data[name] if topic.evidence_score(e["evidence"], sources)]
                 for name in ("events", "undated_events")}
     return filtered, sum(len(data[k]) - len(filtered[k]) for k in filtered)
+
+
+def scope_timeline(catalog, question):
+    match = re.search(r"\bdal\s+(\d{1,2})\s+al\s+(\d{1,2})\s+(" + "|".join(MONTHS) + r")\s+(\d{4})\b", question, re.I)
+    if not match:
+        return catalog
+    try:
+        start, end = (date(int(match[4]), MONTHS[match[3].lower()], int(match[i])).isoformat() for i in (1, 2))
+    except ValueError:
+        raise ValueError("Intervallo delle edizioni non valido.") from None
+    if start > end:
+        raise ValueError("Intervallo delle edizioni non valido.")
+    files = [f for f in catalog.coverage["files"] if start <= f.get("date", "") <= end]
+    names = {f["pdf"] for f in files}
+    chunks = [c for c in catalog.chunks if c.metadata["filename"] in names]
+    return type(catalog)(chunks, {c.id: catalog.vectors[c.id] for c in chunks if c.id in catalog.vectors},
+                         {**catalog.coverage, "files": files, "requested_editions": [start, end]})
