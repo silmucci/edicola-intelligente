@@ -290,6 +290,7 @@ def main(argv=None):
     auto = commands.add_parser("judge-products", help="LLM giudice dei quattro prodotti editoriali esportati.")
     auto.add_argument("--manifest", type=Path, required=True)
     auto.add_argument("--model", required=True)
+    auto.add_argument("--provider", choices=("gemini", "openrouter"), default="gemini")
     auto.add_argument("--out", type=Path, required=True)
     auto.add_argument("--authorize-external", action="store_true")
     human = commands.add_parser("reviews", help="Report delle sole valutazioni umane compilate.")
@@ -386,7 +387,7 @@ def main(argv=None):
             if args.out.exists():
                 raise ValueError("Destinazione già esistente.")
             result, rows = evaluate_products(manifest, root=args.root, model=args.model,
-                                             authorize_external=True)
+                                             authorize_external=True, provider=args.provider)
             out = new_directory(args.out)
             write_json(out / "judge.json", result)
             report_products(out, manifest, result, rows)
