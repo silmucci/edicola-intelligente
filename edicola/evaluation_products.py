@@ -161,43 +161,40 @@ def evaluate_products(manifest, *, root, model=GROQ_MODEL, authorize_external=Fa
     if client is None and any(x["origin"] != "real" for x in items):
         raise ValueError("Non inviare dati simulati al servizio reale.")
     records, rows = [], []
-    try:
-        for item in items:
-            identity, kind = item["item_id"], item["kind"]
-            criteria = AUTOMATIC[kind]
-            prompt = json.dumps({"kind": kind, "topic": item.get("topic", ""),
-                "product": item["content"],
-                "criteria": {c: CRITERIA[c] for c in criteria},
-                "sources": item["sources"]}, ensure_ascii=False)
-            record = {"kind": kind, "item_id": identity, "origin": item["origin"],
-                      "status": "not_judged", "seconds": None, "grades": {}, "http_status": None}
-            if len(INSTRUCTION) + len(prompt) > LIMIT:
-                record["status"] = "input_too_large"
-            else:
-                start = time.perf_counter()
-                try:
-                    response_text = groq_judgment(model, prompt, criteria, root=root, client=client)
-                    record["grades"] = validate_grades(response_text, item)
-                    record["status"] = "judged"
-                except httpx.HTTPStatusError as exc:
-                    record["status"], record["http_status"] = "api_error", exc.response.status_code
-                except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
-                    record["status"] = "transport_error"
-                except (ValueError, TypeError, KeyError, IndexError):
-                    record["status"] = "invalid_judgment"
-                finally:
-                    record["seconds"] = time.perf_counter() - start
-            records.append(record)
-            for criterion in RUBRICS[kind]:
-                grade = record["grades"].get(criterion)
-                rows.append({"item_id": kind + ":" + identity, "origin": item["origin"],
-                             "metric": "llm_judge:" + kind + ":" + criterion,
-                             "value": grade["score"] if grade else None, "unit": "score_0_4",
-                             "note": (grade["reason"] if grade else
-                                      ("Non valutabile dal testo" if criterion == "audio_quality"
-                                       else "Non valutato: " + record["status"]))})
-    finally:
-        pass  # Il client HTTP è gestito e chiuso in groq_judgment.
+    for item in items:
+        identity, kind = item["item_id"], item["kind"]
+        criteria = AUTOMATIC[kind]
+        prompt = json.dumps({"kind": kind, "topic": item.get("topic", ""),
+            "product": item["content"],
+            "criteria": {c: CRITERIA[c] for c in criteria},
+            "sources": item["sources"]}, ensure_ascii=False)
+        record = {"kind": kind, "item_id": identity, "origin": item["origin"],
+                  "status": "not_judged", "seconds": None, "grades": {}, "http_status": None}
+        if len(INSTRUCTION) + len(prompt) > LIMIT:
+            record["status"] = "input_too_large"
+        else:
+            start = time.perf_counter()
+            try:
+                response_text = groq_judgment(model, prompt, criteria, root=root, client=client)
+                record["grades"] = validate_grades(response_text, item)
+                record["status"] = "judged"
+            except httpx.HTTPStatusError as exc:
+                record["status"], record["http_status"] = "api_error", exc.response.status_code
+            except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
+                record["status"] = "transport_error"
+            except (ValueError, TypeError, KeyError, IndexError):
+                record["status"] = "invalid_judgment"
+            finally:
+                record["seconds"] = time.perf_counter() - start
+        records.append(record)
+        for criterion in RUBRICS[kind]:
+            grade = record["grades"].get(criterion)
+            rows.append({"item_id": kind + ":" + identity, "origin": item["origin"],
+                         "metric": "llm_judge:" + kind + ":" + criterion,
+                         "value": grade["score"] if grade else None, "unit": "score_0_4",
+                         "note": (grade["reason"] if grade else
+                                  ("Non valutabile dal testo" if criterion == "audio_quality"
+                                   else "Non valutato: " + record["status"]))})
     return {"schema_version": 1, "judge_version": VERSION,
             "utc": datetime.now(timezone.utc).isoformat(), "model": model, "provider": "groq",
             "manifest_sha256": digest(manifest), "records": records}, rows
