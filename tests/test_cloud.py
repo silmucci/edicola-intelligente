@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from editorial_adapter import navigate_to
 from edicola.archive import read_active_chunks
 from edicola.chunking import prepare_documents
 from edicola.cloud import digest, export_seed, prepare_cloud, registered_files, validate_seed
@@ -172,7 +173,7 @@ def test_cloud_full_start_and_rerun_make_no_external_calls(source, tmp_path, mon
         from edicola.product_navigation import SECTIONS
         assert app.selectbox(key="nav_section").options == SECTIONS
         assert not app.chat_input
-        app.selectbox(key="nav_section").set_value("Il mio profilo").run()
+        navigate_to(app, "Il mio profilo")
         assert app.button(key="account_login").disabled
         assert not app.multiselect  # Nessun fallback al profilo condiviso quando mancano i Secrets.
         app.run()
