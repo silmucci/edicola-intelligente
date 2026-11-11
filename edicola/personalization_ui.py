@@ -93,7 +93,7 @@ def render_personalization_ui(root, archive=None):
     if notice:
         st.success(notice)
         st.toast(notice)
-    tabs = st.tabs(["Preferenze", "Privacy"])
+    tabs = st.tabs(["Preferenze", "Raccolta", "Privacy"])
     with tabs[0]:
         with st.expander("Preferenze e impostazioni", expanded=not profile.interests):
             with st.form("personal_preferences"):
@@ -117,6 +117,11 @@ def render_personalization_ui(root, archive=None):
                     st.error(friendly_error(exc))
                     return
     with tabs[1]:
+        if archive is None:
+            st.info("Le letture salvate sono disponibili quando l'archivio è aperto.")
+        else:
+            render_demo_readings(root, archive, profile, None)
+    with tabs[2]:
         privacy_controls(key="demo_privacy")
         with st.expander("Cancella i dati del profilo demo"):
             st.caption("La cancellazione rimuove preferenze, letture salvate, briefing personali e relativi audio. I prodotti editoriali generali restano disponibili.")
@@ -131,7 +136,7 @@ def render_personalization_ui(root, archive=None):
 
 
 def render_demo_readings(root, archive, profile, catalog):
-    """Salvati e briefing demo visualizzati dalla card Per te."""
+    """Salvati e briefing demo riuniti nella Raccolta del Profilo."""
     with st.expander(f"Le mie letture salvate ({len(profile.saved)})"):
         for identity, item in profile.saved.items():
             with st.container(border=True):
