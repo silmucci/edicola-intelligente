@@ -78,7 +78,7 @@ def test_legacy_reading_and_citations_are_available_without_generation(consumer_
 def test_only_authorized_explicit_send_generates_briefing(consumer_ui):
     app, _, _, generate, _ = consumer_ui
     app.run()
-    app.session_state["consent_choices"] = {("text", "text-v2"): True}
+    app.session_state["consent_choices"] = {("text", "text-v3"): True}
     app.selectbox(key="editorial_saved_product").set_value("saved-key").run()
     generate.assert_not_called()
     app.text_input(key="editorial_review_keyword").set_value("trasporti").run()
