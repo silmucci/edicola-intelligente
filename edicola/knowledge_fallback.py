@@ -44,8 +44,10 @@ def graph_candidates(raw, sources, topic):
         for segment in sentences:
             if len(result["edges"]) >= 24 or len(result["nodes"]) >= 16:
                 break
-            if matcher.score(segment) <= 0:
-                # Evita di recuperare un confronto fra persone fuori tema.
+            # Un titolo già selezionato sul tema può contenere una frase
+            # relazionale più breve senza ripetere tutte le parole chiave.
+            # La fonte è stata prima selezionata con il retrieval tematico.
+            if matcher.score(segment) <= 0 and matcher.score(source.text) <= 0:
                 continue
             for match in list(RELATION.finditer(segment)) + list(ACTION.finditer(segment)):
                 left, predicate, right = match.groups()
