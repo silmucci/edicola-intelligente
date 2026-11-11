@@ -228,11 +228,14 @@ def load_draft(root, key, catalog=None):
         raise PodcastError("Il copione non è disponibile o le sue fonti sono cambiate. Prepara un nuovo episodio.") from None
 
 
-def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None):
+def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None, selection=None):
     catalog = read_catalog(root)
     if retry_key:
         return load_draft(root, retry_key, catalog)
     topic = normalize_topic(topic)
+    if selection is not None:
+        from edicola.press_review import filter_catalog
+        catalog = filter_catalog(catalog, selection)
     key_value = api_key(root)
     model = os.getenv("GEMINI_RAG_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
     config = EditorialConfig(max_source_chars=int(os.getenv("EDITORIAL_MAX_SOURCE_CHARS", "11000")),
