@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from editorial_adapter import navigate_to
 from edicola.archive_ui import edition_metadata
 from edicola.design_tokens import COLORS, CSS_VARS, page_css
 from edicola.editorial_components import CARD_CSS, CARD_JS, render_products
@@ -96,7 +97,7 @@ def test_archive_filter_opens_selected_edition_not_unfiltered_index(archive):
             st.button("Apri edizione filtrata", key="filtered_test_open", on_click=select)
     with patch("edicola.archive_ui.gallery_component", side_effect=gallery_adapter):
         app = AppTest.from_string(script(root), default_timeout=15).run()
-        app.selectbox(key="nav_section").set_value("Archivio PDF").run()
+        navigate_to(app, "Archivio PDF")
         app.selectbox(key="archive_edition_date").set_value("23 ottobre 2026").run()
         app.button(key="filtered_test_open").click().run()
         assert not app.exception and app.session_state["archive_pdf"] == "b.pdf"
