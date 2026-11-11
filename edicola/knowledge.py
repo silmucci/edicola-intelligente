@@ -26,9 +26,8 @@ from edicola.map_context import contiguous, select_map_chunks
 from edicola.knowledge_presentation import TIMELINE_CONTENT_VERSION
 from edicola.proposal_extraction import proposal_items
 from edicola.map_literal import literal_candidates, complete_nodes
-from edicola.knowledge_scope import scope_timeline
 from edicola.map_aliases import explicit_aliases
-from edicola.knowledge_relevance import Topic, select_topic_chunks, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION
+from edicola.knowledge_relevance import Topic, select_topic_chunks, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION, scope_timeline
 from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
                                        selection_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION)
 
