@@ -40,7 +40,7 @@ def test_concept_only_map_is_visual_but_has_no_factual_or_decorative_edges():
         "edicola.knowledge_views.render_graph") as graph:
         app = AppTest.from_string(code).run()
         assert not app.exception and not graph.called
-        assert any("Non emergono relazioni verificabili" in message.value for message in app.info)
+        assert not app.info
         # Senza archi documentati si mostrano i concetti consultabili, non grafi decorativi.
         assert app.get("popover") and not app.dataframe
         assert not app.segmented_control
