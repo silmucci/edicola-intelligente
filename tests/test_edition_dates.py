@@ -1,14 +1,13 @@
 """Date dal nome dei PDF: archivi già importati, futuri PDF e metadati curati."""
 import json
 
-from edicola.edition_dates import read_edition_metadata
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from edicola.chunking import prepare_documents
-from edicola.edition_dates import date_from_filename, sync_filename_dates
+from edicola.edition_dates import date_from_filename, read_edition_metadata, sync_filename_dates
 from edicola.ingestion import ingest_directory
 from edicola.vectorstore import open_collection
 from test_ingestion import make_pdf
