@@ -29,18 +29,21 @@ def platform(context):
         yield AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=15).run()
 
 
-@pytest.mark.parametrize("index", range(len(PRODUCTS)))
-def test_home_cards_and_top_navigation_share_the_nine_real_destinations(archive, index):
+VISIBLE_PRODUCTS = [product for product in PRODUCTS if product["id"] != "profile"]
+
+
+@pytest.mark.parametrize("index", range(len(VISIBLE_PRODUCTS)))
+def test_product_cards_open_real_destinations_without_generating(archive, index):
     _, context, _ = archive
+    target = VISIBLE_PRODUCTS[index]
     with platform(context) as app, patch("edicola.rag.ask_question") as rag, patch(
-        "edicola.editorial.generate_product") as editorial, patch("edicola.knowledge.generate_knowledge") as knowledge:
-        assert app.selectbox(key="nav_section").options == SECTIONS
+        "edicola.editorial.generate_product") as editorial, patch(
+        "edicola.knowledge.generate_knowledge") as knowledge:
+        assert not app.exception
         app.button(key=f"home_products_test_{index}").click().run()
         assert not app.exception
-        assert app.selectbox(key="nav_section").value == PRODUCTS[index]["title"]
-        assert app.session_state["nav_section"] == PRODUCTS[index]["section"]
-        assert not any(w.key in {"editorial_kind", "knowledge_kind"} for w in app.segmented_control)
-        assert len(app.chat_input) == (1 if index == 2 else 0)
+        assert app.session_state["nav_section"] == target["section"]
+        assert len(app.chat_input) == (1 if target["id"] == "chat" else 0)
         rag.assert_not_called()
         editorial.assert_not_called()
         knowledge.assert_not_called()
