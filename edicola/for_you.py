@@ -36,7 +36,7 @@ def _sentences(text: str) -> list[str]:
     complete = []
     for part in parts:
         sentence = part.strip(" \t\r\n«»“”")
-        if (len(sentence) < 45 or not sentence[0].isupper()
+        if (len(sentence) < 25 or not sentence[0].isupper()
                 or sentence[-1] not in ".!?"):
             continue
         complete.append(sentence)
