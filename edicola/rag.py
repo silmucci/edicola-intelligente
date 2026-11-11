@@ -16,7 +16,8 @@ from google.genai import errors, types
 from edicola.embeddings import EmbeddingError, api_key
 from edicola.indexing import ROOT
 from edicola.search import semantic_search
-from edicola.rag_context import source_editions, temporal_context, temporal_notice, retrieval_query
+from edicola.rag_context import source_editions, temporal_context, temporal_notice, retrieval_query, requested_publication_interval
+from edicola.edition_dates import read_edition_metadata
 from edicola.chat_data import bounded_context
 from edicola.article_evidence import verified_article, duplicate_article_hit, evidence_source_record
 from edicola.context_selection import fit_context, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION
@@ -41,7 +42,7 @@ Non aggiungere spiegazioni o conoscenze non documentate fuori dai claims."""
 
 # Il dossier riutilizza generate_response: queste istruzioni aggiuntive riguardano
 # soltanto ask_question e non cambiano prompt o validatori degli altri prodotti.
-CHAT_INSTRUCTION = SYSTEM_INSTRUCTION + """
+CHAT_INSTRUCTION = SYSTEM_INSTRUCTION.replace("una sequenza breve e coerente", "una sequenza coerente e proporzionata alla domanda") + """
 Scrivi una risposta naturale e diretta, adattando la profondità alla domanda.
 Per richieste fattuali semplici rispondi in modo conciso. Per domande che chiedono
 perché, come, l'evoluzione di una vicenda o il confronto tra fonti, sviluppa
@@ -265,13 +266,14 @@ def ask_question(
                 raise RagError("GEMINI_RAG_TOP_K deve essere un intero da 1 a 5.") from None
         if type(top_k) is not int or not 1 <= top_k <= 5:
             raise RagError("Il numero di chunk RAG deve essere un intero da 1 a 5.")
-        budget = int(os.environ.get("GEMINI_RAG_MAX_PROMPT_CHARS", "20000"))
+        budget = int(os.environ.get("GEMINI_RAG_MAX_PROMPT_CHARS", "30000"))
         if not 4000 <= budget <= 40000:
             raise RagError("Budget del contesto fuori intervallo.")
         request_id = uuid4().hex[:12]
         logger.info("request_id=%s phase=rag model=%r event=start mode=corpus_wide budget=%d", request_id, model, budget)
         context = bounded_context(conversation)
-        temporal_question = " ".join([m["content"] for m in context if m["role"] == "user"] + [question])
+        search_query = retrieval_query(question, context)
+        temporal_question = search_query
         search_options = {}
         if selection is not None:
             from edicola.editorial_selection import read_catalog
@@ -279,7 +281,20 @@ def ask_question(
             catalog = filter_catalog(read_catalog(root), selection)
             search_options["allowed_ids"] = {c.id for c in catalog.chunks}
             search_options["filenames"] = {c.metadata["filename"] for c in catalog.chunks}
-        hits = semantic_search(retrieval_query(question, context), authorize_external=True, root=root,
+        if selection is None:
+            interval = requested_publication_interval(question)
+            if interval is not None:
+                metadata = read_edition_metadata(root)
+                if metadata:
+                    start, end = interval
+                    search_options["filenames"] = {
+                        name for name, item in metadata.items()
+                        if isinstance(item, dict) and isinstance(item.get("date"), str)
+                        and start <= item["date"] <= end
+                    }
+                    logger.info("request_id=%s phase=edition_filter event=applied editions=%d",
+                                request_id, len(search_options["filenames"]))
+        hits = semantic_search(search_query, authorize_external=True, root=root,
                                top_k=top_k, request_id=request_id, corpus_wide=True,
                                **({"embedder": embedder} if embedder is not None else {}), **search_options)
         sources = []

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
-from google.genai import types
+from google.genai import errors, types
 
 from edicola.api_guard import PermissionDenied
 from edicola.archive import IndexChunk
@@ -71,6 +71,22 @@ def test_no_briefing_is_required_and_no_briefing_is_written(standalone):
     assert len(episode.script.text.split()) <= 240
     assert "4 milioni" in episode.script.text
     assert list_episodes(standalone.root)[0].script == episode.script
+
+
+
+def test_podcast_400_schema_fallback_generates_verified_script_before_tts(standalone):
+    normal_response = standalone.text.models.generate_content.side_effect
+    def api_response(**kwargs):
+        if kwargs["config"].response_json_schema is not None:
+            raise errors.ClientError(400, {"error": {"code": 400, "message": "private-key"}})
+        return normal_response(**kwargs)
+    standalone.text.models.generate_content.side_effect = api_response
+    episode = generate(standalone)
+    assert episode.audio_path.exists()
+    assert episode.script.sources and episode.script.text
+    assert standalone.text.models.generate_content.call_count == 2
+    assert standalone.audio.models.generate_content.call_count == 1
+    assert standalone.text.models.generate_content.call_args.kwargs["config"].response_json_schema is None
 
 
 def test_tts_failure_preserves_script_and_retry_never_regenerates_text(standalone):

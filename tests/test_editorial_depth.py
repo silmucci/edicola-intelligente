@@ -5,6 +5,7 @@ import json
 from edicola.briefing import (
     SYSTEM_INSTRUCTION as BRIEFING_INSTRUCTION,
     briefing_schema,
+    provider_briefing_schema,
     validate_briefing,
 )
 from edicola.context_selection import EDITORIAL_DEPTH_INSTRUCTION
@@ -68,3 +69,20 @@ def test_shared_editorial_depth_is_document_based():
     assert EDITORIAL_DEPTH_INSTRUCTION in CHAT_INSTRUCTION
     assert "numero minimo" in MAP_INSTRUCTIONS
     assert KNOWLEDGE_VERSION == "knowledge-v4"
+
+
+def test_remote_briefing_schema_is_simple_but_local_validation_stays_strict():
+    original = sources(14)
+    remote = provider_briefing_schema(original)
+    assert "maxItems" not in remote["properties"]["news"]
+    for name in ("title", "summary"):
+        evidence = remote["properties"]["news"]["items"]["properties"][name]["properties"]["evidence"]
+        assert "maxItems" not in evidence and "minItems" not in evidence
+        assert "enum" not in evidence["items"]["properties"]["source_id"]
+    assert briefing_schema(original)["properties"]["news"]["maxItems"] == 12
+    bad = {"sufficient": True, "news": [{
+        "title": claim("Titolo", original[0]),
+        "summary": {"text": "Contenuto inventato", "evidence": [
+            {"source_id": "S999", "quote": original[0].text}]},
+    }]}
+    assert not validate_briefing(json.dumps(bad), original).sections

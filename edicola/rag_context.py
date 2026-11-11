@@ -1,10 +1,10 @@
 """Contesto temporale del solo chatbot, da metadati locali curati, senza rete."""
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from edicola.timeline_dates import publication_date
+from edicola.timeline_dates import publication_date, MONTHS
 from edicola.edition_dates import read_edition_metadata
 from edicola.chat_data import bounded_context
 
@@ -57,11 +57,34 @@ def temporal_notice(context):
             "ma non costituiscono una verifica in tempo reale. Le date di pubblicazione sono indicate nelle fonti.")
 
 
+
+def requested_publication_interval(question: str):
+    """Intervallo esplicito delle edizioni, senza inferenze dai nomi dei PDF."""
+    match = re.search(
+        r"\bdal\s+(\d{1,2})(?:[°º])?\s+al\s+(\d{1,2})(?:[°º])?\s+("
+        + "|".join(MONTHS) + r")\s+(\d{4})\b", question, re.I)
+    if match is None:
+        return None
+    try:
+        start = date(int(match[4]), MONTHS[match[3].lower()], int(match[1]))
+        end = date(int(match[4]), MONTHS[match[3].lower()], int(match[2]))
+    except (ValueError, KeyError):
+        return None
+    return (start.isoformat(), end.isoformat()) if start <= end else None
+
+
 def retrieval_query(question, context):
+    """Una domanda autonoma non deve ereditare il tema dell'ultima risposta."""
     previous = bounded_context(context)
     if not previous:
         return question
-    # Risoluzione locale, senza una seconda chiamata LLM di riscrittura.
-    topics = "\n".join(item["content"] for item in previous if item["role"] == "user")
-    last_answer = next((item["content"][:400] for item in reversed(previous) if item["role"] == "assistant"), "")
-    return f"Domande precedenti nella stessa conversazione:\n{topics}\nContesto tematico della risposta precedente:\n{last_answer}\nDomanda attuale: {question}"
+    followup = bool(re.search(
+        r"\b(?:quest[oaie]|quell[oaie]|precedent[ei]|sopra|prima|stess[oaie]|citat[oaie]|menzionat[oaie])\b",
+        question, re.I)) or len(question.split()) <= 5
+    if not followup:
+        return question
+    last_question = next(
+        (item["content"] for item in reversed(previous) if item["role"] == "user"), "")
+    if not last_question:
+        return question
+    return "Domanda precedente per chiarire i riferimenti: " + last_question[:500] + "\nDomanda attuale: " + question

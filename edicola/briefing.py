@@ -72,6 +72,46 @@ def briefing_schema(sources: list[Source]) -> dict:
                 }}}}
 
 
+def provider_briefing_schema(sources: list[Source]) -> dict:
+    """Riduce vincoli remoti complessi; citazioni e limiti restano validati localmente."""
+    schema = briefing_schema(sources)
+    schema["properties"]["news"].pop("maxItems", None)
+    claims = schema["properties"]["news"]["items"]["properties"]
+    for name in ("title", "summary"):
+        evidence = claims[name]["properties"]["evidence"]
+        evidence.pop("minItems", None)
+        evidence.pop("maxItems", None)
+        evidence["items"]["properties"]["source_id"].pop("enum", None)
+    return schema
+
+
+def request_news_json(client, model: str, prompt: str, sources: list[Source], *,
+                      instruction: str, max_output_tokens: int, request_id="-",
+                      phase="briefing_generation"):
+    """Su HTTP 400 riprova solo JSON, verificato dagli stessi validatori locali."""
+    from edicola.api_guard import require_permission
+
+    base = dict(system_instruction=instruction, temperature=0, tools=[],
+                max_output_tokens=max_output_tokens, response_mime_type="application/json")
+
+    def send(schema):
+        require_permission("text")
+        options = dict(base)
+        if schema is not None:
+            options["response_json_schema"] = schema
+        return client.models.generate_content(
+            model=model, contents=prompt, config=types.GenerateContentConfig(**options))
+
+    try:
+        return send(provider_briefing_schema(sources))
+    except errors.APIError as exc:
+        if exc.code != 400:
+            raise
+        logger.warning("request_id=%s phase=%s event=schema_fallback http_status=400",
+                       request_id, phase)
+        return send(None)
+
+
 def build_briefing_prompt(sources: list[Source], coverage: dict, hints: list[list[str]], *, articles=None) -> str:
     included = {source.id for source in sources}
     hints = [[identity for identity in group if identity in included] for group in hints]
@@ -175,12 +215,9 @@ def generate_briefing_response(client, model: str, prompt: str, sources: list[So
         try:
             from edicola.api_guard import require_permission
             require_permission("text")
-            response = client.models.generate_content(
-                model=model, contents=prompt, config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION, temperature=0, tools=[],
-                    max_output_tokens=12288, response_mime_type="application/json",
-                    response_json_schema=briefing_schema(sources),
-                ))
+            response = request_news_json(
+                client, model, prompt, sources, instruction=SYSTEM_INSTRUCTION,
+                max_output_tokens=12288, request_id=request_id, phase="briefing_generation")
             candidates = response.candidates or []
             reason = candidates[0].finish_reason if candidates else None
             if reason != types.FinishReason.STOP:

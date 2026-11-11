@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from edicola.rag import Source, ask_question, build_prompt, CHAT_INSTRUCTION, SYSTEM_INSTRUCTION, generate_response
-from edicola.rag_context import source_editions, temporal_context, temporal_notice
+from edicola.rag_context import source_editions, temporal_context, temporal_notice, retrieval_query, requested_publication_interval
 from test_rag import response
 
 
@@ -102,3 +102,20 @@ def test_shared_prompt_and_generation_defaults_remain_unchanged_for_other_produc
     client.models.generate_content.return_value = response()
     generate_response(client, "unchanged-model", prompt, {})
     assert client.models.generate_content.call_args.kwargs["config"].system_instruction == SYSTEM_INSTRUCTION
+
+
+def test_standalone_question_does_not_inherit_previous_answer():
+    history = [{"role": "user", "content": "Parlami di Stellantis"},
+               {"role": "assistant", "content": "San Salvo è citata nella risposta."}]
+    standalone = "Analizza le notizie economiche dal 1 al 10 novembre 2026."
+    assert retrieval_query(standalone, history) == standalone
+    followup = retrieval_query("E questa vicenda?", history)
+    assert "Stellantis" in followup
+    assert "San Salvo" not in followup
+
+
+def test_explicit_date_range_parses_editions_only():
+    assert requested_publication_interval("Analizza le edizioni dal 1° al 10 novembre 2026") == (
+        "2026-11-01", "2026-11-10")
+    assert requested_publication_interval("Notizie dal 10 al 1 novembre 2026") is None
+    assert requested_publication_interval("Notizie economiche di novembre") is None

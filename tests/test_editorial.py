@@ -190,6 +190,25 @@ def test_api_errors_are_safe_and_do_not_poison_cache(setup_editorial):
     assert not (root / "data/editorial.sqlite3").exists()
 
 
+
+def test_briefing_400_schema_fallback_keeps_verified_citations_and_cache(setup_editorial, caplog):
+    root, _, client, _, _ = setup_editorial
+    def api_response(**kwargs):
+        if kwargs["config"].response_json_schema is not None:
+            raise errors.ClientError(400, {"error": {"code": 400, "message": "private-key"}})
+        return simulated_response(**kwargs)
+    client.models.generate_content.side_effect = api_response
+    with caplog.at_level("WARNING", logger="edicola"):
+        result = generate_product("briefing", root=root, authorize_external=True, client=client)
+    assert result.sufficient and result.used_source_ids
+    assert client.models.generate_content.call_count == 2
+    assert client.models.generate_content.call_args.kwargs["config"].response_json_schema is None
+    assert "event=schema_fallback" in caplog.text
+    assert "private-key" not in caplog.text
+    assert generate_product("briefing", root=root, authorize_external=True, client=client).from_cache
+    assert client.models.generate_content.call_count == 2
+
+
 def test_authorization_prevents_any_generation(setup_editorial):
     root, _, client, read, search = setup_editorial
     with pytest.raises(EditorialError):

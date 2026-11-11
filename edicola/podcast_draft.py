@@ -12,7 +12,7 @@ from google import genai
 from google.genai import types
 
 from edicola.api_guard import require_permission
-from edicola.briefing import briefing_schema, validate_briefing
+from edicola.briefing import briefing_schema, validate_briefing, request_news_json
 from edicola.context_selection import fit_context, included_coverage, selection_coverage, COMPARISON_INSTRUCTION
 from edicola.editorial import EditorialConfig, EditorialResult
 from edicola.editorial_selection import read_catalog, balanced_briefing
@@ -290,9 +290,9 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
                 raise PodcastError("Il servizio di preparazione non è disponibile.")
             client = genai.Client(api_key=key_value, vertexai=False, http_options=types.HttpOptions(
                 timeout=30000, retry_options=types.HttpRetryOptions(attempts=1)))
-        response = client.models.generate_content(model=model, contents=prompt(sources),
-            config=types.GenerateContentConfig(system_instruction=INSTRUCTION, tools=[], temperature=0,
-                response_mime_type="application/json", response_json_schema=briefing_schema(sources), max_output_tokens=8192))
+        response = request_news_json(
+            client, model, prompt(sources), sources, instruction=INSTRUCTION,
+            max_output_tokens=8192, request_id=key[:12], phase="podcast_script")
         if not response.candidates or response.candidates[0].finish_reason != types.FinishReason.STOP:
             raise PodcastError("La preparazione dell'episodio non è stata completata. Riprova manualmente.")
         coverage = selection_coverage(catalog.coverage, candidates, sources)
@@ -311,7 +311,10 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
                             topic, VERSION, article_details)
     except PodcastError:
         raise
-    except Exception:
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "phase=podcast_script event=error type=%s http_status=%s",
+            type(exc).__name__, getattr(exc, "code", "-"))
         raise PodcastError("Non è stato possibile preparare il copione. Riprova manualmente.") from None
     finally:
         lock.unlink(missing_ok=True)
