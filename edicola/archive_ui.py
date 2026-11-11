@@ -23,8 +23,8 @@ def diagnostics_enabled(root):
     return str(configured).strip().lower() in ("1", "true", "yes")
 
 
-def edition_metadata(root, documents):
-    raw = read_edition_metadata(root)
+def edition_metadata(root, documents, *, editions=None):
+    raw = read_edition_metadata(root) if editions is None else editions
     result = {}
     for index, document in enumerate(documents, 1):
         item = raw.get(document.filename, {}) if isinstance(raw, dict) else {}
@@ -62,9 +62,9 @@ def edition_filter(documents, metadata, *, key):
     return [d for d in documents if selected == "Tutte le edizioni" or metadata[d.filename]["date"] == selected]
 
 
-def latest_first(root, documents):
+def latest_first(root, documents, *, editions=None):
     """Solo date curate: edizioni senza data verificabile in fondo, ordine stabile."""
-    raw = read_edition_metadata(root)
+    raw = read_edition_metadata(root) if editions is None else editions
     def published(document):
         try:
             return date.fromisoformat(raw[document.filename]["date"])
@@ -168,7 +168,8 @@ def render_archive_view(context, prepared):
         section_intro("In edicola", "Sfoglia i quotidiani e scopri le edizioni disponibili.")
         st.info("Non ci sono ancora edizioni disponibili.")
         return
-    metadata = edition_metadata(context.root, context.documents)
+    editions = read_edition_metadata(context.root)
+    metadata = edition_metadata(context.root, context.documents, editions=editions)
     selected = st.session_state.get("archive_pdf")
     document = next((d for d in context.documents if d.filename == selected), None)
     if st.session_state.get("archive_open") and document is not None:
@@ -178,6 +179,6 @@ def render_archive_view(context, prepared):
     else:
         with st.container(horizontal=True, horizontal_alignment="center"):
             with st.container(width=1120):
-                visible = edition_filter(latest_first(context.root, context.documents), metadata, key="archive_edition_date")
+                visible = edition_filter(latest_first(context.root, context.documents, editions=editions), metadata, key="archive_edition_date")
                 render_gallery(context, metadata, documents=visible)
     render_diagnostics(context, prepared)

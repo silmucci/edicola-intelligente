@@ -171,3 +171,18 @@ def test_full_app_client_home_keeps_all_sections_without_archive_diagnostics(arc
         assert not app.checkbox
         assert "consent_choices" not in app.session_state
         assert not app.get("file_uploader")
+
+
+def test_archive_metadata_and_sort_reuse_same_edition_catalog(tmp_path):
+    from unittest.mock import patch
+    from edicola.archive_ui import edition_metadata, latest_first
+    from edicola.models import Document
+
+    documents = [Document("a.pdf", "a" * 64, 1, "ok"), Document("b.pdf", "b" * 64, 1, "ok")]
+    editions = {"a.pdf": {"date": "2026-11-01", "publication": "Testata A"},
+                "b.pdf": {"date": "2026-11-03", "publication": "Testata B"}}
+    with patch("edicola.archive_ui.read_edition_metadata", side_effect=AssertionError("Seconda lettura non necessaria")):
+        metadata = edition_metadata(tmp_path, documents, editions=editions)
+        ordered = latest_first(tmp_path, documents, editions=editions)
+    assert metadata["a.pdf"]["title"] == "Testata A"
+    assert [doc.filename for doc in ordered] == ["b.pdf", "a.pdf"]
