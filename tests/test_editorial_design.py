@@ -30,12 +30,12 @@ def test_all_product_cards_reach_real_sections_without_generating(archive, index
     with patch("edicola.rag.ask_question") as rag, patch("edicola.editorial.generate_product") as editorial, patch(
         "edicola.knowledge.generate_knowledge") as knowledge:
         app = AppTest.from_string(script(root), default_timeout=15).run()
-        app.session_state["consent_choices"] = {("text", "text-v2"): True}
+        app.session_state["consent_choices"] = {("text", "text-v3"): True}
         app.button(key=f"home_products_test_{index}").click().run()
         assert not app.exception and app.session_state["nav_section"] == VISIBLE_PRODUCTS[index]["section"]
         product = VISIBLE_PRODUCTS[index]
         assert product["title"] == product["section"]
-        assert app.session_state["consent_choices"][("text", "text-v2")]
+        assert app.session_state["consent_choices"][("text", "text-v3")]
         assert len(app.chat_input) == (1 if product["id"] == "chat" else 0)
         rag.assert_not_called()
         editorial.assert_not_called()
