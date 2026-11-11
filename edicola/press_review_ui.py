@@ -12,8 +12,7 @@ def render_press_review(catalog, context, metadata):
     """Un invio locale esplicito, nessuna API durante digitazione o navigazione."""
     from edicola.experience_ui import readable
     from edicola.pdf_viewer import source_button
-    for suffix in ("files", "scope", "from", "to", "latest", "group", "limit", "keyword"):
-        st.session_state.pop("editorial_review_" + suffix, None)
+    # I filtri del Briefing restano intatti quando si consultano tutte le notizie.
     with st.form("press_search_form"):
         query = st.text_input("Cerca una notizia o un argomento", key="editorial_press_draft", max_chars=500,
                               placeholder="Es. sanità abruzzese, caro carburante, tribunali...",
