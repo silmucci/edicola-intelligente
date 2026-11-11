@@ -65,20 +65,14 @@ def test_identity_home_and_logout_are_not_fake_authentication(archive, logged_in
         assert any(h.value == ("Notizie per i tuoi interessi" if logged_in else "Notizie da esplorare")
                    for h in app.subheader)
         navigate_to(app, "Il mio profilo")
-        assert bool([button for button in app.button if button.key == "account_logout"]) is logged_in
-        # La homepage personalizzata usa SOLO la sessione nativa verificata.
+        # La demo locale è condivisa: non presenta pulsanti Google fittizi.
+        assert not [button for button in app.button if button.key == "account_logout"]
         home_headers = [h.value for h in app.subheader]
         assert home_headers
         assert any("condiviso" in caption.value for caption in app.caption)
-        assert load_profile(root).user_id == "demo"  # Identità/storage del prototipo invariati.
-        if logged_in:
-            app.session_state["rag_history"] = [{"question": "Domanda", "result": RagResult("Risposta", [], [], False)}]
-            app.button(key="account_logout").click().run()
-            logout.assert_called_once()
-            assert "rag_history" not in app.session_state or app.session_state["rag_history"] == []
-            assert load_profile(root).interests == ["trasporti"]  # Logout non cancella dati persistenti.
-        else:
-            logout.assert_not_called()
+        assert load_profile(root).user_id == "demo"
+        assert load_profile(root).interests == ["trasporti"]
+        logout.assert_not_called()
 
 
 @pytest.mark.parametrize("button,destination", [("home_products_test_2", "Chat AI"), ("home_products_test_3", "Briefing"),
@@ -102,9 +96,10 @@ def test_shortcuts_keep_consents_and_do_not_generate(archive, button, destinatio
 def test_cards_save_remove_and_preferences_feedback(archive):
     root, _, catalog = archive
     save_profile(root, Profile(interests=["trasporti"]))
-    app = AppTest.from_string(script(root), default_timeout=15).run()
-    navigate_to(app, "Per te")
-    save = next(button for button in app.button if button.label == "Salva lettura")
+    with patch("streamlit.user", SimpleNamespace(is_logged_in=True)):
+        app = AppTest.from_string(script(root), default_timeout=15).run()
+        navigate_to(app, "Per te")
+        save = next(button for button in app.button if button.label == "Salva lettura")
     app.button(key=save.key).click().run()
     assert not app.exception
     assert len(load_profile(root).saved) == 1
