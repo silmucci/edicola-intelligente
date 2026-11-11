@@ -70,6 +70,8 @@ def retrieval_query(question, context):
         r"\b(?:quest[oaie]|quell[oaie]|precedent[ei]|sopra|prima|stess[oaie]|"
         r"citat[oaie]|menzionat[oaie]|approfondisc\w*|continua|prosegui)\b",
         question, re.I))
+    # Follow-up ellittici come «E gli edifici pubblici?» dipendono dal tema precedente.
+    followup = followup or bool(re.match(r"^\s*(?:e|invece|ma)\b", question, re.I))
     if not followup:
         return question
     last_question = next(
