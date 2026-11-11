@@ -50,7 +50,8 @@ def _legacy_mode(section):
 
 # Interrompe il cleanup dei soli input persistenti delle viste non montate.
 # Mai pulsanti, consensi, conferme di cancellazione o richieste di generazione.
-VIEW_INPUTS = ("editorial_press_draft", "editorial_saved_product", "editorial_review_keyword", "editorial_review_files", "editorial_review_scope",
+VIEW_INPUTS = ("for_you_mode", "for_you_topic", "knowledge_kind", "knowledge_topic",
+               "editorial_press_draft", "editorial_saved_product", "editorial_review_keyword", "editorial_review_files", "editorial_review_scope",
                "editorial_review_latest",
                "editorial_review_group", "editorial_review_limit",
                "podcast_topic", "knowledge_map_focus",
