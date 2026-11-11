@@ -225,14 +225,20 @@ def test_timeline_presentation_sorts_dates_leaves_undated_last_and_hides_source_
     original = deepcopy(data)
     result = KnowledgeResult("timeline", "Sostegno", data, [source], COVERAGE, diagnostics)
     module, code = render_script(result)
-    with installed_fixture(module), patch("google.genai.Client") as api:
+    with installed_fixture(module), patch("google.genai.Client") as api, patch(
+        "edicola.knowledge_views.timeline_story") as story:
         app = AppTest.from_string(code).run()
-    assert not app.exception
-    cards = [item.proto.body for item in app.get("html") if '<article class="edi-event ' in item.proto.body]
-    assert len(cards) == 3
-    assert "12 ottobre 2026" in cards[0] and "20 ottobre 2026" in cards[1]
-    assert '<time ' not in cards[2] and 'undated"' in cards[2]
-    assert [h.value for h in app.subheader] == ["Sostegno", "Senza data"]
+    assert not app.exception and story.called
+    chronological = story.call_args.kwargs["data"]["items"]
+    assert [item["iso"] for item in chronological] == ["2026-10-12", "2026-10-20"]
+    assert all("[S1]" not in item["title"] + item["description"] for item in chronological)
+    # Gli eventi senza data non entrano nella cronologia: restano consultabili
+    # in una sezione distinta, senza inventare collocazioni temporali.
+    cards = [item.proto.body for item in app.get("html")
+             if '<article class="edi-event ' in item.proto.body]
+    assert len(cards) == 1 and 'undated"' in cards[0] and "<time " not in cards[0]
+    assert any(item.label == "Altri sviluppi" for item in app.expander)
+    assert any(h.value == "Sostegno" for h in app.subheader)
     assert all("[S1]" not in text.value for text in app.text)
     assert all("[S1]" not in caption.value for caption in app.caption)
     assert data == original
@@ -279,11 +285,11 @@ render_visuals(Path({str(tmp_path)!r}), None)
         app.session_state["consent_choices"] = {("text", "text-v3"): True}
         app.text_input(key="knowledge_topic").set_value("Pesca").run()
         app.button(key="timeline_submit").click().run()
-        assert any(h.value == "Senza data" for h in app.subheader)
+        assert any(item.label == "Altri sviluppi" for item in app.expander)
         app.segmented_control(key="knowledge_kind").set_value("Mappa").run()
-        assert not any(h.value == "Senza data" for h in app.subheader)
+        assert not any(item.label == "Altri sviluppi" for item in app.expander)
         generate.assert_called_once()
         app.button(key="map_submit").click().run()
         app.segmented_control(key="knowledge_kind").set_value("Timeline").run()
-        assert not app.exception and any(h.value == "Senza data" for h in app.subheader)
+        assert not app.exception and any(item.label == "Altri sviluppi" for item in app.expander)
         assert generate.call_count == 2
