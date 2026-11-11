@@ -21,7 +21,10 @@ from test_experience_ui import archive, script
 from editorial_adapter import cards_adapter
 
 
-@pytest.mark.parametrize("index", range(len(PRODUCTS)))
+VISIBLE_PRODUCTS = [product for product in PRODUCTS if product["id"] != "profile"]
+
+
+@pytest.mark.parametrize("index", range(len(VISIBLE_PRODUCTS)))
 def test_all_product_cards_reach_real_sections_without_generating(archive, index):
     root, _, _ = archive
     with patch("edicola.rag.ask_question") as rag, patch("edicola.editorial.generate_product") as editorial, patch(
@@ -29,8 +32,8 @@ def test_all_product_cards_reach_real_sections_without_generating(archive, index
         app = AppTest.from_string(script(root), default_timeout=15).run()
         app.session_state["consent_choices"] = {("text", "text-v2"): True}
         app.button(key=f"home_products_test_{index}").click().run()
-        assert not app.exception and app.session_state["nav_section"] == PRODUCTS[index]["section"]
-        product = PRODUCTS[index]
+        assert not app.exception and app.session_state["nav_section"] == VISIBLE_PRODUCTS[index]["section"]
+        product = VISIBLE_PRODUCTS[index]
         assert product["title"] == product["section"]
         assert app.session_state["consent_choices"][("text", "text-v2")]
         assert len(app.chat_input) == (1 if product["id"] == "chat" else 0)
@@ -54,7 +57,7 @@ def test_local_search_matches_only_real_editions_products_and_passages(archive):
     assert chunks and all(c in catalog.chunks and "trasporti" in c.text for c in chunks)
     assert len(chunks) <= 5
     assert local_matches("Edizione B", context.documents, metadata)[1] == [context.documents[1]]
-    assert local_matches("podcast", context.documents, metadata)[0] == [6]
+    assert local_matches("podcast", context.documents, metadata)[0] == [4]
     assert local_matches("notizia inesistente xyz", context.documents, metadata, catalog.chunks) == ([], [], [])
     assert local_matches("  ", context.documents, metadata, catalog.chunks) == ([], [], [])
 
@@ -101,7 +104,7 @@ def test_archive_filter_opens_selected_edition_not_unfiltered_index(archive):
         app.selectbox(key="archive_edition_date").set_value("23 ottobre 2026").run()
         app.button(key="filtered_test_open").click().run()
         assert not app.exception and app.session_state["archive_pdf"] == "b.pdf"
-        assert app.session_state["archive_page"] == 1 and app.session_state["nav_section"] == "Archivio PDF"
+        assert app.session_state["archive_page"] == 1 and app.session_state["nav_section"] == "In edicola"
 
 
 def test_highlights_are_literal_excerpts_with_verified_labels(archive):
