@@ -66,9 +66,11 @@ con frasi naturali. Se le fonti sono scarse, produci un episodio più breve:
 non ripetere frasi, non diluire il testo e non aggiungere fatti non provati.
 Le evidenze letterali restano obbligatorie per titoli e sintesi."""
 # Conservare invariato il prompt v4 per non invalidare le bozze storiche.
-INSTRUCTION = V3_INSTRUCTION.replace(
+INSTRUCTION = (V3_INSTRUCTION.replace(
+    "Prepara un breve notiziario italiano", "Prepara un podcast giornalistico italiano").replace(
+    "Seleziona da una a cinque notizie documentate", "Seleziona fino a otto notizie documentate").replace(
     "circa 180-210 parole complessive,",
-    "circa 500-650 parole complessive se le fonti offrono informazioni sufficienti,")
+    "circa 500-650 parole complessive se le fonti offrono informazioni sufficienti,"))
 INSTRUCTION += """
 Prepara un podcast giornalistico di approfondimento, non un elenco di titoli.
 Quando le prove sono numerose, punta a 500-650 parole complessive e a circa 4-5
@@ -169,7 +171,7 @@ def narrative_script(draft, sources, coverage, intro, outro, *, max_words, max_c
     for section in draft.sections:
         body = spoken_text(section["text"], filenames)
         refs = list(dict.fromkeys(identity for match in REFERENCES.finditer(section["text"])
-                                  for identity in re.findall(r"S\\d+", match.group())))
+                                  for identity in re.findall(r"S\d+", match.group())))
         if not body or not refs or not set(refs) <= available:
             continue
         if body[-1] not in ".?!":
