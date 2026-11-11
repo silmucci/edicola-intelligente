@@ -18,6 +18,19 @@ analizzato documenti non inclusi. Il campione può essere limitato dal contesto.
 """
 
 
+# Criteri condivisi dai generatori, senza nuove chiamate AI.
+EDITORIAL_DEPTH_INSTRUCTION = """
+Quando la richiesta riguarda un approfondimento, ricostruisci il quadro documentato:
+fatto principale, antefatti, soggetti coinvolti, richieste o decisioni, posizioni
+differenti e sviluppi o conseguenze descritti dalle fonti. Includi solo gli aspetti
+per cui esistono prove: non allungare una notizia scarna con spiegazioni generiche.
+Se edizioni diverse aggiornano la stessa vicenda, distinguine gli sviluppi;
+la pubblicazione di un articolo non dimostra la data dell'evento.
+Non trasformare annunci, intenzioni, proposte o previsioni in fatti realizzati,
+e non dedurre causalità o consenso dalla semplice vicinanza dei passaggi.
+"""
+
+
 def edition_order(items, *, filename=lambda item: item.filename):
     """Un contributo per PDF a ogni giro; conserva il ranking dentro ogni PDF."""
     groups = defaultdict(deque)
