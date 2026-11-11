@@ -75,11 +75,12 @@ def read_active_chunks(registry: Path, incoming: Path) -> tuple[list[IndexChunk]
                 for page_number, articles in vision.items():
                     if page_number not in annotations:
                         annotations[page_number] = articles
+                filenames_json = json.dumps(names, ensure_ascii=False)
                 for row in connection.execute(
                     "SELECT * FROM chunks WHERE pdf_sha256 = ? ORDER BY position", (digest,)
                 ):
                     chunks.append(IndexChunk(row["id"], row["text"], {
-                        "filename": names[0], "filenames_json": json.dumps(names, ensure_ascii=False),
+                        "filename": names[0], "filenames_json": filenames_json,
                         "pdf_sha256": digest, "page": row["page"], "total_pages": total_pages,
                         "position": row["position"], "start": row["start"], "end": row["end"],
                         "chunk_config": config[0],

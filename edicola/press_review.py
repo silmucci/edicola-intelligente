@@ -28,12 +28,15 @@ def ranked_chunks(chunks, query, semantic_hits=()):
     current = {c.id: c for c in chunks}
     hits = {h["id"]: h for h in semantic_hits if h.get("id") in current and h.get("text") == current[h["id"]].text}
     scored = []
+    title_terms_cache = {}
     for chunk in chunks:
         text = folded(chunk.text)
         score = topic.score(text, context_required=False) if words else 0
         title = chunk.metadata.get("article_title", "")
         if chunk.metadata.get("article_title_verified") is True and title and title in chunk.text:
-            score += 4 * len(words & topic_terms(folded(title)))
+            if title not in title_terms_cache:
+                title_terms_cache[title] = topic_terms(folded(title))
+            score += 4 * len(words & title_terms_cache[title])
         if chunk.id in hits and hits[chunk.id].get("distance", 1) <= .35:
             score += max(0, 1 - hits[chunk.id].get("distance", 1))
         if not query or score > 0:
@@ -75,7 +78,8 @@ def filter_catalog(catalog, selection):
                 and (not selection.scope or info.get("scope") == selection.scope)
                 and (not selection.date_from or published and published >= selection.date_from)
                 and (not selection.date_to or published and published <= selection.date_to))
-    available = {chunk.metadata["filename"] for chunk in catalog.chunks if included(chunk.metadata["filename"])}
+    filenames = {chunk.metadata["filename"] for chunk in catalog.chunks}
+    available = {name for name in filenames if included(name)}
     latest = max((files[name].get("date", "") for name in available), default="")
     chunks = [chunk for chunk in catalog.chunks
               if chunk.metadata["filename"] in available
