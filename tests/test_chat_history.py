@@ -152,7 +152,7 @@ def test_guest_multiple_chats_switch_rename_delete_no_api(tmp_path):
         assert not app.exception and not app.chat_message and len(app.chat_input) == 1
         app.chat_input[0].set_value("Trasporti Roma").run()
         assert "conversation" not in ask.call_args.kwargs
-        app.selectbox(key="rag_chat_selector").set_value(first).run()
+        app.button(key=f"rag_select_{first}").click().run()
         assert not app.exception and len(app.chat_message) == 2
         app.text_input(key="rag_rename_input").set_value("Lavori pubblici").run()
         app.button(key="rag_rename").click().run()
@@ -197,7 +197,7 @@ def test_saved_chat_new_session_retrieves_sources_without_generating(auth, backe
         cid = app.session_state["rag_active_id"]
         assert not app.exception and len(db.messages) == 2
         fresh = AppTest.from_string(script(tmp_path)).run()
-        fresh.selectbox(key="rag_chat_selector").set_value(cid).run()
+        fresh.button(key=f"rag_select_{cid}").click().run()
         assert not fresh.exception and fresh.session_state["rag_history"][0]["result"] == RESULT
         assert len(fresh.chat_message) == 2
         fresh.toggle(key="rag_save_history").set_value(False).run()
@@ -241,7 +241,7 @@ def test_saved_cancelled_turn_is_persisted_without_api(auth, backend, chats, tmp
         app.button(key="rag_new_chat").click().run()
         assert not app.exception and len(db.messages) == 2
         assert factory().load_chat(cid)["turns"][0]["error"]
-        app.selectbox(key="rag_chat_selector").set_value(cid).run()
+        app.button(key=f"rag_select_{cid}").click().run()
         assert not app.exception and app.error and len(app.chat_message) == 2
         ask.assert_not_called()
 
@@ -277,7 +277,7 @@ def test_switch_cancels_pending_consent_without_model_call(tmp_path):
         app.button(key="rag_new_chat").click().run()
         assert not app.exception and "rag_pending" not in app.session_state
         assert "consent_pending" not in app.session_state
-        app.selectbox(key="rag_chat_selector").set_value(old).run()
+        app.button(key=f"rag_select_{old}").click().run()
         assert app.error and not app.chat_input[0].disabled
         ask.assert_not_called()
 
@@ -348,7 +348,7 @@ render_sources(result,index=0,last=True,root=context.root,context=context,format
         assert not app.exception and len(app.button) == 2
         assert all("a.pdf" not in b.label for b in app.button)
         assert all("Testata verificata" in b.label and b.proto.type == "tertiary" for b in app.button)
-        assert "1/2" in app.button[0].label
+        assert "pagina 1" in app.button[0].label
         app.button(key="rag_pdf_S3").click().run()
         assert app.session_state["archive_pdf"] == "a.pdf" and app.session_state["archive_page"] == 2
         sdk.assert_not_called()
