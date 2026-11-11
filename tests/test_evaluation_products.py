@@ -94,3 +94,29 @@ def test_export_uses_only_current_verified_sources(tmp_path):
     assert result["products"][0]["item_id"] == "cache-id"
     with patch("edicola.editorial_selection.read_catalog", return_value=Catalog([], {}, {"files": []})):
         assert not collect_product_manifest(tmp_path)["products"]
+
+
+def test_openrouter_free_provider_uses_compatible_endpoint_without_gemini(tmp_path, monkeypatch):
+    from edicola.evaluation_products import OPENROUTER_ENDPOINT
+    data = manifest()
+    data["products"] = data["products"][:1]
+    http_client = Mock()
+    http_response = Mock()
+    http_response.json.return_value = {"choices": [
+        {"finish_reason": "stop", "message": {"content": json.dumps(payload("briefing"))}}
+    ]}
+    http_client.post.return_value = http_response
+    monkeypatch.setenv("OPENROUTER_API_KEY", "mock-private-key")
+    result, rows = evaluate_products(
+        data, root=tmp_path, model="nvidia/nemotron-3-ultra-550b-a55b:free",
+        provider="openrouter", authorize_external=True, client=http_client)
+    assert result["provider"] == "openrouter"
+    assert result["records"][0]["status"] == "judged"
+    args, kwargs = http_client.post.call_args
+    assert args == (OPENROUTER_ENDPOINT,)
+    assert kwargs["json"]["model"].endswith(":free")
+    assert kwargs["headers"]["Authorization"] == "Bearer mock-private-key"
+    assert len([row for row in rows if row["value"] is not None]) == len(AUTOMATIC["briefing"])
+    with pytest.raises(ValueError, match=":free"):
+        evaluate_products(data, root=tmp_path, model="paid/model", provider="openrouter",
+                          authorize_external=True, client=http_client)
