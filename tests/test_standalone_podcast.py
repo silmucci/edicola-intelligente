@@ -337,7 +337,7 @@ def test_podcast_respects_explicit_briefing_edition_filters(standalone):
     episode = generate(standalone, selection=ReviewSelection(filenames=("giornale-0.pdf",)))
     assert [s["filename"] for s in episode.script.sources] == ["giornale-0.pdf"]
     request = json.loads(standalone.text.models.generate_content.call_args.kwargs["contents"])
-    assert {source["filename"] for source in request["sources"]} == {"giornale-0.pdf"}
+    assert {source["pdf"] for source in request["sources"]} == {"giornale-0.pdf"}
 
 
 def test_v4_cached_podcast_script_remains_readable(standalone):
