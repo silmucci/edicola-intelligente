@@ -17,6 +17,7 @@ from google.genai import errors, types
 from edicola.embeddings import api_key
 from edicola.evaluation_data import CRITERIA, RUBRICS, digest
 from edicola.evaluation_report import render_report
+from edicola.settings import setting
 
 VERSION = "editorial-judge-v1"
 KINDS = ("briefing", "podcast", "timeline", "map")
@@ -121,9 +122,9 @@ OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_FREE_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
 
-def openrouter_judgment(model, prompt, criteria, *, client=None):
+def openrouter_judgment(model, prompt, criteria, *, root=None, client=None):
     """Una richiesta senza retry, con validazione locale dello schema."""
-    key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    key = setting("OPENROUTER_API_KEY", root=root)
     if not key and client is None:
         raise ValueError("OPENROUTER_API_KEY mancante.")
     if not model.endswith(":free"):
@@ -194,7 +195,7 @@ def evaluate_products(manifest, *, root, model, authorize_external=False, client
                 start = time.perf_counter()
                 try:
                     if provider == "openrouter":
-                        response_text = openrouter_judgment(model, prompt, criteria, client=client)
+                        response_text = openrouter_judgment(model, prompt, criteria, root=root, client=client)
                         record["grades"] = validate_grades(response_text, item)
                         record["status"] = "judged"
                     else:
