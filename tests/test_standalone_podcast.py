@@ -287,6 +287,10 @@ def test_longform_audio_stitches_all_segments_without_losing_script(tmp_path, mo
                                    cache_context={"strategy": "standalone-podcast-v5"},
                                    minimum_seconds=100.)
     assert tts.models.generate_content.call_count == len(parts)
+    sent = [call.kwargs["contents"][0].parts[0].text
+            for call in tts.models.generate_content.call_args_list]
+    assert sent == parts
+    assert " ".join(" ".join(sent).split()) == " ".join(text.split())
     assert result.seconds == pytest.approx(45 * len(parts))
     assert wav_duration(result.audio_path.read_bytes()) == pytest.approx(result.seconds)
     assert generate_script_audio(script, "test", root=tmp_path, client=tts,
@@ -312,3 +316,17 @@ def test_longform_audio_failure_does_not_cache_partial_wav(tmp_path, monkeypatch
     assert not list((tmp_path / "data/podcast_cache").glob("*.wav"))
     assert not list((tmp_path / "data/podcast_cache").glob("*.json"))
     assert not list((tmp_path / "data/podcast_cache").glob("*.lock"))
+
+
+def test_longform_audio_rejects_a_truncated_segment(tmp_path, monkeypatch):
+    from edicola.podcast import generate_script_audio
+    from edicola.podcast_text import Script
+    monkeypatch.setenv("GEMINI_API_KEY", "offline")
+    text = " ".join(["Le fonti raccontano gli sviluppi delle vicende locali."] * 32)
+    tts = Mock()
+    tts.models.generate_content.return_value = tts_response(long_wav(2))
+    with pytest.raises(PodcastError, match="incompleta"):
+        generate_script_audio(Script(text, [], {}, 1, 1), "test", root=tmp_path,
+                              client=tts, authorize_external=True,
+                              cache_context={"strategy": "standalone-podcast-v5"})
+    assert not list((tmp_path / "data/podcast_cache").glob("*.wav"))
