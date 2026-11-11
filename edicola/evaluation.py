@@ -105,7 +105,12 @@ def benchmark(root, dataset, frozen, *, mode, k, limit, repeats=1, authorize_ext
                 start, phase_start, phase = time.perf_counter(), None, "retrieval"
                 try:
                     phase_start = time.perf_counter()
-                    hits = semantic_search(q["question"], authorize_external=True, root=root, embedder=embedder, top_k=k)
+                    # Stesso ranking corpus-wide della Chat AI; K delimita solo la misurazione
+                    # sperimentale, non il numero di candidati recuperabili dall'app.
+                    candidates = semantic_search(q["question"], authorize_external=True, root=root,
+                                                 embedder=embedder, top_k=k, corpus_wide=True,
+                                                 preserve_relevance_order=True)
+                    hits = candidates[:k]
                     record["retrieval_seconds"] = time.perf_counter() - phase_start
                     record.update(retrieved=hits, retrieval_status="ok")
                     if mode == "rag":
@@ -139,7 +144,8 @@ def benchmark(root, dataset, frozen, *, mode, k, limit, repeats=1, authorize_ext
         "configuration": {"embedding_model": MODEL, "dimensions": DIMENSIONS, "generation_model": model if mode == "rag" else None,
             "sdk_attempts": 1, "application_attempts_max_per_phase": 3, "limit": limit, "repeats": repeats,
             "sampling": "primi N nel dataset, ordine originale", "generation_cache": "non utilizzata",
-            "local_cache": "non controllata; registrare condizioni cold/warm nel protocollo", "ui_included": False},
+            "local_cache": "non controllata; registrare condizioni cold/warm nel protocollo", "ui_included": False, "retrieval_strategy": "corpus_wide_ranked_top_k",
+            "pipeline_scope": "benchmark RAG a K; non equivale alla Chat AI completa"},
         "records": records}
 
 
