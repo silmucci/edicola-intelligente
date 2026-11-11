@@ -2,7 +2,7 @@
 
 import re
 
-TIMELINE_CONTENT_VERSION = "timeline-developments-v4"
+TIMELINE_CONTENT_VERSION = "timeline-developments-v5"
 PROPOSAL = re.compile(r"\b(propon\w*|propost[aoe]|richied\w*|chied\w*|ipotizz\w*)\b", re.I)
 DECISION = re.compile(r"\b(ha approvato|hanno approvato|ha deliberato|è stato approvato|è stata approvata|ha deciso)\b", re.I)
 NEGATION = re.compile(r"\b(non|smentisce|nega|mai)\b", re.I)
@@ -64,3 +64,26 @@ def empty_knowledge_message(result):
     if result.coverage.get("partial"):
         message += " La copertura dell’archivio è parziale."
     return message + " Prova un tema più specifico o consulta le edizioni originali."
+
+
+def ordered_timeline(events, undated_events):
+    """Ordina eventi per data verificata o, in mancanza, per data dell'edizione.
+
+    Non modifica event_date: la pubblicazione non è la data dell'accadimento.
+    Gli sviluppi senza alcuna data restano separati.
+    """
+    from datetime import date
+    ordered, without_date = [], []
+    for event in [*events, *undated_events]:
+        verified = event.get("event_date")
+        publications = [p.get("date") for p in event.get("publication_dates", []) if p.get("date")]
+        fallback = min(publications) if publications else None
+        display_day = verified or fallback
+        try:
+            date.fromisoformat(display_day)
+        except (ValueError, TypeError):
+            without_date.append(event)
+            continue
+        ordered.append((display_day, 0 if verified else 1, event))
+    ordered.sort(key=lambda item: (item[0], item[1], item[2].get("title", "")))
+    return [event for _, _, event in ordered], without_date
