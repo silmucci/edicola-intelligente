@@ -22,7 +22,7 @@ def isolated_podcast_catalog(tmp_path, monkeypatch):
     monkeypatch.setenv("EDICOLA_ARCHIVE_DIAGNOSTICS", "1")
     from edicola.profiles import Profile
     from edicola.pdf_viewer import archive_context
-    with patch("edicola.podcast_ui.list_products", return_value=[]), patch(
+    with patch("edicola.podcast_ui.list_episodes", return_value=[]), patch(
         "edicola.personalization_ui.load_profile", return_value=Profile()
     ), patch("edicola.personalization_ui.list_products", return_value=[]), patch(
         "edicola.pdf_viewer.archive_context", side_effect=lambda _, docs, prepared: archive_context(tmp_path, docs, prepared)
