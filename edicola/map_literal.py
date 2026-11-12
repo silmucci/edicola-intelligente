@@ -8,6 +8,9 @@ from edicola.archive import IndexChunk
 PREDICATES = re.compile(r"\b(?:(?:ha|hanno)\s+(?:presentato|sostenuto|criticato|dichiarato\s+inammissibile)|"
                         r"(?:(?:è|sono)\s+stat[oaie]\s+)?(?:presentat[oaie]|sostenut[oaie]|dichiarat[oaie]\s+inammissibil[ei])\s+(?:anche\s+)?(?:dal|dalla|dai|dalle|da)|"
                         r"(?:ha\s+esaminato|esamina|riguarda|riguardano|propone|sostiene|critica|è\s+esponente\s+di|deputato\s+del|senatore\s+del)|"
+                        r"(?:(?:ha|hanno)\s+(?:approvato|annunciato|proposto|finanziato|stanziato|deciso|varato|presentato|incontrato|chiesto)|"
+                        r"approva|annuncia|finanzia|guida|presiede|convoca|incontra|"
+                        r"(?:è|sono)\s+(?:guidat[oaie]|presiedut[oaie])\s+da(?:l|lla|i|lle)?)|"
                         r"presentat[oaie]\s+per\s+(?:garantire|assicurare|tutelare)\s+la\s+(?:salvaguardia|sopravvivenza|tutela)\s+(?:dei|degli)(?:\s+(?:quattro|tre|due))?)\b", re.I)
 
 
@@ -18,7 +21,10 @@ def complete_nodes(nodes, sources, *, accepted_ids=None):
     anchors = set(labels)
     name = r"(?!Il\b|La\b|Lo\b|Un\b|Una\b)[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ’'-]+"
     person = re.compile(r"\b(?i:deputato|senatore|senatrice|consigliere|consigliera)(?:\s+(?i:di|del|della)\s+(?i:" + PARTY + r"))?\s+(" + name + r"(?:\s+" + name + r"){1,2})\b")
-    institution = re.compile(r"\b(?:Commissione|Ministero|Consiglio)\s+(?:(?:dei|delle|di|del)\s+)?(?:[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+|ministri|giustizia|bilancio)(?:\s+(?:di|del|dei)\s+[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+)?\b")
+    institution = re.compile(
+        r"\b(?:(?:Commissione|Ministero)\s+(?:(?:dei|delle|di|del|della)\s+)?(?:[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+|ministri|giustizia|bilancio)"
+        r"(?:\s+(?:di|del|dei)\s+[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+)?"
+        r"|Consiglio\s+(?:dei\s+ministri|di\s+stato|regionale|comunale|provinciale|superiore\s+della\s+magistratura))\b", re.I)
     party = re.compile(r"\b(?:" + PARTY + r")\b", re.I)
     proposal = re.compile(r"\b(?:emendamento|disegno di legge|proposta di legge)\b", re.I)
     topic = re.compile(r"\b(?:tribunali|presidi giudiziari)\b", re.I)
