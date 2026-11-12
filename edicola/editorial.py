@@ -268,7 +268,8 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
                                        selection_coverage(catalog.coverage, candidates, []))
             prompt_chars = len(BRIEFING_INSTRUCTION) + len(prompt)
             logger.info("request_id=%s phase=briefing_context prompt_chars=%d budget=%d", request_id, prompt_chars, prompt_budget)
-            fallbacks = alternative_models("BRIEFING", model, root=root)
+            fallbacks = alternative_models("BRIEFING", model, root=root,
+                                           default_fallback="gemini-3.1-flash-lite")
             draft = generate_briefing_response(client, model, prompt, sources, request_id=request_id,
                                               fallback_models=fallbacks, quota_fallback=True)
             # Se la prima sintesi copre poche vicende, consulta un secondo campione
