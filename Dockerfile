@@ -11,7 +11,7 @@ WORKDIR /app
 
 # libgomp1 supports native libraries used by some Chroma dependencies.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 \
+    && apt-get install -y --no-install-recommends libgomp1 tesseract-ocr tesseract-ocr-ita tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 edicola \
     && useradd --system --uid 10001 --gid 10001 --create-home --home-dir /home/edicola edicola
