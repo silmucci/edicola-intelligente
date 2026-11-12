@@ -173,7 +173,7 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
         prompt_budget = 24000
         if kind == "briefing":
             try:
-                prompt_budget = int(os.getenv("EDITORIAL_BRIEFING_MAX_PROMPT_CHARS", "24000"))
+                prompt_budget = int(os.getenv("EDITORIAL_BRIEFING_MAX_PROMPT_CHARS", "18000"))
             except ValueError:
                 raise EditorialError("EDITORIAL_BRIEFING_MAX_PROMPT_CHARS deve essere un intero da 2000 a 40000.") from None
             if not 2000 <= prompt_budget <= 40000:
