@@ -280,8 +280,8 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
                              for item in draft.sections]
                 try:
                     extra_sources, extra_prompt = fit_briefing_prompt(
-                        remaining, catalog.coverage, groups, prompt_budget,
-                        source_budget=config.max_source_chars, articles=article_details,
+                        remaining, catalog.coverage, groups, min(prompt_budget, 16000),
+                        source_budget=min(config.max_source_chars, 12000), articles=article_details,
                         already_covered=headlines, balance_editions=False)
                 except ValueError:
                     extra_sources = []
