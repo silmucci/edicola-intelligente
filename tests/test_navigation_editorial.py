@@ -130,3 +130,23 @@ def test_briefing_keeps_legacy_result_readable_without_generating_dossier(archiv
         assert app.session_state["editorial_results"]["dossier"] == dossier
         assert generate.call_args.args[0] == "briefing"
         assert generate.call_count == 1 and not app.exception
+
+
+def test_briefing_preserves_last_verified_result_when_gemini_is_busy(archive):
+    from edicola.editorial import EditorialError, EditorialResult
+    _, context, _ = archive
+    previous = EditorialResult("briefing", "Briefing già verificato", [], [], [], COVERAGE, True)
+    with platform(context) as app, patch(
+        "edicola.editorial.generate_product",
+        side_effect=EditorialError("Gemini non disponibile: HTTP 503.")
+    ) as generate:
+        app.session_state["editorial_result"] = previous
+        app.session_state["editorial_results"] = {"briefing": previous}
+        app.session_state["consent_choices"] = {("text", "text-v3"): True}
+        navigate_to(app, "Briefing")
+        app.button(key="briefing_submit").click().run()
+        assert not app.exception
+        assert generate.call_count == 1
+        assert app.session_state["editorial_results"]["briefing"] == previous
+        assert any(header.value == previous.title for header in app.subheader)
+        assert app.error
