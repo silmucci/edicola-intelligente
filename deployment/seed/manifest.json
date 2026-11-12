@@ -8,10 +8,10 @@
   },
   "pdfs": 22,
   "chunks": 2606,
-  "indexed": 2367,
+  "indexed": 2606,
   "files": {
-    "vectors.json": "5b7421fe4f4672af22e716e208c5a064209542669d251383e5aa5feeb433565f",
-    "data/archive.sqlite3": "1ea3c8654b112dba664e3543d2bcf280bc658cdb0a4d4eb62add6fdf736570f3",
+    "vectors.json": "fcb76631d6b1cc067b5073263abe319c88640b3fce0380023b9e7822a07ff717",
+    "data/archive.sqlite3": "f7e5ce5dc538c9ba8a72a66549c63dda22e123da1e7ab67364fd9501a83e4448",
     "data/editions.json": "597667c8caff38f5432e068e0466fd3d87f873003cd6339b38142a7d954c141d",
     "data/incoming/7ZycEw6ad2611b84bd0_full.pdf": "328bebc4150d2810a4fdd01a59c19a3612f387637aa7da90ae0a7978f704b014",
     "data/incoming/A4_edizione_del_26-10-2026_1020.pdf": "56a8d862ce65914279142bccde65ccec86d4c098a38902612cad292633030059",
