@@ -168,15 +168,14 @@ def render_editorial(root, context):
     submitted = st.button("Genera briefing", key="briefing_submit", type="primary")
     payload = ["", asdict(review)]
     if authorize_action("text", "briefing", submitted, payload):
-        st.session_state.pop("editorial_result", None)
-        st.session_state.pop("editorial_saved_product", None)
-        results.pop("briefing", None)
         try:
             with st.spinner("Leggo le fonti e preparo il briefing…"):
                 product = perform("text", editorial.generate_product, "briefing", "",
                                   authorize_external=True, root=root, selection=review)
-                st.session_state["editorial_result"] = product
-                results["briefing"] = product
+            # Non eliminare un briefing già verificato quando Gemini fallisce.
+            st.session_state.pop("editorial_saved_product", None)
+            st.session_state["editorial_result"] = product
+            results["briefing"] = product
         except (editorial.EditorialError, PermissionDenied, PersonalStoreError) as exc:
             st.error(friendly_error(exc))
     # Lettura soltanto: nessuna copia, migrazione o riscrittura della cache.
