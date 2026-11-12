@@ -12,7 +12,7 @@ from google.genai import errors, types
 
 from edicola.archive import IndexChunk
 from edicola.editorial_selection import Catalog
-from edicola.knowledge import KnowledgeError, generate_data, generate_knowledge, knowledge_schema
+from edicola.knowledge import KnowledgeError, KnowledgeUnavailable, generate_data, generate_knowledge, knowledge_schema
 from edicola.knowledge_validation import documented_dates, map_dot, validate_map, validate_timeline
 from edicola.rag import Source
 
@@ -527,3 +527,50 @@ def test_knowledge_permission_error_never_switches_model(setup_knowledge, monkey
     with pytest.raises(KnowledgeError, match="403"):
         generate_knowledge("map", "Trasporti", authorize_external=True, root=root, client=client)
     assert client.models.generate_content.call_count == 1
+
+
+def test_timeline_uses_only_verified_excerpts_after_503_without_caching(setup_knowledge):
+    root, catalog, client, _, search = setup_knowledge
+    text = "Il Comune di Roma approva un piano per i trasporti pubblici nella zona urbana."
+    catalog.chunks = [replace(catalog.chunks[0], text=text)]
+    with patch("edicola.knowledge.generate_data",
+               side_effect=KnowledgeUnavailable("Gemini non disponibile: HTTP 503.")) as unavailable:
+        result = generate_knowledge("timeline", "trasporti", root=root, client=client,
+                                    authorize_external=True)
+    assert unavailable.call_count == 1 and search.call_count == 1
+    assert result.diagnostics["status"] == "verified_source_fallback"
+    assert result.data["undated_events"] and not result.data["events"]
+    assert all(e["event_date"] is None for e in result.data["undated_events"])
+    assert all(e["evidence"][0]["quote"] in text for e in result.data["undated_events"])
+    assert not list((root / "data/knowledge_cache").glob("*.json"))
+    # Una successiva richiesta può riprovare Gemini, non riceve una cache di riserva.
+    assert not result.from_cache
+
+
+def test_map_uses_only_explicit_validated_relations_after_504(setup_knowledge):
+    root, catalog, client, _, _ = setup_knowledge
+    text = "Il Governo finanzia il progetto trasporti dopo la seduta del consiglio."
+    catalog.chunks = [replace(catalog.chunks[0], text=text)]
+    with patch("edicola.knowledge.generate_data",
+               side_effect=KnowledgeUnavailable("Gemini non disponibile: HTTP 504.")):
+        result = generate_knowledge("map", "trasporti", root=root, client=client,
+                                    authorize_external=True)
+    assert result.diagnostics["status"] == "verified_source_fallback"
+    assert len(result.data["edges"]) == 1
+    edge = result.data["edges"][0]
+    assert edge["label"] == "finanzia" and edge["source_ids"] == ["S1"]
+    assert edge["evidence"] == [{"source_id": "S1", "quote": text}]
+    assert not list((root / "data/knowledge_cache").glob("*.json"))
+
+
+def test_map_fallback_keeps_unavailability_when_no_verified_relation(setup_knowledge):
+    root, catalog, client, _, _ = setup_knowledge
+    catalog.chunks = [replace(catalog.chunks[0], text=(
+        "Il documento descrive il progetto trasporti, ma non attribuisce decisioni "
+        "ad alcuna organizzazione o persona."))]
+    with patch("edicola.knowledge.generate_data",
+               side_effect=KnowledgeUnavailable("Gemini non disponibile: HTTP 503.")):
+        with pytest.raises(KnowledgeUnavailable, match="503"):
+            generate_knowledge("map", "trasporti", root=root, client=client,
+                               authorize_external=True)
+    assert not list((root / "data/knowledge_cache").glob("*.json"))
