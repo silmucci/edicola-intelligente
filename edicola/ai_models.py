@@ -25,13 +25,14 @@ def product_model(product: str, default: str, *, root=None) -> str:
     return setting(f"GEMINI_{product.upper()}_MODEL", "", root=root) or default
 
 
-def alternative_models(product: str, primary: str, *, root=None) -> tuple[str, ...]:
+def alternative_models(product: str, primary: str, *, root=None,
+                       default_fallback="gemini-3.8-flash") -> tuple[str, ...]:
     """Lista esplicita per prodotto o vecchia riserva comune, senza duplicati."""
     configured = setting(f"GEMINI_{product.upper()}_FALLBACK_MODELS", "", root=root)
     if configured:
         raw = configured
     else:
-        raw = setting("GEMINI_RAG_FALLBACK_MODEL", "gemini-3.8-flash", root=root)
+        raw = setting("GEMINI_RAG_FALLBACK_MODEL", default_fallback, root=root)
     if raw.casefold() in DISABLED:
         return ()
     unique = []
