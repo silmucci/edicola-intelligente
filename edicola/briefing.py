@@ -31,8 +31,8 @@ ma non sono prove. Non ripetere gli argomenti in already_covered.
 Restituisci solo JSON con sufficient e news. Se mancano notizie verificabili:
 sufficient=false, news=[]. Ogni notizia ha title e summary, entrambi con text ed
 evidence (source_id e quote). Prima di scrivere ogni notizia scegli le prove: usa soltanto source_id presenti
-in sources e copia quote di almeno 20 caratteri consecutivi direttamente
-dal campo text di QUELLA fonte. Non parafrasare le quote, non aggiungere
+in sources e copia quote come sequenza letterale contigua di almeno
+20 caratteri direttamente dal campo text di QUELLA fonte. Non parafrasare le quote, non aggiungere
 puntini di sospensione e non unire frammenti distanti. Se non puoi
 riportare una citazione esatta per titolo e sintesi, ometti la notizia.
 Non inserire riferimenti nel text: li aggiunge Python.
