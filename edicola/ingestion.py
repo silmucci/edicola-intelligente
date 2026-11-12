@@ -8,6 +8,7 @@ from pypdf import PdfReader
 
 from edicola.models import Document, Page
 from edicola.pdf_structure import extract_layout
+from edicola.ocr import OCR_METHOD, recognize_page
 from edicola.storage import load_result, open_registry, record_source, save_result
 
 
@@ -40,6 +41,17 @@ def extract_pdf(content: bytes) -> dict:
                 else:
                     item["text"] = traditional
                     item["extraction_method"] = "pypdf-fallback"
+                # Le scansioni raster con scarso testo digitale possono usare OCR
+                # locale. Non sostituire mai un'estrazione valida con un esito
+                # incerto e non conservare blocchi geometrici di un altro testo.
+                try:
+                    recognized = recognize_page(content, number, item["text"])
+                except Exception:
+                    recognized = None
+                if recognized:
+                    item["text"] = recognized
+                    item.pop("blocks", None)
+                    item["extraction_method"] = OCR_METHOD
             except Exception as exc:
                 item["error"] = f"Pagina non estraibile: {type(exc).__name__}: {exc}"
             result["pages"].append(item)
