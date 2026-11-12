@@ -1,7 +1,7 @@
 """Regressioni del retrieval dedicato a Timeline e Knowledge Graph."""
 from types import SimpleNamespace
 
-from edicola.knowledge_relevance import Topic, select_visual_evidence
+from edicola.knowledge_relevance import Topic, select_visual_evidence, TEMPORAL_CUES, RELATION_CUES
 
 
 def chunk(identity, text, filename):
@@ -106,3 +106,16 @@ def test_newspaper_headline_links_office_to_documented_meeting():
     graph, details = validate_map(candidates, [source])
     assert graph["edges"], details
     assert any(edge["label"].casefold() == "convoca" for edge in graph["edges"])
+
+
+def test_timeline_and_map_cues_match_newspaper_italian():
+    """Termini di eventi e relazioni devono attivare il ranking dedicato."""
+    temporal = "Il vertice è stato convocato il 7 novembre 2026."
+    relations = "Il Comune annuncia un piano e finanzia un intervento."
+    assert TEMPORAL_CUES.search(temporal)
+    assert TEMPORAL_CUES.search("La replica arriva successivamente.")
+    assert RELATION_CUES.search(relations)
+    assert RELATION_CUES.search("La giunta propone una misura.")
+    # Non basta una parola che contiene casualmente la stessa sequenza.
+    assert not TEMPORAL_CUES.search("dopodomaniello")
+    assert not RELATION_CUES.search("disapprovato")
