@@ -238,9 +238,9 @@ def scope_timeline(catalog, question):
 
 
 # Selezione dedicata ai prodotti visuali: mantiene il retrieval generale invariato.
-VISUAL_RETRIEVAL_VERSION = "visual-retrieval-v1"
-TEMPORAL_CUES = re.compile(r"\\b(?:ieri|oggi|domani|successivamente|precedentemente|dopo|prima|annunciato|convocato|approvato|replica|incontro|vertice|emergenza|(?:\\d{1,2}\\s+)?(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\\s+\\d{4})\\b", re.I)
-RELATION_CUES = re.compile(r"\\b(?:ha|hanno|chiede|chiedono|critica|criticano|attacca|replica|convoca|finanzia|approva|riguarda|coinvolge|colpisce|provoca|sostiene|accusa|risponde|propone|annuncia|prevede)\\b", re.I)
+VISUAL_RETRIEVAL_VERSION = "visual-retrieval-v2"
+TEMPORAL_CUES = re.compile(r"\b(?:ieri|oggi|domani|successivamente|precedentemente|dopo|prima|annunciato|convocato|approvato|replica|incontro|vertice|emergenza|(?:\d{1,2}\s+)?(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+\d{4})\b", re.I)
+RELATION_CUES = re.compile(r"\b(?:ha|hanno|chiede|chiedono|critica|criticano|attacca|replica|convoca|finanzia|approva|riguarda|coinvolge|colpisce|provoca|sostiene|accusa|risponde|propone|annuncia|prevede)\b", re.I)
 
 
 def select_visual_evidence(kind, topic, chunks, hits, *, limit=28):
