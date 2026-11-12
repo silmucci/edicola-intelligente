@@ -364,7 +364,8 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
             own_client = True
         try:
             raw = generate_data(client, model, prompt, knowledge_schema(kind, sources), system_instruction=instruction,
-                                fallback_models=alternative_models(kind.upper(), model, root=root),
+                                fallback_models=alternative_models(kind.upper(), model, root=root,
+                                                                     default_fallback="gemini-3.1-flash-lite"),
                                 quota_fallback=True)
         except KnowledgeUnavailable:
             # Il retrieval è già completato: usare solo estratti o relazioni
