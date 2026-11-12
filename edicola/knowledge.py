@@ -93,6 +93,10 @@ class KnowledgeError(RuntimeError):
     pass
 
 
+class KnowledgeUnavailable(KnowledgeError):
+    """Solo errori temporanei di servizio, rete o quota; non errori di validazione."""
+
+
 @dataclass
 class KnowledgeResult:
     kind: str
@@ -210,13 +214,52 @@ def generate_data(client, model, prompt, schema, *, sleep=time.sleep,
                 "invalid_request": "Richiesta non valida; il server non identifica esplicitamente un errore di schema.",
             }[error_kind]
             raise KnowledgeError(f"Gemini HTTP 400 ({error_kind}). {explanation} Nessun nuovo tentativo automatico.") from None
-        raise KnowledgeError(f"Gemini non disponibile: HTTP {code}. Verificare accesso, quota e connessione.") from None
+        category = KnowledgeUnavailable if code in {429, 500, 502, 503, 504} else KnowledgeError
+        raise category(f"Gemini non disponibile: HTTP {code}. Verificare accesso, quota e connessione.") from None
     except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
-        raise KnowledgeError("Gemini non disponibile: HTTP -. Verificare accesso, quota e connessione.") from None
+        raise KnowledgeUnavailable("Gemini non disponibile: HTTP -. Verificare accesso, quota e connessione.") from None
     reason = response.candidates[0].finish_reason if response.candidates else None
     if reason != types.FinishReason.STOP:
         raise KnowledgeError("Risposta Gemini troncata o non completata; risultato non pubblicato.")
     return response.text or ""
+
+
+def verified_source_fallback(kind, topic, sources, catalog, matcher, contexts, candidates, articles):
+    """Riserva locale solo dopo HTTP 429/5xx o rete: nessuna AI, fatto o arco inventato.
+
+    Nessuna persistenza: alla richiesta successiva il generatore può tornare online.
+    Le prove letterali passano sempre per i validatori ordinari.
+    """
+    try:
+        if kind == "timeline":
+            extracted = source_developments(sources, topic)
+            if not extracted:
+                return None
+            data, diagnostics = validate_timeline({"events": extracted}, sources, catalog.coverage)
+            data, discarded = relevant_timeline(data, sources, matcher)
+            diagnostics["off_topic_events"] = discarded
+            useful = bool(data["events"] or data["undated_events"])
+        else:
+            raw = graph_candidates({"nodes": [], "edges": []}, sources, topic)
+            if not raw["edges"]:
+                return None
+            data, diagnostics = validate_map(raw, sources, contexts=contexts)
+            data, relevance = relevant_map(data, raw, sources, matcher, contexts=contexts)
+            diagnostics.update(relevance)
+            useful = bool(data["edges"])
+        if not useful:
+            return None
+        diagnostics["status"] = "verified_source_fallback"
+        diagnostics["fallback_not_cached"] = True
+        logger.info("phase=knowledge_fallback kind=%s event=verified nodes=%d edges=%d events=%d",
+                    kind, len(data.get("nodes", [])), len(data.get("edges", [])),
+                    len(data.get("events", [])) + len(data.get("undated_events", [])))
+        return KnowledgeResult(kind, topic, data, sources,
+                               selection_coverage(catalog.coverage, candidates, sources),
+                               diagnostics, source_articles=articles)
+    except (ValueError, TypeError, KeyError):
+        logger.warning("phase=knowledge_fallback kind=%s event=rejected", kind)
+        return None
 
 
 def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root: Path = ROOT, client=None, selection=None,
@@ -319,9 +362,19 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
             client = genai.Client(api_key=key, vertexai=False, http_options=types.HttpOptions(
                 timeout=30000, retry_options=types.HttpRetryOptions(attempts=1)))
             own_client = True
-        raw = generate_data(client, model, prompt, knowledge_schema(kind, sources), system_instruction=instruction,
-                            fallback_models=alternative_models(kind.upper(), model, root=root),
-                            quota_fallback=True)
+        try:
+            raw = generate_data(client, model, prompt, knowledge_schema(kind, sources), system_instruction=instruction,
+                                fallback_models=alternative_models(kind.upper(), model, root=root),
+                                quota_fallback=True)
+        except KnowledgeUnavailable:
+            # Il retrieval è già completato: usare solo estratti o relazioni
+            # verificati, senza nuove chiamate e senza salvare una cache degradata.
+            contexts = {s.id: current[s.chunk_id].metadata for s in sources}
+            local = verified_source_fallback(kind, topic, sources, catalog, matcher,
+                                             contexts, candidates, article_details)
+            if local is not None:
+                return local
+            raise
         try:
             raw_data = json.loads(raw)
             extraction_counts = {}
