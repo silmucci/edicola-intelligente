@@ -32,6 +32,21 @@ def test_unconfigured_product_keeps_old_primary_and_secondary(monkeypatch, tmp_p
     assert alternative_models("MAP", "configured", root=tmp_path) == ("gemini-3.8-flash",)
 
 
+def test_visual_and_briefing_can_use_stable_free_fallback_without_changing_chat(monkeypatch, tmp_path):
+    monkeypatch.delenv("GEMINI_RAG_FALLBACK_MODEL", raising=False)
+    for product in ("MAP", "TIMELINE", "BRIEFING"):
+        monkeypatch.delenv(f"GEMINI_{product}_FALLBACK_MODELS", raising=False)
+        assert alternative_models(product, "gemini-3.5-flash-lite", root=tmp_path,
+                                  default_fallback="gemini-3.1-flash-lite") == ("gemini-3.1-flash-lite",)
+    assert alternative_models("CHAT", "gemini-3.5-flash-lite", root=tmp_path) == ("gemini-3.8-flash",)
+    monkeypatch.setenv("GEMINI_MAP_FALLBACK_MODELS", "off")
+    assert alternative_models("MAP", "primary", root=tmp_path,
+                              default_fallback="gemini-3.1-flash-lite") == ()
+    monkeypatch.setenv("GEMINI_RAG_FALLBACK_MODEL", "another-verified-model")
+    assert alternative_models("TIMELINE", "primary", root=tmp_path,
+                              default_fallback="gemini-3.1-flash-lite") == ("another-verified-model",)
+
+
 def test_quota_switches_once_per_model_with_unchanged_payload(caplog):
     seen = []
     def send(model):
