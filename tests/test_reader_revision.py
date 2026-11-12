@@ -238,3 +238,29 @@ with patch('edicola.pdf_viewer.source_button'):
         app.run()
         assert perform.call_count == 2
         api.assert_not_called()
+
+
+def test_map_literal_recovers_explicit_government_relation_without_inventing_arcs():
+    text = "Giorgia Meloni guida il Governo e presenta un piano per le imprese."
+    source = Source("S1", "chunk", "giornale.pdf", 2, text, 0.1)
+    nodes = [
+        {"id": "N1", "kind": "person", "label": {"text": "Giorgia Meloni",
+         "evidence": [{"source_id": "S1", "quote": text}]}},
+        {"id": "N2", "kind": "organization", "label": {"text": "Governo",
+         "evidence": [{"source_id": "S1", "quote": text}]}},
+    ]
+    candidates = literal_candidates(
+        [{"id": n["id"], "label": n["label"]["text"]} for n in nodes], [source], {})
+    checked, _ = validate_map({"nodes": nodes, "edges": candidates}, [source])
+    assert any(e["from_id"] == "N1" and e["to_id"] == "N2"
+               and e["label"] == "guida" for e in checked["edges"])
+    assert all(e["evidence"][0]["quote"] == text for e in checked["edges"])
+
+
+def test_map_does_not_infer_institution_from_adjacent_person_name():
+    text = "La riforma del lavoro è discussa dal Consiglio Giorgia Meloni sostiene la proposta."
+    source = Source("S1", "chunk", "giornale.pdf", 2, text, 0.1)
+    nodes = [{"id": "N1", "kind": "measure", "label": {"text": "riforma del lavoro",
+              "evidence": [{"source_id": "S1", "quote": text}]}}]
+    expanded = complete_nodes(nodes, [source], accepted_ids={"N1"})
+    assert "Consiglio Giorgia" not in [node["label"]["text"] for node in expanded]
