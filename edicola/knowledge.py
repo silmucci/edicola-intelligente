@@ -66,8 +66,8 @@ Usa quote focalizzate, senza unire testi di articoli diversi.
 
 MAP_INSTRUCTIONS = """
 Seleziona concetti pertinenti e documentati che descrivano una vicenda
-coerente, non un elenco di nomi isolati: massimo 10 nodi, senza numero
-minimo obbligatorio. Preferisci collegamenti espliciti e verificabili.
+coerente, non un elenco di nomi isolati: massimo 10 nodi,
+senza numero minimo obbligatorio. Preferisci collegamenti espliciti e verificabili.
 Usa nodi N1, N2, ecc. con kind tra
 concept, event, place, organization, person, measure, proposal e label.text
 letteralmente presente nella prova. Non creare nodi centrali decorativi.
