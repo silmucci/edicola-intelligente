@@ -171,7 +171,7 @@ def generic_action(passage: str):
         if (_GENERIC_CLAUSE.search(object_name) or len(object_name) < 7
                 or len(actor) < 3 or actor.casefold() == object_name.casefold()
                 or re.match(r"^(?:nei|nelle|nella|nel|durante|dopo|prima|oggi|ieri|"
-                            r"secondo|per|in)\b", actor, re.I):
+                            r"secondo|per|in)\b", actor, re.I)):
             continue
         # Anche con inciso, il validatore controlla l'intera citazione.
         if documented_relation(actor, verb, object_name, passage):
