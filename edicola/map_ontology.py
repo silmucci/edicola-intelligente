@@ -81,6 +81,8 @@ def _edition_metadata(source, coverage: dict) -> tuple[str, str]:
         publication = item.get("publication")
         date_value = item.get("date")
         edition = publication.strip() if isinstance(publication, str) and publication.strip() else "Quotidiano"
+        if "verificar" in edition.casefold() or edition.casefold() in {"sconosciuta", "unknown", "n.d."}:
+            edition = "Quotidiano"
         dated = date_value if isinstance(date_value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_value) else ""
         if dated:
             try:
@@ -152,6 +154,8 @@ def enrich_map_with_provenance(data: dict, sources: list, article_details: dict,
         all_ids = [s.id for s, _ in members]
         additions.append({"id": identity, "label": label, "kind": kind,
                           "source_ids": all_ids, "publication_date": published,
+                          "publication": edition, "pdf_filename": source.filename,
+                          "pages": article.get("pages", []) if verified else [source.page],
                           "verified_title": bool(verified)})
         for node in nodes:
             proof = mention_map.get(node["id"])
