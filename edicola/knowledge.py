@@ -466,7 +466,9 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                         diagnostics["undated_events"] = local_counts["undated_events"]
             if kind == "map":
                 map_vectors = {item.id: catalog.vectors.get(item.chunk_id) for item in sources}
-                extra = literal_candidates(data["nodes"], sources, {s.id: current[s.chunk_id].metadata for s in sources})
+                extra = literal_candidates(
+                    data["nodes"], extraction_sources,
+                    {s.id: current[s.chunk_id].metadata for s in extraction_sources})
                 if extra:
                     additions, extra_diagnostics = validate_map({"nodes": raw_data["nodes"], "edges": extra}, sources,
                         contexts={s.id: current[s.chunk_id].metadata for s in sources})
