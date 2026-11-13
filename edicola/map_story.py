@@ -11,7 +11,7 @@ from edicola.knowledge_relevance import terms
 
 CORE_KINDS = {"event", "measure", "proposal"}
 SOURCE_KINDS = {"article", "source"}
-EDGE_VALUE = {"documented": 7, "thematic": 4, "mention": 1}
+EDGE_VALUE = {"documented": 7, "contextual": 5, "thematic": 4, "mention": 1}
 
 
 def story_graph(data: dict, topic: str, *, limit: int = 14, sources=()) -> dict:
@@ -51,6 +51,8 @@ def story_graph(data: dict, topic: str, *, limit: int = 14, sources=()) -> dict:
 
     factual = sorted((e for e in edges if e["kind"] == "documented"),
                      key=edge_value, reverse=True)
+    contextual = sorted((e for e in edges if e["kind"] == "contextual"),
+                        key=edge_value, reverse=True)
     thematic = sorted((e for e in edges if e["kind"] == "thematic"),
                       key=edge_value, reverse=True)
     chosen, selected, used_themes = [], set(), set()
@@ -72,6 +74,11 @@ def story_graph(data: dict, topic: str, *, limit: int = 14, sources=()) -> dict:
 
     for edge in factual:
         take(edge)
+    # Gli interventi sono collegati al provvedimento nominato, con
+    # provenienza nello stesso articolo verificato; non sono causalità.
+    for edge in contextual:
+        if not factual or edge["from_id"] in selected or edge["to_id"] in selected:
+            take(edge)
 
     for edge in thematic:
         # La co-menzione nella stessa edizione non basta per un rapporto
