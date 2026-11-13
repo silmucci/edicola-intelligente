@@ -140,21 +140,39 @@ def verified_news_relations(data, sources, articles, topic, *,
         selected = statements[:max(0, max_statements - added)]
         if not selected:
             break
-        # Le frasi con un predicato soggetto-verbo-oggetto sono già
-        # rappresentate dai loro archi fattuali, orientati come nella fonte.
-        # Non aggiungiamo un secondo arco titolo -> frase che possa invertire
-        # o duplicare l'azione. Solo i passaggi descrittivi senza SVO restano
-        # come approfondimenti editoriali, senza freccia direzionale.
+        # Le azioni restano tra soggetto e oggetto, con il predicato
+        # letterale. Il titolo verificato funge soltanto da nodo-raccordo:
+        # lo collega ai fatti con un'associazione non direzionale.
         descriptive = [(source, passage) for _score, source, passage in selected
                        if not generic_action(passage)]
-        if not descriptive:
+        selected_ids = {source.id for _score, source, _passage in selected}
+        factual = [edge for edge in edges
+                   if edge.get("kind") == "documented"
+                   and selected_ids.intersection(edge.get("source_ids", []))]
+        if not descriptive and not factual:
             continue
         hub_id = f"N{next_id}"
         next_id += 1
-        distinct_ids = list(dict.fromkeys(src.id for src, _ in descriptive))
+        distinct_ids = list(dict.fromkeys(selected_ids))
         nodes.append({"id": hub_id, "kind": "event", "label": title,
                       "source_ids": distinct_ids,
                       "origin": "verified_article_story"})
+        linked_targets = set()
+        for fact in factual:
+            target_id = fact["to_id"]
+            if target_id in linked_targets:
+                continue
+            proof = next((item for item in fact.get("evidence", [])
+                          if item.get("source_id") in selected_ids), None)
+            if proof is None:
+                continue
+            edges.append({"from_id": hub_id, "to_id": target_id,
+                          "kind": "contextual", "label": "approfondisce",
+                          "source_ids": [proof["source_id"]],
+                          "evidence": [proof],
+                          "context_scope": "same_verified_article"})
+            linked_targets.add(target_id)
+            added += 1
         for source, passage in descriptive:
             detail_id = f"N{next_id}"
             next_id += 1
