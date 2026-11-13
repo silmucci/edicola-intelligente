@@ -66,49 +66,28 @@ Usa quote focalizzate, senza unire testi di articoli diversi.
 """
 
 MAP_INSTRUCTIONS = """
-Ricostruisci le relazioni tra protagonisti, istituzioni e provvedimenti
-della stessa vicenda: individua attori, azioni e temi anche attraverso
-frasi e articoli differenti. Non produrre un elenco di nomi isolati:
-massimo 10 nodi, senza numero minimo obbligatorio. Preferisci i nodi
-collegati da azioni documentate o da un tema specifico condiviso.
-Identifica entità (persona, organizzazione, luogo, evento, proposta,
-misura e concetto specifico), risolvendo le denominazioni solo se verificabili.
-Usa il nome completo di un provvedimento quando compare nelle prove.
-Estrai triple soggetto–predicato–oggetto da azioni, ruoli e dichiarazioni
-attribuite; non trasformare una semplice menzione in un fatto.
-I nodi articolo/fonte e gli archi MENZIONA sono ricostruiti da Python
-usando provenienza verificata: NON inventarli nel JSON del modello.
-Nodi, azioni e quote devono essere verificabili in ciascuna fonte.
-Usa nodi N1, N2, ecc. con kind tra
-concept, event, place, organization, person, measure, proposal e label.text
-letteralmente presente nella prova. Non creare nodi centrali decorativi.
-Per evidence.source_id usa soltanto S1, S2, ecc. ricevuti, mai nomi PDF.
+Estrai un Knowledge Graph giornalistico tramite NER ed estrazione di triple.
+Nodi: persone, organizzazioni, luoghi, eventi, misure, proposte e concetti
+specifici. Usa N1, N2, ecc.; kind tra person, organization, place, event,
+measure, proposal, concept. Massimo 10 nodi, senza numero minimo obbligatorio.
+Usa denominazioni complete presenti nelle prove e collega le stesse entità
+solo quando l'identità è dimostrabile. Escludi i nodi privi di nessi utili.
 
-Aggiungi archi solo con prove: documented richiede una quote che colleghi
-davvero entrambi i nodi; predicate contiene la relazione letterale completa
-(con negazioni, preposizioni e importi), label.text una sua breve espressione.
-Conserva direzione e forma attiva/passiva; non invertire autore e destinatario.
-thematic è un'associazione semantica NON fattuale: riconosci
-UN nesso specifico fra passaggi, anche di edizioni differenti, che
-condividano una vicenda, un provvedimento nominato o una decisione
-identificabile. Non proporre archi etichettati con il solo settore
-generico (es. "agricoltura", "lavoro", "economia", "politica"):
-descrivono il tema della domanda, non una relazione informativa.
-Usa label.text per identificare brevemente la vicenda condivisa, con
-almeno una citazione letterale per ciascun estremo.
-Le prove possono provenire da fonti diverse. Non inventare
-collaborazioni, decisioni congiunte o nessi causali: condividere
-un articolo, da solo, non basta.
+Relazioni documented: triple soggetto-predicato-oggetto con soggetto, azione
+e oggetto sostenuti dalla stessa quote. predicate contiene il verbo esatto
+(con negazioni, ausiliari e preposizioni); preserva voce e direzione.
+Distingui una dichiarazione attribuita da un fatto accertato.
+Relazioni thematic: solo stessa vicenda specifica identificabile anche in
+articoli distinti, con una prova per ciascuna entità. Non trasformare un
+settore comune o una co-menzione in collaborazione, causalità o altro fatto.
+Ogni nodo e arco richiede evidence.source_id tra le fonti ricevute e quote
+letterale contigua. Non dedurre relazioni da somiglianze da sole.
 
-Ometti i nodi per i quali non emerge alcun collegamento sostenuto
-dalle prove: un grafo con pochi nodi significativi è preferibile a
-una lista di nomi isolati.
-Non presentare proposte come misure approvate, dichiarazioni come fatti accertati,
-né accostamenti come nessi causali. Mantieni nomi e formulazioni letterali,
-senza sinonimi o abbreviazioni inventati. Se adjacent_sources indica chunk
-consecutivi dello stesso articolo, puoi ricostruire un collegamento attraverso
-il confine citando separatamente entrambi i testi originali.
-article_title e article_pages sono contesto, non evidenze autonome.
+L'app aggiunge separatamente nodi Articolo/Fonte e archi MENZIONA usando
+i metadati verificati: non inventarli nella risposta del modello.
+Titoli di articolo e pagine sono contesto, non citazioni autonome.
+Chunk adiacenti possono integrare la comprensione, ma le quote devono
+restare originali e separate.
 """
 
 class KnowledgeError(RuntimeError):
