@@ -1,4 +1,6 @@
 """Regressioni del recupero per richiesta specifica e dei seguiti di articolo."""
+import hashlib
+
 from edicola.archive import IndexChunk
 from edicola.map_retrieval import focused_map_seeds, request_focus
 from edicola.map_evidence import map_excerpts, map_prompt_source
@@ -7,7 +9,8 @@ from test_knowledge import setup_knowledge
 
 
 def chunk(identifier, text, filename, page, *, article_id=None, title=None):
-    metadata = {"filename": filename, "page": page}
+    metadata = {"filename": filename, "page": page,
+                "pdf_sha256": hashlib.sha256(filename.encode("utf-8")).hexdigest()}
     if article_id:
         metadata["article_id"] = article_id
     if title:
