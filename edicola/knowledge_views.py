@@ -100,14 +100,14 @@ def render_map(result, archive, technical):
         return
     # Le relazioni fattuali guidano la lettura; Articolo/Fonte sono
     # supporto alla consultazione, non il centro del grafo.
-    view = story_graph(connected, result.topic, limit=14)
-    # Il limite editoriale non deve generare concetti isolati.
+    view = story_graph(connected, result.topic, limit=14, sources=result.sources)
     if not view["edges"]:
-        first_edge = next((e for e in connected["edges"] if e["kind"] == "documented"),
-                          connected["edges"][0])
-        endpoints = {first_edge["from_id"], first_edge["to_id"]}
-        view = {"nodes": [n for n in connected["nodes"] if n["id"] in endpoints],
-                "edges": [first_edge]}
+        # Non spacciare un articolo che menziona due persone per una
+        # spiegazione delle relazioni fra loro. Le fonti restano accessibili.
+        st.caption("Le fonti recuperate non documentano ancora relazioni sufficienti per una mappa significativa.")
+        compact_sources([source.id for source in result.sources[:4]], result.sources,
+                        archive, "map_unlinked_sources", articles=articles)
+        return
     visible = {identity for edge in view["edges"]
                for identity in (edge["from_id"], edge["to_id"])}
     view["nodes"] = [n for n in view["nodes"] if n["id"] in visible]
@@ -159,7 +159,7 @@ def render_map(result, archive, technical):
             st.text(selected["label"])
             compact_sources(selected["source_ids"], result.sources, archive, "map_selected_" + focus,
                             articles=articles)
-            render_node_connections(selected, data, {n["id"]: n["label"] for n in data["nodes"]},
+            render_node_connections(selected, view, {n["id"]: n["label"] for n in view["nodes"]},
                                     result.sources, archive, articles=articles)
     if technical:
         with st.expander("Relazioni · sviluppo"):
