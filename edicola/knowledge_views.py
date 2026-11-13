@@ -86,6 +86,7 @@ def render_knowledge(result, archive=None):
 
 def render_map(result, archive, technical):
     from edicola.experience_ui import readable
+    from edicola.map_story import story_graph
     data, diagnostics = result.data, result.diagnostics
     articles = getattr(result, "source_articles", None) or {}
     # Il grafo mostra solo relazioni effettivamente validate: nessun nodo
@@ -97,9 +98,10 @@ def render_map(result, archive, technical):
     if not connected["nodes"] or not connected["edges"]:
         st.caption("Non emergono collegamenti sufficientemente documentati per costruire una mappa.")
         return
-    view = compact_map(connected)
-    # La selezione dei dieci nodi può eliminare un estremo di qualche arco.
-    # Nessuna casella senza almeno un collegamento nella vista effettiva.
+    # Le relazioni fattuali guidano la lettura; Articolo/Fonte sono
+    # supporto alla consultazione, non il centro del grafo.
+    view = story_graph(connected, result.topic, limit=14)
+    # Il limite editoriale non deve generare concetti isolati.
     if not view["edges"]:
         first_edge = next((e for e in connected["edges"] if e["kind"] == "documented"),
                           connected["edges"][0])
@@ -122,7 +124,7 @@ def render_map(result, archive, technical):
         if any(edge["kind"] == "mention" for edge in view["edges"]):
             legend += " · ↝ Menzione verificata dalla fonte"
         st.caption(legend)
-    st.caption("Seleziona un concetto nella mappa per leggere i collegamenti e le fonti.")
+    st.caption("Esplora i fatti principali e seleziona un nodo per leggere le relazioni e le fonti.")
     def choose(node_id):
         st.session_state["knowledge_map_focus"] = node_id
     render_graph(view, topic=result.topic, selected=focus, on_select=choose)
