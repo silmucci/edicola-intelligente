@@ -438,7 +438,10 @@ def test_map_rejection_logs_only_reason_counts(setup_knowledge, caplog):
         candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
     with caplog.at_level("INFO", logger="edicola.knowledge"):
         result = generate_knowledge("map", "Trasporti", authorize_external=True, root=root, client=client)
-    assert not result.data["edges"]
+    # Il nesso causale non verificato resta respinto. Possono però emergere
+    # altre associazioni TEMATICHE fra prove indipendenti e controllate.
+    assert all(edge["kind"] == "thematic" and edge["source_ids"]
+               for edge in result.data["edges"])
     assert result.diagnostics["edge_rejections"] == {"relation_not_explicit": 1}
     assert "relation_not_explicit" in caplog.text
     assert "private-key" not in caplog.text
