@@ -39,10 +39,10 @@ def test_concept_only_map_is_visual_but_has_no_factual_or_decorative_edges():
     with installed_fixture(module), patch("google.genai.Client") as api, patch(
         "edicola.knowledge_views.render_graph") as graph:
         app = AppTest.from_string(code).run()
-        assert not app.exception and not graph.called
+        assert not app.exception and graph.called
         assert not app.info
-        # Senza archi documentati si mostrano i concetti consultabili, non grafi decorativi.
-        assert app.get("popover") and not app.dataframe
+        # Il grafo mostra anche concetti isolati, senza inventare archi decorativi.
+        assert not app.dataframe
         assert not app.segmented_control
         api.assert_not_called()
 
@@ -182,9 +182,11 @@ def test_empty_map_and_grouping_reference_open_current_pdf(archive):
     data, diagnostics = validate_map(raw, [source])
     result = KnowledgeResult("map", "Tema di navigazione", data, [source], COVERAGE, diagnostics)
     module, code = render_script(result, context)
+    code = code.replace("render_knowledge(result, context)",
+                        'import streamlit as st\nst.session_state["knowledge_map_focus"] = "N1"\nrender_knowledge(result, context)')
     with installed_fixture(module), patch("google.genai.Client") as api:
         app = AppTest.from_string(code).run()
-        app.button(key="map_node_N1_pdf_S1").click().run()
+        app.button(key="map_selected_N1_pdf_S1").click().run()
         assert app.session_state["archive_page"] == chunk.page and not app.exception
         api.assert_not_called()
     result.data = {"nodes": [], "edges": []}
