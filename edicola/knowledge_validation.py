@@ -6,7 +6,7 @@ from copy import deepcopy
 import textwrap
 from collections import Counter
 
-from edicola.map_relations import documented_relation, relation_failure, thematic_support
+from edicola.map_relations import documented_relation, relation_failure, thematic_support, contextual_theme
 from edicola.map_context import joined_proofs
 from edicola.rag import Source, validate_response
 from edicola.timeline_dates import documented_dates, event_status, resolve_date, relative_days
@@ -126,7 +126,7 @@ def validate_timeline(data: dict, sources: list[Source], coverage: dict) -> tupl
     }
 
 
-def validate_map(data: dict, sources: list[Source], *, contexts=None) -> tuple[dict, dict]:
+def validate_map(data: dict, sources: list[Source], *, contexts=None, semantic_vectors=None) -> tuple[dict, dict]:
     if (not isinstance(data, dict) or set(data) != {"nodes", "edges"}
             or not isinstance(data["nodes"], list) or not isinstance(data["edges"], list)
             or len(data["nodes"]) > 16 or len(data["edges"]) > 24):
@@ -215,8 +215,10 @@ def validate_map(data: dict, sources: list[Source], *, contexts=None) -> tuple[d
             right_evidence = [e for e in evidence if thematic_support(right, topic, e["quote"])]
             valid = (not CAUSAL.search(label) and len(topic) >= 3
                      and not literal_present(topic, left) and not literal_present(topic, right)
-                     and bool(left_evidence) and bool(right_evidence))
-            supporting = [e for e in evidence if e in left_evidence or e in right_evidence]
+                     and ((bool(left_evidence) and bool(right_evidence))
+                          or contextual_theme(left, right, label, evidence, vectors=semantic_vectors)))
+            supporting = ([e for e in evidence if e in left_evidence or e in right_evidence]
+                          if left_evidence and right_evidence else evidence)
             label = "associazione tematica"  # Nessuna direzione o causalità inferita.
         if not valid:
             reject("relation_not_explicit", detail) if item["kind"] == "documented" else reject("theme_not_supported")
