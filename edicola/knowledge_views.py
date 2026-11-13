@@ -88,8 +88,17 @@ def render_map(result, archive, technical):
     from edicola.experience_ui import readable
     data, diagnostics = result.data, result.diagnostics
     articles = getattr(result, "source_articles", None) or {}
-    captions = node_captions(data["nodes"])
-    view = compact_map(data)
+    # Il grafo mostra solo relazioni effettivamente validate: nessun nodo
+    # decorativo o isolato. Non si inventano archi per riempire lo spazio.
+    linked = {identity for edge in data.get("edges", [])
+              for identity in (edge["from_id"], edge["to_id"])}
+    connected = {"nodes": [node for node in data["nodes"] if node["id"] in linked],
+                 "edges": data.get("edges", [])}
+    if not connected["nodes"] or not connected["edges"]:
+        st.caption("Non emergono collegamenti sufficientemente documentati per costruire una mappa.")
+        return
+    view = compact_map(connected)
+    captions = node_captions(view["nodes"])
     valid_ids = {n["id"] for n in view["nodes"]}
     if st.session_state.get("knowledge_map_focus", "") not in valid_ids:
         st.session_state["knowledge_map_focus"] = ""
