@@ -28,6 +28,10 @@ def map_excerpts(text: str, topic: str, *, budget: int = 1350, max_passages: int
     """
     if not text.strip() or budget < 100 or max_passages < 1:
         return []
+    # Passaggi già brevi restano integri: non ridurre contesto utile quando
+    # non si risparmia spazio e preservare le citazioni testuali.
+    if len(text) <= budget:
+        return [text]
     matcher = Topic(topic)
     segments = [item.strip() for item in SENTENCE_BOUNDARY.split(text) if item.strip()]
     candidates = []
