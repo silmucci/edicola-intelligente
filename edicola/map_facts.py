@@ -81,6 +81,22 @@ GENERIC_OBJECT = re.compile(
 )
 
 
+def original_sentences(text: str):
+    """Ricompone le righe tipografiche senza attraversare i paragrafi.
+
+    I PDF giornalistici spezzano una frase su più righe: dividerla ad
+    ogni newline elimina soggetto, verbo e complemento. I passaggi
+    restano contigui nel testo originale a spazi normalizzati.
+    """
+    for paragraph in re.split(r"\n\s*\n+", text):
+        normalized = " ".join(paragraph.split())
+        if not normalized:
+            continue
+        for sentence in re.split(r"(?<=[.!?;])\s+", normalized):
+            if sentence:
+                yield sentence
+
+
 def complete_salient_facts(raw: dict, sources: list, topic: str, *,
                            max_nodes: int = 16, max_edges: int = 24,
                            article_titles=None) -> dict:
@@ -107,8 +123,7 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
         title = (article_titles or {}).get(source.id, {}).get("title", "")
         if not matcher.score(source.text) and not matcher.score(title):
             continue
-        sentences = re.split(r"(?<=[.!?;])\s+|\n+", source.text)
-        for passage in sentences:
+        for passage in original_sentences(source.text):
             passage = passage.strip()
             if len(passage) < 30 or len(passage) > 1400 or len(edges) >= max_edges:
                 continue
