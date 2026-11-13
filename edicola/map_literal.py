@@ -171,6 +171,10 @@ def semantic_candidates(nodes, raw_nodes, topic, *, sources=(), vectors=None,
     candidates, already = [], {frozenset((edge["from_id"], edge["to_id"]))
                                for edge in existing_edges}
     for left, right in combinations(nodes, 2):
+        # Due protagonisti che citano la stessa legge NON hanno per forza
+        # un rapporto fra loro. Servono verbi/azioni documentati.
+        if left["kind"] in {"person", "organization"} and right["kind"] in {"person", "organization"}:
+            continue
         if frozenset((left["id"], right["id"])) in already:
             continue
         if len(candidates) >= limit:
