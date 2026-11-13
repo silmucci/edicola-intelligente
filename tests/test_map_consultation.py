@@ -89,38 +89,30 @@ def pdf_map(context, prepared):
     return KnowledgeResult("map", "Letture documentate", data, sources, COVERAGE, diagnostics)
 
 
-def test_each_node_has_named_details_and_opens_its_own_original_pdf_page(archive):
+def test_unlinked_map_nodes_are_not_shown_as_fake_connections(archive):
     context, prepared = archive
     result = pdf_map(context, prepared)
     module, code = render_script(result, context)
-    code = code.replace("render_knowledge(result, context)",
-                        'import streamlit as st\nst.session_state["knowledge_map_focus"] = "N2"\nrender_knowledge(result, context)')
-    with installed_fixture(module), patch("google.genai.Client") as api:
+    with installed_fixture(module), patch("google.genai.Client") as api, patch(
+        "edicola.knowledge_views.render_graph") as graph:
         app = AppTest.from_string(code).run()
         assert not app.exception and not app.dataframe
-        assert any("Seconda pagina" in text.value for text in app.text)
-        assert not app.segmented_control
-        app.button(key="map_selected_N2_pdf_S2").click().run()
-        assert not app.exception and app.session_state["archive_page"] == 2
-        assert app.session_state["archive_pdf"] == "a.pdf"
-        app.run()
+        assert not graph.called
+        assert any("Non emergono collegamenti" in caption.value for caption in app.caption)
+        assert not any(button.key.startswith("map_selected_") for button in app.button)
         api.assert_not_called()
 
 @pytest.mark.parametrize("change", [{"page": 999}, {"filename": "../outside.pdf"}, {"chunk_id": "obsolete"}])
-def test_node_sources_keep_existing_page_path_and_current_chunk_checks(archive, change):
+def test_unlinked_map_never_exposes_outdated_pdf_references(archive, change):
     context, prepared = archive
     result = pdf_map(context, prepared)
     result.sources[0] = replace(result.sources[0], **change)
     module, code = render_script(result, context)
-    code = code.replace("render_knowledge(result, context)",
-                        'import streamlit as st\nst.session_state["knowledge_map_focus"] = "N2"\nrender_knowledge(result, context)')
     with installed_fixture(module), patch("google.genai.Client") as api:
         app = AppTest.from_string(code).run()
     assert not app.exception
-    assert not any(button.key == "map_selected_N2_pdf_S1" for button in app.button)
-    assert app.button(key="map_selected_N2_pdf_S2")
+    assert not any(button.key.startswith("map_selected_") for button in app.button)
     api.assert_not_called()
-
 
 def test_display_uses_existing_cache_and_switches_views_without_regeneration(setup_knowledge):
     root, _, client, _, search = setup_knowledge
@@ -130,11 +122,12 @@ def test_display_uses_existing_cache_and_switches_views_without_regeneration(set
     module, code = render_script(result)
     with installed_fixture(module), patch("edicola.knowledge_views.render_graph") as graph:
         app = AppTest.from_string(code).run()
-        assert not app.exception and graph.called and not app.dataframe
+        assert not app.exception and not graph.called and not app.dataframe
         assert not app.segmented_control
+        assert any("Non emergono collegamenti" in item.value for item in app.caption)
         graph.reset_mock()
         app.run()
-        assert graph.called and not app.dataframe
+        assert not graph.called and not app.dataframe
     assert generate_knowledge("map", "Trasporti", authorize_external=True, root=root, client=client).from_cache
     assert cache.read_bytes() == saved
     search.assert_called_once()
@@ -255,3 +248,19 @@ def test_semantic_context_can_use_existing_embeddings_for_paraphrases():
     semantic, counts = validate_map(proposal, sources,
                                     semantic_vectors={"S1": [1., 1., 0.], "S2": [1., 1., 0.]})
     assert counts["accepted_edges"] == 1 and semantic["edges"][0]["kind"] == "thematic"
+
+
+def test_selected_linked_node_still_opens_verified_sources_without_api():
+    from test_knowledge import SOURCES, map_data
+    raw = map_data()
+    data, counts = validate_map(raw, SOURCES)
+    result = KnowledgeResult("map", "Trasporti", data, SOURCES, COVERAGE, counts)
+    module, code = render_script(result)
+    code = code.replace("render_knowledge(result, context)",
+                        'import streamlit as st\\nst.session_state["knowledge_map_focus"] = "N1"\\nrender_knowledge(result, context)')
+    with installed_fixture(module), patch("edicola.knowledge_views.compact_sources") as refs, patch(
+        "edicola.knowledge_views.render_graph") as graph, patch("google.genai.Client") as api:
+        app = AppTest.from_string(code).run()
+        assert not app.exception and graph.called and refs.called
+        assert refs.call_args_list[0].args[0] == ["S1"]
+        api.assert_not_called()
