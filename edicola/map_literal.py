@@ -5,6 +5,43 @@ from edicola.map_context import contiguous, joined_proofs
 from edicola.map_relations import documented_relation, PARTY
 from edicola.archive import IndexChunk
 
+# Denominazione identificabile nella stessa citazione, non inferita dalla domanda.
+# Richiede maiuscola iniziale reale per evitare 'disegno di legge sul ...'.
+_NAMED_BILL = re.compile(
+    r"(?<!\\w)disegno\\s+di\\s+legge\\s+"
+    r"(?P<name>[A-ZÀ-ÖØ-Þ][\\w’'-]*(?:\\s+[A-ZÀ-ÖØ-Þ][\\w’'-]*){0,2})"
+)
+
+
+def named_bill_in_evidence(evidence):
+    """Espande solo 'disegno di legge' quando una citazione ne contiene
+    un'unica denominazione completa, letterale e non ambigua.
+    """
+    names = set()
+    for proof in evidence:
+        if not isinstance(proof, dict) or not isinstance(proof.get("quote"), str):
+            continue
+        for match in _NAMED_BILL.finditer(proof["quote"]):
+            names.add(match.group())
+    return next(iter(names)) if len(names) == 1 else None
+
+
+def refine_proposal_nodes(raw):
+    """Distingue le leggi per nome senza alterare prove o identificativi."""
+    for node in raw.get("nodes", []):
+        if not isinstance(node, dict) or node.get("kind") not in {"proposal", "measure"}:
+            continue
+        label = node.get("label")
+        if not isinstance(label, dict) or not isinstance(label.get("text"), str):
+            continue
+        if label["text"].casefold().strip() != "disegno di legge":
+            continue
+        specific = named_bill_in_evidence(label.get("evidence", []))
+        if specific:
+            label["text"] = specific
+    return raw
+
+
 PREDICATES = re.compile(r"\b(?:(?:ha|hanno)\s+(?:presentato|sostenuto|criticato|dichiarato\s+inammissibile)|"
                         r"(?:(?:è|sono)\s+stat[oaie]\s+)?(?:presentat[oaie]|sostenut[oaie]|dichiarat[oaie]\s+inammissibil[ei])\s+(?:anche\s+)?(?:dal|dalla|dai|dalle|da)|"
                         r"(?:ha\s+esaminato|esamina|riguarda|riguardano|propone|sostiene|critica|è\s+esponente\s+di|deputato\s+del|senatore\s+del)|"
@@ -36,7 +73,9 @@ def complete_nodes(nodes, sources, *, accepted_ids=None):
             candidates = [(m[1], "person") for m in person.finditer(quote)]
             candidates += [(m[0], "organization") for m in institution.finditer(quote)]
             candidates += [(m[0], "organization") for m in party.finditer(quote) if m[0][0].isupper() or "partito" in m[0].casefold()]
-            candidates += [(m[0], kind) for pattern, kind in ((proposal, "proposal"), (topic, "concept")) for m in pattern.finditer(quote)]
+            candidates += [(named_bill_in_evidence([{"quote": quote}]) or m[0], "proposal")
+                           for m in proposal.finditer(quote)]
+            candidates += [(m[0], "concept") for m in topic.finditer(quote)]
             for label, kind in candidates:
                 if label.casefold() in labels or len(result) >= 16:
                     continue
