@@ -68,7 +68,7 @@ export default function({parentElement,data,setTriggerValue}){
   const line=make('path',{d:path,fill:'none',stroke:data.primary,'stroke-width':2.4,'stroke-linejoin':'round'});
   const emphasized=!data.selected||edge.from===data.selected||edge.to===data.selected;
   line.setAttribute('opacity',emphasized?'1':'.2');
-  if(edge.kind==='documented'||edge.kind==='mention')line.setAttribute('marker-end','url(#arrow)');
+  if(edge.kind==='documented'||edge.kind==='mention'||edge.kind==='contextual')line.setAttribute('marker-end','url(#arrow)');
   if(edge.kind==='mention')line.setAttribute('stroke-dasharray','2 5');
   else if(edge.kind!=='documented')line.setAttribute('stroke-dasharray','6 5');
   const original=make('title');original.textContent=edge.label;line.append(original);svg.append(line);
