@@ -1,5 +1,6 @@
 """Regressioni del recupero per richiesta specifica e dei seguiti di articolo."""
 import hashlib
+import pytest
 
 from edicola.archive import IndexChunk
 from edicola.map_retrieval import focused_map_seeds, request_focus
@@ -163,3 +164,65 @@ def test_end_to_end_map_uses_named_article_not_unrelated_lexical_matches(setup_k
     assert len(visual["nodes"]) >= 3
     assert any("150 milioni" in n["label"] for n in visual["nodes"])
     assert all("bilancio" not in n["label"].casefold() for n in visual["nodes"])
+
+
+
+@pytest.mark.parametrize("topic,title,body", [
+    ("Sicurezza sul lavoro: incidenti, morti bianche, istituzioni e interventi di prevenzione",
+     "Morti sul lavoro: 823 vittime in Italia, Abruzzo in zona bianca",
+     "Nei primi nove mesi dell'anno sono state registrate 823 vittime sul lavoro. "
+     "Il rapporto registra un aumento degli incidenti nei luoghi di lavoro."),
+    ("Ritorno del nucleare in Italia: Governo, Senato, provvedimenti e tecnologie previste",
+     "Ritorno del nucleare: il Senato approva il disegno di legge",
+     "Il Senato ha approvato il disegno di legge sul ritorno del nucleare. "
+     "Il provvedimento prevede nuove tecnologie per la produzione di energia nucleare."),
+    ("Rinnovo del contratto della sanità privata: sindacati, Ministero del Lavoro, trattative e conseguenze",
+     "Sanità privata: fallito tentativo di conciliazione sui contratti",
+     "È fallito il tentativo di conciliazione per il rinnovo del contratto della sanità privata. "
+     "I sindacati annunciano una mobilitazione per il contratto della sanità privata."),
+    ("Bilancio del Comune dell'Aquila: Consiglio comunale, maggioranza, opposizione e decisioni",
+     "Bilancio del Comune dell'Aquila: salta il voto in Consiglio",
+     "La votazione sul bilancio del Comune dell'Aquila è stata rinviata per mancanza del numero legale. "
+     "Il Consiglio comunale discute nuovamente il bilancio consolidato."),
+])
+def test_end_to_end_map_all_news_topics_survive_empty_model_json(
+        setup_knowledge, topic, title, body):
+    """Una Mappa non dipende dal formato lessicale di 'approva una legge'."""
+    import json
+    from types import SimpleNamespace
+    from google.genai import types
+    from edicola.knowledge import generate_knowledge
+    from edicola.map_story import story_graph
+
+    root, catalog, client, _read, search = setup_knowledge
+    main = chunk("relevant", body, "rassegna.pdf", 7,
+                 article_id="article_20261113_main", title=title)
+    other = chunk("other", "La rubrica sportiva parla di risultati calcistici.",
+                  "altro.pdf", 2)
+    catalog.chunks = [main, other]
+    catalog.coverage["files"] = [
+        {"pdf": "rassegna.pdf", "publication": "Quotidiano A",
+         "date": "2026-11-05", "indexed": 1, "total": 1},
+        {"pdf": "altro.pdf", "publication": "Quotidiano B",
+         "date": "2026-11-06", "indexed": 1, "total": 1},
+    ]
+    search.return_value = [{"id": "relevant", "distance": .1}]
+    client.models.generate_content.side_effect = None
+    client.models.generate_content.return_value = SimpleNamespace(
+        text=json.dumps({"nodes": [], "edges": []}),
+        candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    result = generate_knowledge("map", topic, authorize_external=True,
+                                root=root, client=client, cache_enabled=False)
+    assert result.sources
+    assert any(edge["kind"] == "contextual" for edge in result.data["edges"]), topic
+    graph = story_graph(result.data, topic, sources=result.sources)
+    assert graph["nodes"] and graph["edges"], topic
+    assert all("sportiva" not in node["label"].lower() for node in graph["nodes"])
+    for edge in graph["edges"]:
+        if edge["kind"] != "contextual":
+            continue
+        if edge.get("context_scope") == "same_verified_article":
+            proof = edge["evidence"][0]
+            assert proof["source_id"] in {source.id for source in result.sources}
+            assert proof["quote"] in next(source.text for source in result.sources
+                                          if source.id == proof["source_id"])
