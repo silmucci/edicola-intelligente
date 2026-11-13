@@ -401,7 +401,8 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                 raw_data = graph_candidates(raw_data, sources, topic)
                 # Recupera azioni e provvedimenti salienti dal testo originale.
                 # Tutti i candidati passeranno per validate_map senza eccezioni.
-                raw_data = complete_salient_facts(raw_data, sources, topic)
+                raw_data = complete_salient_facts(raw_data, sources, topic,
+                                                        article_titles=article_details)
                 # Disambigua una proposta soltanto quando la denominazione
                 # completa compare letteralmente nelle citazioni del nodo.
                 raw_data = refine_proposal_nodes(raw_data)
