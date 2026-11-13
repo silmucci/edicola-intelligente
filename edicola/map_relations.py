@@ -3,7 +3,7 @@
 import re
 
 
-VERSION = "concept-map-v8"
+VERSION = "concept-map-v9"
 # Solo elementi grammaticali trasparenti; niente wildcard che scavalchino altri attori.
 ADVERB = r"(?:oggi|ieri|anche|già|poi|ufficialmente|formalmente|direttamente|definitivamente)"
 AUXILIARY = r"(?:ha|hanno|aveva|avevano|è|sono|era|erano|stato|stata|stati|state)"
@@ -14,6 +14,7 @@ ROLE = rf"(?:(?:deputato|senatore|senatrice|presidente|consigliere|consigliera|s
 PURPOSE = r"(?:\s+presentat[oaie]\s+per\s+(?:garantire|assicurare|tutelare)\s+la\s+(?:salvaguardia|sopravvivenza|tutela)\s+(?:dei|degli)\s+(?:(?:quattro|tre|due)\s+)?(?:presidi\s+giudiziari|tribunali|uffici\s+giudiziari))?"
 AFTER = rf"(?:\s+{ADVERB}){{0,2}}(?:\s+con\s+(?:una?\s+)?(?:delibera|decreto|voto|decisione)(?:\s+unanime)?)?\s+"
 ARTICLE = r"(?:(?:il|lo|la|i|gli|le|un|una|uno|l['’])\s*)?(?:(?:citato|citata|stesso|stessa|suddetto|suddetta)\s+)?"
+DESIGNATION = r"(?:disegno\s+di\s+legge|proposta\s+di\s+legge|decreto|provvedimento|piano|progetto|riforma)\s+"
 SPEECH = {"ha dichiarato", "ha spiegato", "ha affermato", "ha sottolineato", "dichiara", "spiega", "afferma", "sottolinea"}
 UNCERTAIN = re.compile(r"\b(non|mai|nessun[oa]?|senza|potrebbe|potrebbero|dovrebbe|dovrebbero|sarebbe|sarebbero|avrebbe|avrebbero|vorrebbe|vorrebbero|forse|possibile|probabilmente|ipotizza|ipotizzano|smentisce|smentiscono|nega|negano|se)\b", re.I)
 THEME_LINKS = ("riguarda", "riguardano", "si occupa di", "si occupano di", "tratta", "trattano",
@@ -59,6 +60,12 @@ def documented_relation(left, relation, right, quote, *, _aliases=True):
     pattern = (r"(?<!\w)" + re.escape(left) + PURPOSE + BEFORE + re.escape(relation) + AFTER
                + ARTICLE + ROLE + re.escape(right) + r"(?!\w)")
     patterns = [pattern]
+    # Denominazione composta nella stessa proposizione: "Il Senato ha approvato
+    # il disegno di legge ColtivaItalia". I due estremi e il verbo restano letterali.
+    if len(right.split()) <= 4:
+        patterns.append(r"(?<!\w)" + re.escape(left) + PURPOSE + BEFORE +
+                        re.escape(relation) + AFTER + ARTICLE + DESIGNATION +
+                        re.escape(right) + r"(?!\w)")
     if re.match(r"(?:sostenut[oaie]|presentat[oaie])\b", relation):
         # Due participi coordinati condividono il soggetto. Il primo agente ha
         # una qualifica nota e al massimo quattro parole, senza verbi o subordinate.
