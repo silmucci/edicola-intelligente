@@ -100,7 +100,7 @@ def render_map(result, archive, technical):
         return
     # Le relazioni fattuali guidano la lettura; Articolo/Fonte sono
     # supporto alla consultazione, non il centro del grafo.
-    view = story_graph(connected, result.topic, limit=14, sources=result.sources)
+    view = story_graph(connected, result.topic, limit=18, sources=result.sources)
     if not view["edges"]:
         # Non spacciare un articolo che menziona due persone per una
         # spiegazione delle relazioni fra loro. Le fonti restano accessibili.
@@ -262,7 +262,7 @@ def render_node_connections(node, data, labels, sources, archive, *, articles=No
         elif edge["kind"] == "mention":
             st.caption("Menzione nel documento · non prova una relazione fra i soggetti citati")
         elif edge["kind"] == "contextual":
-            st.caption("Azione riportata nel titolo verificato · da confermare nel testo"
+            st.caption("Relazione riportata nel titolo verificato del quotidiano"
                        if edge.get("context_scope") == "verified_article_title"
                        else "Misura e destinatario riportati nello stesso articolo · collegamento di contesto")
         else:
