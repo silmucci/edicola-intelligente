@@ -521,6 +521,7 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
     except KnowledgeError:
         raise
     except Exception:
+        logger.exception("phase=knowledge_generation kind=%s event=unexpected_exception", kind)
         raise KnowledgeError("Generazione visuale non disponibile: verificare archivio, configurazione e connessione Gemini.") from None
     finally:
         if temporary is not None:
