@@ -103,7 +103,7 @@ GENERIC_ACTION_PATTERN = re.compile(
     re.I,
 )
 _GENERIC_CLAUSE = re.compile(r"^(?:che|se|come)\b|\b(?:sarebbe|avrebbe|potrebbe|dovrebbe)\b", re.I)
-_GENERIC_TAIL = re.compile(r"\s+(?:durante|davanti\s+a|presso|dopo|grazie\s+a|in\s+occasione\s+di)\b", re.I)
+_GENERIC_TAIL = re.compile(r"\s+(?:durante|davanti\s+(?:a|al|allo|alla|ai|agli|alle)|presso|dopo|grazie\s+a|in\s+occasione\s+di)\b", re.I)
 
 
 def generic_action(passage: str):
