@@ -3,7 +3,7 @@
 import re
 
 
-VERSION = "concept-map-v29"
+VERSION = "concept-map-v30"
 # Solo elementi grammaticali trasparenti; niente wildcard che scavalchino altri attori.
 ADVERB = r"(?:oggi|ieri|anche|già|poi|ufficialmente|formalmente|direttamente|definitivamente)"
 AUXILIARY = r"(?:ha|hanno|aveva|avevano|è|sono|era|erano|stato|stata|stati|state)"
@@ -12,7 +12,16 @@ BEFORE = rf"(?:\s*,?\s+(?:{ADVERB}|{AUXILIARY})){{0,3}}(?:\s+{LEGAL_REFERENCE})?
 PARTY = r"(?:fratelli\s+d['’]italia|partito\s+democratico|pd|fdi|forza\s+italia|lega|movimento\s+5\s+stelle)"
 ROLE = rf"(?:(?:deputato|senatore|senatrice|presidente|consigliere|consigliera|sindaco|ministro)(?:\s+abruzzese)?(?:\s+(?:di|del|della)\s+{PARTY}(?:\s*\([a-z. ]{{2,12}}\))?)?\s+)?"
 PURPOSE = r"(?:\s+presentat[oaie]\s+per\s+(?:garantire|assicurare|tutelare)\s+la\s+(?:salvaguardia|sopravvivenza|tutela)\s+(?:dei|degli)\s+(?:(?:quattro|tre|due)\s+)?(?:presidi\s+giudiziari|tribunali|uffici\s+giudiziari))?"
-AFTER = rf"(?:\s+{ADVERB}){{0,2}}(?:\s+con\s+(?:una?\s+)?(?:delibera|decreto|voto|decisione)(?:\s+unanime)?)?\s+"
+# Un inciso postverbale nominale ("senza nessun voto contrario") non
+# nega l'azione, purché non introduca altri verbi o soggetti.
+NON_NEGATING_ADJUNCT = (
+    r"(?:\s+senza\s+(?:nessun[oa]?|alcun[oa]?)\s+"
+    r"(?:[\w’'-]+\s*){1,3})?"
+)
+AFTER = rf"(?:\s+{ADVERB}){{0,2}}(?:\s+con\s+(?:una?\s+)?(?:delibera|decreto|voto|decisione)(?:\s+unanime)?)?{NON_NEGATING_ADJUNCT}\s+"
+ADJUNCT_CHECK = re.compile(
+    r"\bsenza\s+(?:nessun[oa]?|alcun[oa]?)\s+(?:[\w’'-]+\s*){1,3}", re.I
+)
 ARTICLE = r"(?:(?:il|lo|la|i|gli|le|un|una|uno|l['’])\s*)?(?:(?:citato|citata|stesso|stessa|suddetto|suddetta)\s+)?"
 DESIGNATION = r"(?:disegno\s+di\s+legge|proposta\s+di\s+legge|decreto|provvedimento|piano|progetto|riforma)\s+"
 SPEECH = {"ha dichiarato", "ha spiegato", "ha affermato", "ha sottolineato", "dichiara", "spiega", "afferma", "sottolinea"}
@@ -57,8 +66,11 @@ def documented_relation(left, relation, right, quote, *, _aliases=True):
                 start = max(quote.rfind(mark, 0, match.start()) for mark in (".", ";", "!", "?")) + 1
                 if not UNCERTAIN.search(quote[start:match.start()]):
                     return True
+    # Le virgolette giornalistiche attorno al nome di una misura non
+    # cambiano l'identità letterale del complemento.
+    right_literal = r'[«“"]?' + re.escape(right) + r'[»”"]?'
     pattern = (r"(?<!\w)" + re.escape(left) + PURPOSE + BEFORE + re.escape(relation) + AFTER
-               + ARTICLE + ROLE + re.escape(right) + r"(?!\w)")
+               + ARTICLE + ROLE + right_literal + r"(?!\w)")
     patterns = [pattern]
     # Una sola apposizione nominale delimitata da virgole può separare
     # il nome della legge dalla forma passiva. Non attraversare altre
@@ -72,7 +84,7 @@ def documented_relation(left, relation, right, quote, *, _aliases=True):
     if len(right.split()) <= 4:
         patterns.append(r"(?<!\w)" + re.escape(left) + PURPOSE + BEFORE +
                         re.escape(relation) + AFTER + ARTICLE + DESIGNATION +
-                        re.escape(right) + r"(?!\w)")
+                        right_literal + r"(?!\w)")
     if re.match(r"(?:sostenut[oaie]|presentat[oaie])\b", relation):
         # Due participi coordinati condividono il soggetto. Il primo agente ha
         # una qualifica nota e al massimo quattro parole, senza verbi o subordinate.
@@ -84,7 +96,11 @@ def documented_relation(left, relation, right, quote, *, _aliases=True):
         for match in re.finditer(candidate, quote):
             clause_start = max(quote.rfind(mark, 0, match.start()) for mark in (".", ";", "!", "?")) + 1
             prefix = quote[clause_start:match.start()]
-            if UNCERTAIN.search(prefix + match.group()):
+            # Il complemento nominale "senza nessun ..." è compatibile
+            # con l'azione affermativa. "non ha ...", i condizionali e le
+            # negazioni non riconducibili a tale inciso restano bloccati.
+            relevant_text = ADJUNCT_CHECK.sub(" ", prefix + match.group())
+            if UNCERTAIN.search(relevant_text):
                 continue
             return True
     return False

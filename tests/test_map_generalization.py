@@ -198,3 +198,50 @@ def test_introductory_independent_clause_cannot_be_skipped():
     assert generic_action(
         "Secondo le fonti, Fp Cgil ha firmato un accordo vincolante."
     ) is None
+
+
+
+def test_postverb_nominal_modifier_keeps_an_explicit_approval():
+    from edicola.map_facts import complete_salient_facts
+    from edicola.knowledge_validation import validate_map
+    quote = ("«Oggi il Consiglio regionale ha approvato senza nessun voto "
+             "contrario il «Piano Verde», una proposta già discussa a marzo.")
+    source = Source("S1", "chunk", "giornale.pdf", 1, quote, .1)
+    topic = "Consiglio regionale e Piano Verde"
+    raw = complete_salient_facts({"nodes": [], "edges": []}, [source], topic)
+    checked, diagnostics = validate_map(raw, [source])
+    labels = {node["id"]: node["label"] for node in checked["nodes"]}
+    assert any(labels[e["from_id"]] == "Consiglio regionale"
+               and labels[e["to_id"]] == "Piano Verde"
+               and e["label"] == "ha approvato" for e in checked["edges"]), diagnostics
+
+
+def test_negated_action_does_not_become_approval():
+    from edicola.map_facts import complete_salient_facts
+    from edicola.knowledge_validation import validate_map
+    quote = "Il Consiglio regionale non ha approvato il Piano Verde."
+    source = Source("S1", "chunk", "giornale.pdf", 1, quote, .1)
+    raw = complete_salient_facts({"nodes": [], "edges": []}, [source],
+                                 "Consiglio regionale e Piano Verde")
+    checked, _ = validate_map(raw, [source])
+    assert checked["edges"] == []
+
+
+def test_factual_completion_survives_full_model_node_budget():
+    from edicola.map_facts import complete_verified_relations
+    from edicola.map_story import story_graph
+    quote = ("Il Comitato civico ha presentato una proposta di recupero "
+             "del quartiere dopo una lunga assemblea.")
+    source = Source("S1", "chunk", "giornale.pdf", 1, quote, .1)
+    # Una risposta del modello ha già riempito il suo tetto di nodi.
+    original = {"nodes": [
+        {"id": f"N{i}", "label": f"Concetto verificato {i}",
+         "kind": "concept", "source_ids": ["S1"]} for i in range(1, 17)],
+        "edges": []}
+    done = complete_verified_relations(original, [source],
+                                       "Comitato civico e recupero del quartiere")
+    assert len(done["nodes"]) > 16
+    assert len(done["edges"]) >= 1
+    assert any(e["label"] == "ha presentato" for e in done["edges"])
+    graph = story_graph(done, "Comitato civico e quartiere", sources=[source])
+    assert any(e["kind"] == "documented" for e in graph["edges"])

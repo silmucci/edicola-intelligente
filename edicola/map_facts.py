@@ -94,12 +94,17 @@ _GENERIC_VERBS = (
     r"rilanciato|selezionato|votato)"
 )
 _DETERMINER = r"(?:(?:il|lo|la|i|gli|le|un|una|uno)\s+|l['’])?"
+_POSTVERB_ADJUNCT = (
+    r"(?:senza\s+(?:nessun[oa]?|alcun[oa]?)\s+"
+    r"(?:(?!(?:il|lo|la|i|gli|le|un|una|uno)\b)[\w’'-]+\s+){1,3})?"
+)
 GENERIC_ACTION_PATTERN = re.compile(
     r"^\s*" + _DETERMINER
     + r"(?P<actor>[\wÀ-ÿ’'-]+(?:\s+(?!(?:ha|hanno|aveva|avevano|non)\b)[\wÀ-ÿ’'-]+){0,6})"
     + r"\s+(?P<verb>(?:ha|hanno|aveva|avevano)\s+" + _GENERIC_VERBS + r")"
     + r"\s+(?:(?:oggi|ieri|poi|già|ufficialmente|definitivamente)\s+)?"
-    + _DETERMINER + r"(?P<object>[^,.;!?]{6,150}?)\s*[.?!]?\s*$",
+    + _POSTVERB_ADJUNCT + _DETERMINER
+    + r"(?P<object>[^,.;!?]{6,150}?)\s*[.?!]?\s*$",
     re.I,
 )
 _GENERIC_CLAUSE = re.compile(r"^(?:che|se|come)\b|\b(?:sarebbe|avrebbe|potrebbe|dovrebbe)\b", re.I)
@@ -125,11 +130,16 @@ def generic_action(passage: str):
                 clauses[0], re.I)):
         candidates.append(clauses[1])
     for candidate in candidates:
+        # Aperture frequenti nei quotidiani, senza alterare la citazione
+        # verificata usata dal validatore.
+        candidate = candidate.strip(' \t«»“”"')
+        candidate = re.sub(r"^(?:oggi|ieri|stamani|stamattina)\s+",
+                           "", candidate, flags=re.I)
         match = GENERIC_ACTION_PATTERN.match(candidate)
         if match is None:
             continue
         actor, verb = match.group("actor", "verb")
-        object_name = _GENERIC_TAIL.split(match.group("object"), maxsplit=1)[0].strip()
+        object_name = _GENERIC_TAIL.split(match.group("object"), maxsplit=1)[0].strip(' \t«»“”"')
         if (_GENERIC_CLAUSE.search(object_name) or len(object_name) < 7
                 or len(actor) < 3 or actor.casefold() == object_name.casefold()):
             continue
@@ -239,3 +249,54 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
                               "label": {"text": verb, "evidence": evidence}})
                 existing.add(signature)
     return {"nodes": items, "edges": edges}
+
+
+def complete_verified_relations(data: dict, sources: list, topic: str, *,
+                                article_titles=None, contexts=None) -> dict:
+    """Completa i soli archi fattuali dopo la validazione della mappa AI.
+
+    La quota di 16 nodi dello schema Gemini non deve cancellare una tripla
+    esplicita nelle fonti. Ogni aggiunta passa separatamente dagli stessi
+    controlli di citazione e pertinenza; non crea fatti dalla vicinanza.
+    """
+    from edicola.knowledge_validation import validate_map
+    from edicola.knowledge_relevance import relevant_map
+
+    raw = complete_salient_facts({"nodes": [], "edges": []}, sources, topic,
+                                 article_titles=article_titles)
+    if not raw["edges"]:
+        return data
+    checked, _ = validate_map(raw, sources, contexts=contexts)
+    relevant, _ = relevant_map(checked, raw, sources, Topic(topic),
+                               contexts=contexts)
+    if not relevant["edges"]:
+        return data
+
+    nodes, edges = list(data.get("nodes", [])), list(data.get("edges", []))
+    by_id = {node["id"]: node for node in relevant["nodes"]}
+    next_id = max((int(node["id"][1:]) for node in nodes
+                   if re.fullmatch(r"N\d+", node["id"])), default=0) + 1
+    mappings = {}
+    for edge in relevant["edges"]:
+        ends = []
+        for identity in (edge["from_id"], edge["to_id"]):
+            if identity not in mappings:
+                node = by_id[identity]
+                # Lo stesso nome in articoli diversi può rappresentare
+                # soggetti distinti: unisci soltanto con una fonte comune.
+                reusable = next((old for old in nodes
+                                 if old["label"].casefold() == node["label"].casefold()
+                                 and set(old.get("source_ids", []))
+                                 & set(node.get("source_ids", []))), None)
+                if reusable is None:
+                    reusable = {**node, "id": f"N{next_id}"}
+                    nodes.append(reusable)
+                    next_id += 1
+                mappings[identity] = reusable["id"]
+            ends.append(mappings[identity])
+        signature = (ends[0], ends[1], edge["kind"], edge["label"].casefold())
+        if any((old["from_id"], old["to_id"], old["kind"],
+                old["label"].casefold()) == signature for old in edges):
+            continue
+        edges.append({**edge, "from_id": ends[0], "to_id": ends[1]})
+    return {**data, "nodes": nodes, "edges": edges}

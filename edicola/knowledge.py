@@ -30,7 +30,7 @@ from edicola.knowledge_fallback import graph_candidates, source_developments
 from edicola.map_literal import literal_candidates, complete_nodes, semantic_candidates, refine_proposal_nodes
 from edicola.map_ontology import link_entities, enrich_map_with_provenance
 from edicola.map_evidence import map_prompt_source
-from edicola.map_facts import complete_salient_facts
+from edicola.map_facts import complete_salient_facts, complete_verified_relations
 from edicola.map_retrieval import focused_map_seeds
 from edicola.map_article_measures import article_measure_facts, verified_headline_actions
 from edicola.map_news_events import verified_news_relations, same_paragraph_relations
@@ -259,6 +259,8 @@ def verified_source_fallback(kind, topic, sources, catalog, matcher, contexts, c
             data, diagnostics = validate_map(raw, sources, contexts=contexts)
             data, relevance = relevant_map(data, raw, sources, matcher, contexts=contexts)
             diagnostics.update(relevance)
+            data = complete_verified_relations(data, sources, topic,
+                                              article_titles=articles, contexts=contexts)
             # Anche quando l'estrattore non ricava un predicato fattuale,
             # una iniziativa letterale in un articolo verificato può
             # avere misure quantificate, riportate solo come contesto.
@@ -493,6 +495,11 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                 data, relevance = relevant_map(data, raw_data, sources, matcher,
                                               contexts={s.id: current[s.chunk_id].metadata for s in sources})
                 diagnostics.update(relevance)
+                # Il limite di nodi della risposta AI non deve scartare azioni
+                # esplicite nelle citazioni, già ricontrollate dal validatore.
+                data = complete_verified_relations(
+                    data, sources, topic, article_titles=article_details,
+                    contexts={s.id: current[s.chunk_id].metadata for s in sources})
                 # Misure e importi letterali appartenenti allo stesso articolo
                 # verificato del provvedimento, marcati come archi contestuali:
                 # non si trasformano in un'azione attribuita a un protagonista.
