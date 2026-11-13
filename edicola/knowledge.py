@@ -33,6 +33,7 @@ from edicola.map_evidence import map_prompt_source
 from edicola.map_facts import complete_salient_facts
 from edicola.map_retrieval import focused_map_seeds
 from edicola.map_article_measures import article_measure_facts, verified_headline_actions
+from edicola.map_news_events import verified_news_relations, same_paragraph_relations
 from edicola.knowledge_relevance import Topic, select_topic_chunks, select_visual_evidence, VISUAL_RETRIEVAL_VERSION, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION, scope_timeline
 from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
                                        selection_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION)
@@ -259,6 +260,10 @@ def verified_source_fallback(kind, topic, sources, catalog, matcher, contexts, c
             # avere misure quantificate, riportate solo come contesto.
             data = article_measure_facts(data, sources, articles, topic)
             data = verified_headline_actions(data, sources, articles, topic)
+            # Passaggi giornalistici estrattivi anche se il tema non è
+            # un provvedimento: cronaca, vertenze, salute, politica locale.
+            data = verified_news_relations(data, sources, articles, topic)
+            data = same_paragraph_relations(data, sources, topic)
             useful = bool(data["edges"])
             if useful:
                 # Anche in modalità di riserva: menzioni separate da fatti.
@@ -487,6 +492,11 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                 # non si trasformano in un'azione attribuita a un protagonista.
                 data = article_measure_facts(data, sources, article_details, topic)
                 data = verified_headline_actions(data, sources, article_details, topic)
+                data = verified_news_relations(data, sources, article_details, topic)
+                data = same_paragraph_relations(data, sources, topic)
+                diagnostics["news_developments"] = sum(
+                    node.get("origin") in {"verified_article_story", "literal_news_statement",
+                                           "literal_paragraph_fact"} for node in data["nodes"])
                 diagnostics["contextual_measures"] = sum(e["kind"] == "contextual"
                                                          for e in data["edges"])
                 # Ontologia di provenienza, dopo la validazione di fatti e citazioni.
