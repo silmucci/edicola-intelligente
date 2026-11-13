@@ -167,3 +167,34 @@ def test_verified_article_connects_grounded_action_to_its_story():
     assert bridge["evidence"][0]["quote"] == text
     graph = story_graph(complete, topic, sources=[source])
     assert bridge in graph["edges"]
+
+
+def test_initial_adverbial_does_not_hide_a_literal_relation():
+    from edicola.map_facts import complete_salient_facts
+    from edicola.knowledge_validation import validate_map
+    sentence = (
+        "Per queste ragioni, Fp Cgil ha chiesto la convocazione di un tavolo "
+        "di confronto con tutte le Organizzazioni Sindacali, al fine di "
+        "approfondire la proposta di riorganizzazione dell'ente."
+    )
+    source = Source("S1", "chunk", "giornale.pdf", 4, sentence, .2)
+    raw = complete_salient_facts({"nodes": [], "edges": []}, [source],
+                                 "Riorganizzazione dell'ente e tavolo sindacale")
+    checked, diagnostics = validate_map(raw, [source])
+    labels = {node["id"]: node["label"] for node in checked["nodes"]}
+    assert any(labels[edge["from_id"]] == "Fp Cgil"
+               and labels[edge["to_id"]] == "convocazione di un tavolo di confronto con tutte le Organizzazioni Sindacali"
+               and edge["label"] == "ha chiesto"
+               for edge in checked["edges"]), diagnostics
+
+
+def test_introductory_independent_clause_cannot_be_skipped():
+    from edicola.map_facts import generic_action
+    assert generic_action(
+        "Il Comune ha annunciato un investimento, la società ha firmato un contratto."
+    ) is None or generic_action(
+        "Il Comune ha annunciato un investimento, la società ha firmato un contratto."
+    )[0] == "Comune"
+    assert generic_action(
+        "Secondo le fonti, Fp Cgil ha firmato un accordo vincolante."
+    ) is None

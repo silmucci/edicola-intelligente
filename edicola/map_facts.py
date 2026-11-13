@@ -107,19 +107,36 @@ _GENERIC_TAIL = re.compile(r"\s+(?:durante|davanti\s+(?:a|al|allo|alla|ai|agli|a
 
 
 def generic_action(passage: str):
-    """Solo SVO esplicito nella frase; niente negazioni, ipotesi o discorso riferito."""
-    match = GENERIC_ACTION_PATTERN.match(passage)
-    if match is None:
-        return None
-    actor, verb = match.group("actor", "verb")
-    object_name = _GENERIC_TAIL.split(match.group("object"), maxsplit=1)[0].strip()
-    if (_GENERIC_CLAUSE.search(object_name) or len(object_name) < 7
-            or len(actor) < 3 or actor.casefold() == object_name.casefold()):
-        return None
-    # Citazione e predicato devono conservare una proposizione verificabile.
-    if not documented_relation(actor, verb, object_name, passage):
-        return None
-    return actor, verb, object_name
+    """Conserva triple letterali anche dopo brevi incisi introduttivi.
+
+    Un inciso non deve attraversare un'altra proposizione: si accetta
+    soltanto un breve complemento iniziale senza verbo finito.
+    """
+    clauses = [part.strip() for part in passage.split(",")]
+    candidates = [clauses[0]]
+    if (len(clauses) > 1 and 1 <= len(clauses[0].split()) <= 8
+            and not re.search(
+                r"\b(?:ha|hanno|aveva|avevano|è|sono|era|erano|"
+                r"chiede|annuncia|dichiara|approva|nega|ritiene)\b",
+                clauses[0], re.I)
+            and re.match(
+                r"^(?:per|in|nel|nella|dopo|prima|durante|"
+                r"intanto|inoltre|tuttavia|così|quindi|pertanto)\b",
+                clauses[0], re.I)):
+        candidates.append(clauses[1])
+    for candidate in candidates:
+        match = GENERIC_ACTION_PATTERN.match(candidate)
+        if match is None:
+            continue
+        actor, verb = match.group("actor", "verb")
+        object_name = _GENERIC_TAIL.split(match.group("object"), maxsplit=1)[0].strip()
+        if (_GENERIC_CLAUSE.search(object_name) or len(object_name) < 7
+                or len(actor) < 3 or actor.casefold() == object_name.casefold()):
+            continue
+        # Anche con inciso, il validatore controlla l'intera citazione.
+        if documented_relation(actor, verb, object_name, passage):
+            return actor, verb, object_name
+    return None
 
 
 def original_sentences(text: str):
