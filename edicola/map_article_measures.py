@@ -83,7 +83,7 @@ _GENERIC_SECTIONS = {
     "la misura", "le misure", "le risorse", "le novità", "il senato",
 }
 _UNINFORMATIVE_PURPOSE = re.compile(
-    r"^(?:questa?|queste?|quella?|quelle?|tale|suddetta?|"
+    r"^(?:questo|questa|questi|queste|quello|quella|quelli|quelle|tale|tali|suddetto|suddetta|"
     r"il\s+provvedimento|la\s+legge|la\s+misura|le\s+misure)\b"
     r"|\b(?:edizione\s+del|pagina\s+\d+|pagg?\.?\s*\d+)\b"
     r"|\b\d{1,2}/\d{1,2}/\d{4}\b",
