@@ -71,11 +71,14 @@ della stessa vicenda: individua attori, azioni e temi anche attraverso
 frasi e articoli differenti. Non produrre un elenco di nomi isolati:
 massimo 10 nodi, senza numero minimo obbligatorio. Preferisci i nodi
 collegati da azioni documentate o da un tema specifico condiviso.
-Se un provvedimento ha un nome, usa la sua denominazione completa e
-letterale (es. "disegno di legge ColtivaItalia" anziché due nodi generici).
-Puoi rielaborare i passaggi per riconoscere le associazioni, ma predicate,
-label.text ed evidence.quote devono sempre mantenere le formulazioni
-letterali richieste: niente relazioni ricostruite senza prova.
+Identifica entità (persona, organizzazione, luogo, evento, proposta,
+misura e concetto specifico), risolvendo le denominazioni solo se verificabili.
+Usa il nome completo di un provvedimento quando compare nelle prove.
+Estrai triple soggetto–predicato–oggetto da azioni, ruoli e dichiarazioni
+attribuite; non trasformare una semplice menzione in un fatto.
+I nodi articolo/fonte e gli archi MENZIONA sono ricostruiti da Python
+usando provenienza verificata: NON inventarli nel JSON del modello.
+Nodi, azioni e quote devono essere verificabili in ciascuna fonte.
 Usa nodi N1, N2, ecc. con kind tra
 concept, event, place, organization, person, measure, proposal e label.text
 letteralmente presente nella prova. Non creare nodi centrali decorativi.
