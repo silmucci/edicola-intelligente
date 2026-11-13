@@ -426,7 +426,7 @@ def test_map_strategy_does_not_invalidate_timeline_cache(setup_knowledge, monkey
     assert all(edge["source_ids"] for edge in result.data["edges"])
     config = client.models.generate_content.call_args.kwargs["config"]
     assert "N1, N2" in config.system_instruction
-    assert "massimo 10" in config.system_instruction
+    assert "massimo 14" in config.system_instruction
 
 
 def test_map_rejection_logs_only_reason_counts(setup_knowledge, caplog):
