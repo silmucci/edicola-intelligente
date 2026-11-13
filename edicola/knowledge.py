@@ -31,6 +31,7 @@ from edicola.map_literal import literal_candidates, complete_nodes, semantic_can
 from edicola.map_ontology import link_entities, enrich_map_with_provenance
 from edicola.map_evidence import map_prompt_source
 from edicola.map_facts import complete_salient_facts
+from edicola.map_retrieval import focused_map_seeds
 from edicola.knowledge_relevance import Topic, select_topic_chunks, select_visual_evidence, VISUAL_RETRIEVAL_VERSION, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION, scope_timeline
 from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
                                        selection_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION)
@@ -336,6 +337,8 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                 seen.add(chunk.id)
         if kind in {"map", "timeline"}:
             seeds = select_visual_evidence(kind, matcher, catalog.chunks, hits, limit=28)
+        if kind == "map":
+            seeds = focused_map_seeds(topic, catalog.chunks, hits, fallback=seeds, limit=28)
         selected_chunks = select_map_chunks(seeds, catalog.chunks, neighbors, topic=topic) if kind == "map" else seeds
         sources = [Source(f"S{i}", chunk.id, chunk.metadata["filename"], chunk.metadata["page"], chunk.text,
                           distances.get(chunk.id, 0.0)) for i, chunk in enumerate(selected_chunks, 1)]
