@@ -9,7 +9,7 @@ from edicola.map_presentation import GROUPS, node_captions
 from edicola.map_story import story_focus
 
 CSS = scoped_css("""
-.viewport{max-width:100%;max-height:75vh;overflow:auto;overscroll-behavior:contain;border:1px solid var(--edi-border);border-radius:var(--edi-radius);background:radial-gradient(circle at 20% 20%,var(--edi-surface),var(--edi-paper) 70%);font-family:var(--edi-sans);color:var(--edi-ink)}
+.viewport{max-width:100%;max-height:75vh;min-height:340px;overflow:auto;overscroll-behavior:contain;border:1px solid var(--edi-border);border-radius:var(--edi-radius);background:radial-gradient(circle at 20% 20%,var(--edi-surface),var(--edi-paper) 70%);font-family:var(--edi-sans);color:var(--edi-ink)}
 .canvas{position:relative;margin:0 auto}.canvas svg{position:absolute;inset:0;overflow:visible;pointer-events:none}
 .node{position:absolute;box-sizing:border-box;width:208px;padding:14px;border:1px solid var(--edi-border);border-radius:16px;color:var(--edi-ink);font:650 15px/1.4 var(--edi-sans);text-align:center;white-space:normal;overflow-wrap:anywhere;cursor:pointer;box-shadow:var(--edi-shadow);transition:transform .16s ease,box-shadow .16s ease,opacity .16s ease}
 .node:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(18,49,83,.13)}
@@ -36,29 +36,61 @@ export default function({parentElement,data,setTriggerValue}){
  const byId=new Map(nodes.map(node=>[node.id,node])),neighbors=new Map(nodes.map(node=>[node.id,[]]));
  for(const edge of data.edges){neighbors.get(edge.from).push(edge.to);neighbors.get(edge.to).push(edge.from);}
  for(const node of nodes){node.button.style.opacity=!data.selected||node.id===data.selected||neighbors.get(data.selected)?.includes(node.id)?'1':'.45';}
- // Livelli di navigazione fra componenti reali: nessun arco aggiunto per il layout.
- const visited=new Set(),rows=[];
- const ordered=[...nodes].sort((a,b)=>Number(b.id===data.focus)-Number(a.id===data.focus));
- for(const seed of ordered){
-  if(visited.has(seed.id))continue;
-  let level=[seed.id];visited.add(seed.id);
-  while(level.length){
-   for(let i=0;i<level.length;i+=3)rows.push(level.slice(i,i+3));
-   const next=[];for(const id of level)for(const other of neighbors.get(id))if(!visited.has(other)){visited.add(other);next.push(other);}level=next;
+ // Gerarchia delle relazioni: nucleo della vicenda, interventi, dettagli.
+ // Ogni nodo mantiene gli archi originali; il layout non aggiunge fatti.
+ const roots=[],seen=new Set(),children=new Map(nodes.map(n=>[n.id,[]]));
+ const depth=new Map(),center=new Map();
+ const preferred=byId.has(data.focus)?data.focus:nodes[0]?.id;
+ const starts=[preferred,...nodes.map(n=>n.id).filter(id=>id!==preferred)].filter(Boolean);
+ for(const root of starts){
+  if(seen.has(root))continue;
+  roots.push(root);
+  const queue=[root];seen.add(root);depth.set(root,0);
+  while(queue.length){
+   const id=queue.shift();
+   // I fatti e gli interventi precedono le menzioni secondarie.
+   const next=[...(neighbors.get(id)||[])].sort((a,b)=>{
+    const rank=x=>data.edges.some(e=>e.kind==='documented'&&
+      (e.from===id&&e.to===x||e.to===id&&e.from===x))?0:1;
+    return rank(a)-rank(b);
+   });
+   for(const other of next){
+    if(seen.has(other))continue;
+    seen.add(other);depth.set(other,depth.get(id)+1);
+    children.get(id).push(other);queue.push(other);
+   }
   }
  }
- if(!data.edges.length){rows.length=0;for(let i=0;i<ordered.length;i+=3)rows.push(ordered.slice(i,i+3).map(node=>node.id));}
- const columns=rows.some(row=>row.length>1)?3:1,width=columns===3?900:336;
- const gap=Math.max(100,30+15*Math.max(1,...data.edges.map(edge=>Math.ceil(edge.label.length/24))));
- let top=30;
- rows.forEach((row,rowIndex)=>{const height=Math.max(...row.map(id=>byId.get(id).height));
-  row.forEach((id,column)=>{const node=byId.get(id);
-    const positions=row.length===1?[(width-208)/2]:
-      row.length===2?[(width-208)/2-186,(width-208)/2+186]:[26,346,666];
-    node.x=positions[column];node.y=top;node.row=rowIndex;
-    node.button.style.left=node.x+'px';node.button.style.top=top+'px';});top+=height+gap;
- });
- const height=Math.max(140,top-60);canvas.style.width=width+'px';canvas.style.height=height+'px';svg.setAttribute('width',width);svg.setAttribute('height',height);
+ // Un sottoalbero occupa lo spazio dei propri figli: niente enormi archi
+ // che scorrono per tutta l'altezza lungo i bordi del canvas.
+ const nodeWidth=208,stepX=250;
+ let leaves=0;
+ const place=id=>{
+  const kids=children.get(id)||[];
+  if(!kids.length){const x=40+leaves++*stepX;center.set(id,x);return x;}
+  const centers=kids.map(place);
+  const x=(centers[0]+centers[centers.length-1])/2;
+  center.set(id,x);return x;
+ };
+ for(const root of roots){place(root);leaves++;}
+ const width=Math.max(380,Math.round(80+Math.max(1,leaves-1)*stepX));
+ const heights=new Map();
+ for(const node of nodes){
+  node.row=depth.get(node.id)||0;
+  heights.set(node.row,Math.max(heights.get(node.row)||0,node.height));
+ }
+ const maxDepth=Math.max(0,...nodes.map(n=>n.row));
+ const layerY=new Map();let top=28;
+ const layerGap=144;
+ for(let i=0;i<=maxDepth;i++){layerY.set(i,top);top+=(heights.get(i)||80)+layerGap;}
+ for(const node of nodes){
+  node.x=Math.round(center.get(node.id)-nodeWidth/2);
+  node.y=layerY.get(node.row);
+  node.button.style.left=node.x+'px';node.button.style.top=node.y+'px';
+ }
+ const height=Math.max(200,top-layerGap+16);
+ canvas.style.width=width+'px';canvas.style.height=height+'px';
+ svg.setAttribute('width',width);svg.setAttribute('height',height);
  for(const [index,edge] of data.edges.entries()){
   const a=byId.get(edge.from),b=byId.get(edge.to),down=a.row<b.row,same=a.row===b.row;
   let x1=a.x+104,y1=down?a.y+a.height:a.y,x2=b.x+104,y2=down?b.y:b.y+b.height,path,labelX,labelY,rotate=false;
