@@ -45,8 +45,8 @@ def refine_proposal_nodes(raw):
 PREDICATES = re.compile(r"\b(?:(?:ha|hanno)\s+(?:presentato|sostenuto|criticato|dichiarato\s+inammissibile)|"
                         r"(?:(?:è|sono)\s+stat[oaie]\s+)?(?:presentat[oaie]|sostenut[oaie]|dichiarat[oaie]\s+inammissibil[ei])\s+(?:anche\s+)?(?:dal|dalla|dai|dalle|da)|"
                         r"(?:ha\s+esaminato|esamina|riguarda|riguardano|propone|sostiene|critica|è\s+esponente\s+di|deputato\s+del|senatore\s+del)|"
-                        r"(?:(?:ha|hanno)\s+(?:approvato|annunciato|proposto|finanziato|stanziato|deciso|varato|presentato|incontrato|chiesto)|"
-                        r"approva|annuncia|finanzia|guida|presiede|convoca|incontra|"
+                        r"(?:(?:ha|hanno)\s+(?:approvato|annunciato|proposto|finanziato|stanziato|deciso|varato|presentato|incontrato|chiesto|commentato|illustrato|promosso|difeso|sollecitato|discusso)|"
+                        r"approva|annuncia|finanzia|guida|presiede|convoca|incontra|commenta|illustra|promuove|difende|sollecita|discute|"
                         r"(?:è|sono)\s+(?:guidat[oaie]|presiedut[oaie])\s+da(?:l|lla|i|lle)?)|"
                         r"presentat[oaie]\s+per\s+(?:garantire|assicurare|tutelare)\s+la\s+(?:salvaguardia|sopravvivenza|tutela)\s+(?:dei|degli)(?:\s+(?:quattro|tre|due))?)\b", re.I)
 
