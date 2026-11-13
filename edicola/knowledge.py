@@ -65,9 +65,15 @@ Usa quote focalizzate, senza unire testi di articoli diversi.
 """
 
 MAP_INSTRUCTIONS = """
-Seleziona concetti pertinenti e documentati che descrivano una vicenda
-coerente, non un elenco di nomi isolati: massimo 10 nodi,
-senza numero minimo obbligatorio. Preferisci collegamenti espliciti e verificabili.
+Ricostruisci le relazioni tra protagonisti, istituzioni e provvedimenti
+della stessa vicenda: individua nelle frasi attore, azione e oggetto, non
+produrre un elenco di nomi isolati. Massimo 10 nodi, senza numero minimo
+obbligatorio. Preferisci i nodi collegati da azioni documentate.
+Se un provvedimento ha un nome, usa la sua denominazione completa e
+letterale (es. "disegno di legge ColtivaItalia" anziché due nodi generici).
+Puoi rielaborare i passaggi per riconoscere le associazioni, ma predicate,
+label.text ed evidence.quote devono sempre mantenere le formulazioni
+letterali richieste: niente relazioni ricostruite senza prova.
 Usa nodi N1, N2, ecc. con kind tra
 concept, event, place, organization, person, measure, proposal e label.text
 letteralmente presente nella prova. Non creare nodi centrali decorativi.
