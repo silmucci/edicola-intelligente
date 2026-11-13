@@ -8,8 +8,9 @@ from edicola.archive import IndexChunk
 # Denominazione identificabile nella stessa citazione, non inferita dalla domanda.
 # Richiede maiuscola iniziale reale per evitare 'disegno di legge sul ...'.
 _NAMED_BILL = re.compile(
-    r"(?<!\w)disegno\s+di\s+legge\s+"
-    r"(?P<name>[A-ZÀ-ÖØ-Þ][\w’'-]*(?:\s+[A-ZÀ-ÖØ-Þ][\w’'-]*){0,2})"
+    r"(?<!\w)(?:disegno|proposta)\s+di\s+legge\s+"
+    r"(?P<name>(?:[«“\"][A-ZÀ-ÖØ-Þ][\w’'-]*(?:\s+[A-ZÀ-ÖØ-Þ][\w’'-]*){0,3}[»”\"]"
+    r"|[A-ZÀ-ÖØ-Þ][\w’'-]*(?:\s+[A-ZÀ-ÖØ-Þ][\w’'-]*){0,3}))"
 )
 
 
@@ -34,7 +35,7 @@ def refine_proposal_nodes(raw):
         label = node.get("label")
         if not isinstance(label, dict) or not isinstance(label.get("text"), str):
             continue
-        if label["text"].casefold().strip() != "disegno di legge":
+        if label["text"].casefold().strip() not in {"disegno di legge", "proposta di legge"}:
             continue
         specific = named_bill_in_evidence(label.get("evidence", []))
         if specific:
