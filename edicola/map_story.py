@@ -98,13 +98,23 @@ def story_graph(data: dict, topic: str, *, limit: int = 14, sources=()) -> dict:
         if id(detail) not in used_context:
             take(detail)
             used_context.add(id(detail))
-    # Per altri tipi di relazione contestuale mantieni le fonti e la
-    # selezione precedente, senza duplicare gli archi già scelti.
+    # I fatti narrativi di un articolo verificato possono formare una
+    # componente indipendente anche se esiste già una tripla fattuale:
+    # altrimenti una mappa come "Senato -> disegno di legge" nasconde
+    # tutti gli approfondimenti documentati sull'argomento.
+    story_roots = set()
     for edge in contextual:
         if id(edge) in used_context:
             continue
-        if not factual or edge["from_id"] in selected or edge["to_id"] in selected:
+        connected = edge["from_id"] in selected or edge["to_id"] in selected
+        scope = edge.get("context_scope")
+        story = (scope in {"same_verified_article", "same_source_paragraph"}
+                 and nodes[edge["from_id"]]["kind"] == "event")
+        if not factual or connected:
             take(edge)
+        elif story and (edge["from_id"] in story_roots or len(story_roots) < 2):
+            if take(edge):
+                story_roots.add(edge["from_id"])
 
     for edge in thematic:
         # La co-menzione nella stessa edizione non basta per un rapporto
