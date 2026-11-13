@@ -74,11 +74,11 @@ def test_map_named_exploration_uses_generated_result_without_api():
         assert not app.exception and graph.called
         assert {node["id"] for node in graph.call_args.args[0]["nodes"]} <= {node["id"] for node in data["nodes"]}
         graph.reset_mock()
-        app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert not app.exception and not graph.called and not app.dataframe
-        assert any(node["label"] in text.value for node in data["nodes"] for text in app.text)
-        app.segmented_control(key="knowledge_map_view").set_value("Grafo").run()
-        assert not app.exception and graph.called
+        app.session_state["knowledge_map_focus"] = "N1"
+        app.run()
+        assert not app.exception and graph.called and not app.dataframe
+        assert any(data["nodes"][0]["label"] in text.value for text in app.text)
+        assert not any(c.key == "knowledge_map_view" for c in app.segmented_control)
         api.assert_not_called()
 
 
