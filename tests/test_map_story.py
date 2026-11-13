@@ -253,3 +253,29 @@ def test_measures_are_selected_with_their_purposes_as_complete_story_branches():
                        edge["to_id"] in chosen and edge["to_id"].startswith("M")
                        for edge in graph["edges"])
     assert len(chosen) <= 9
+
+
+
+def test_documented_decision_does_not_hide_verified_developments():
+    source = Source("S1", "a", "giornale.pdf", 4,
+                    "Il Senato approva il disegno di legge sul nucleare.", .1)
+    proof = [{"source_id": "S1", "quote": source.text}]
+    graph = {
+        "nodes": [
+            {"id": "N1", "kind": "organization", "label": "Senato", "source_ids": ["S1"]},
+            {"id": "N2", "kind": "proposal", "label": "disegno di legge", "source_ids": ["S1"]},
+            {"id": "N3", "kind": "event", "label": "Ritorno del nucleare", "source_ids": ["S1"]},
+            {"id": "N4", "kind": "concept", "label": "Il provvedimento prevede nuove tecnologie.",
+             "source_ids": ["S1"]},
+        ],
+        "edges": [
+            {"from_id": "N1", "to_id": "N2", "kind": "documented", "label": "approva",
+             "source_ids": ["S1"], "evidence": proof},
+            {"from_id": "N3", "to_id": "N4", "kind": "contextual", "label": "riporta",
+             "source_ids": ["S1"], "context_scope": "same_verified_article",
+             "evidence": proof},
+        ],
+    }
+    out = story_graph(graph, "Ritorno del nucleare: decisioni e tecnologie", sources=[source])
+    assert {edge["kind"] for edge in out["edges"]} == {"documented", "contextual"}
+    assert {node["id"] for node in out["nodes"]} == {"N1", "N2", "N3", "N4"}
