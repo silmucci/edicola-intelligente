@@ -126,8 +126,11 @@ def test_display_uses_existing_cache_and_switches_views_without_regeneration(set
         assert not app.segmented_control
         # Il recupero di triple fattuali può creare una mappa valida anche
         # se la risposta iniziale del modello non aveva archi.
-        has_edges = bool(result.data.get("edges"))
-        assert graph.called == has_edges
+        # Le sole menzioni di provenienza non sono archi del grafo:
+        # il rendering parte da fatti e associazioni contestuali/tematiche.
+        has_graph_edges = any(edge["kind"] in {"documented", "contextual", "thematic"}
+                              for edge in result.data.get("edges", []))
+        assert graph.called == has_graph_edges
         graph.reset_mock()
         app.run()
         assert graph.called == has_edges and not app.dataframe
