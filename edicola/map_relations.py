@@ -185,7 +185,11 @@ def contextual_theme(left, right, theme, evidence, *, vectors=None):
             common = left_words & right_words
             if topic & common:
                 return True
-            if not vectors or not (topic & (left_words | right_words)):
+            # Un embedding simile non prova che un articolo citi la
+            # STESSA legge o iniziativa nominata. Per i nomi propri servono
+            # riferimenti espliciti in entrambe le frasi.
+            named_initiative = bool(re.search(r"[a-zà-öø-ÿ][A-ZÀ-ÖØ-Þ]", theme))
+            if named_initiative or not vectors or not (topic & (left_words | right_words)):
                 continue
             first = vectors.get(left_entry.get("source_id"))
             second = vectors.get(right_entry.get("source_id"))
