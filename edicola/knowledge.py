@@ -84,15 +84,22 @@ Aggiungi archi solo con prove: documented richiede una quote che colleghi
 davvero entrambi i nodi; predicate contiene la relazione letterale completa
 (con negazioni, preposizioni e importi), label.text una sua breve espressione.
 Conserva direzione e forma attiva/passiva; non invertire autore e destinatario.
-thematic è un'associazione semantica NON fattuale: riconosci un tema
-specifico condiviso anche fra paragrafi, frasi o edizioni diverse. Usa
-label.text per descrivere brevemente il tema (es. "agricoltura") e
-almeno una citazione letterale con il contesto di ciascun estremo.
+thematic è un'associazione semantica NON fattuale: riconosci
+UN nesso specifico fra passaggi, anche di edizioni differenti, che
+condividano una vicenda, un provvedimento nominato o una decisione
+identificabile. Non proporre archi etichettati con il solo settore
+generico (es. "agricoltura", "lavoro", "economia", "politica"):
+descrivono il tema della domanda, non una relazione informativa.
+Usa label.text per identificare brevemente la vicenda condivisa, con
+almeno una citazione letterale per ciascun estremo.
 Le citazioni possono provenire da fonti diverse: rielabora la semantica
 per individuare affinità, ma non inventare prove. Non affermare
 causalità, collaborazione o decisioni congiunte in assenza di documentazione.
 La semplice co-occorrenza nello stesso articolo non basta.
 
+Ometti i nodi per i quali non emerge alcun collegamento sostenuto
+dalle prove: un grafo con pochi nodi significativi è preferibile a
+una lista di nomi isolati.
 Non presentare proposte come misure approvate, dichiarazioni come fatti accertati,
 né accostamenti come nessi causali. Mantieni nomi e formulazioni letterali,
 senza sinonimi o abbreviazioni inventati. Se adjacent_sources indica chunk
