@@ -21,7 +21,8 @@ IMPORTANT = re.compile(
 )
 
 
-def map_excerpts(text: str, topic: str, *, budget: int = 1350, max_passages: int = 5) -> list[str]:
+def map_excerpts(text: str, topic: str, *, budget: int = 1350, max_passages: int = 5,
+                 verified_article_title: str = "") -> list[str]:
     """Sceglie segmenti pertinenti, con azioni e quantità salienti.
 
     Le citazioni restano letterali e non attraversano segmenti artificiali.
@@ -33,6 +34,10 @@ def map_excerpts(text: str, topic: str, *, budget: int = 1350, max_passages: int
     if len(text) <= budget:
         return [text]
     matcher = Topic(topic)
+    # Le continuazioni dell'articolo possono non ripetere il nome della
+    # vicenda, ma riportare gli stanziamenti o le conseguenze principali.
+    # Il titolo deve provenire dal verificatore dell'archivio.
+    same_story = bool(verified_article_title and matcher.score(verified_article_title))
     segments = [item.strip() for item in SENTENCE_BOUNDARY.split(text) if item.strip()]
     candidates = []
     for index, segment in enumerate(segments):
@@ -45,11 +50,14 @@ def map_excerpts(text: str, topic: str, *, budget: int = 1350, max_passages: int
         # qualunque frase irrilevante o ripetuta del quotidiano.
         explicitly_related = bool(terms(topic) & terms(segment))
         has_action = bool(RELATION_CUES.search(segment) or IMPORTANT.search(segment))
-        if lexical <= 0 or not (explicitly_related or has_action):
+        numeric = bool(re.search(r"\b\d+(?:[.,]\d+)?\s*(?:%|euro|milion\w*|miliard\w*|vot\w*)", segment, re.I))
+        if lexical <= 0 and not (same_story and (has_action or numeric)):
+            continue
+        if not (explicitly_related or has_action or (same_story and numeric)):
             continue
         verbs = len(RELATION_CUES.findall(segment)) + len(IMPORTANT.findall(segment))
-        numeric = bool(re.search(r"\b\d+(?:[.,]\d+)?\s*(?:%|euro|milion\w*|miliard\w*|vot\w*)", segment, re.I))
-        candidates.append((lexical + min(verbs, 5) * 0.85 + (1.3 if numeric else 0),
+        candidates.append((max(lexical, 1.0 if same_story else 0.0)
+                           + min(verbs, 5) * 0.85 + (1.3 if numeric else 0),
                            index, segment))
     if not candidates:
         # Se il tema appare soltanto nel contesto del paragrafo, conservare
@@ -72,7 +80,8 @@ def map_prompt_source(source, article, topic, *, excerpt_budget=1350):
     """Payload più compatto, fonte originale immutata per validate_map."""
     from edicola.article_evidence import evidence_source_record
     item = evidence_source_record(source, article, include_chunk=True)
-    passages = map_excerpts(source.text, topic, budget=excerpt_budget)
+    passages = map_excerpts(source.text, topic, budget=excerpt_budget,
+                            verified_article_title=article.get("title", "") if article else "")
     if passages:
         # Ogni elemento è già parte contigua del chunk originale. Esplicitiamo
         # i confini per impedire al modello di unire citazioni diverse.
