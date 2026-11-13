@@ -96,9 +96,9 @@ def test_three_independent_stories_survive_a_documented_relation():
 
 
 def test_unrelated_semantic_hit_cannot_override_relevant_archive_passage():
-    topic = "Tutela dei pescatori contro gli aumenti del gasolio"
+    topic = "Quali aiuti sono proposti per sostenere le imprese di pesca contro il caro carburante?"
     relevant = SimpleNamespace(
-        id="fish", text="I pescatori chiedono aiuti per il gasolio delle barche.",
+        id="fish", text="Le imprese di pesca chiedono ristori per il caro carburante.",
         metadata={"filename": "pesca.pdf"})
     unrelated = SimpleNamespace(
         id="road", text="Le imprese del trasporto chiedono contributi contro il caro carburante.",
