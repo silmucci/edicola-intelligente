@@ -22,7 +22,7 @@ ACTION = (
     r"(?P<verb>(?:(?:ha|hanno|aveva|avevano)\s+"
     r"(?:approvato|annunciato|presentato|finanziato|stanziato|illustrato|"
     r"proposto|discusso|esaminato|promosso|sostenuto|varato|firmato|"
-    r"votato|adottato|respinto|chiesto|confermato))|"
+    r"votato|adottato|respinto|chiesto|confermato)|"
     r"(?:approva|annuncia|presenta|finanzia|stanzia|illustra|propone|"
     r"discute|esamina|promuove|sostiene|vara|firma|vota|adotta|respinge))"
 )
