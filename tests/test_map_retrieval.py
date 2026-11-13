@@ -89,3 +89,50 @@ def test_undeclared_next_page_not_assumed_to_be_same_article():
     result = focused_map_seeds("PonteVerde: novità", [first, unknown], [],
                                fallback=[first])
     assert [c.id for c in result] == ["start"]
+
+
+
+def test_end_to_end_map_uses_named_article_not_unrelated_lexical_matches(setup_knowledge):
+    import json
+    from types import SimpleNamespace
+    from google.genai import types
+    from edicola.map_story import story_graph
+    from edicola.knowledge import generate_knowledge
+
+    root, catalog, client, _read, search = setup_knowledge
+    title = "PonteVerde: via libera definitivo dal Senato"
+    approval = ('Il disegno di legge "PonteVerde", il piano strategico per il territorio, '
+                'è stato approvato dal Senato con 76 voti.')
+    measures = ('Sostegno ai giovani: sono previsti 150 milioni di euro. '
+                'Settore olivicolo: sono stanziati 300 milioni di euro.')
+    irrelevant = 'Il Consiglio comunale approva il bilancio con nuove misure e risorse.'
+    others = 'L’opposizione presenta proposte sulla finanza locale.'
+    first = chunk("wrong_a", irrelevant, "a.pdf", 18)
+    lead = chunk("lead", approval, "b.pdf", 44, title=title)
+    lead.metadata["article_pages_json"] = "[44, 45]"
+    continuation = chunk("continue", measures, "b.pdf", 45)
+    extra = chunk("wrong_b", others, "a.pdf", 13)
+    catalog.chunks = [first, lead, continuation, extra]
+    catalog.coverage["files"] = [
+        {"pdf": "a.pdf", "publication": "Testata A", "date": "2026-10-31",
+         "indexed": 2, "total": 2},
+        {"pdf": "b.pdf", "publication": "Testata B", "date": "2026-11-05",
+         "indexed": 2, "total": 2},
+    ]
+    search.return_value = [{"id": "wrong_a", "distance": .02},
+                           {"id": "lead", "distance": .4}]
+    client.models.generate_content.side_effect = None
+    client.models.generate_content.return_value = SimpleNamespace(
+        text=json.dumps({"nodes": [], "edges": []}),
+        candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    topic = "PonteVerde: approvazione, protagonisti, misure previste e conseguenze"
+    result = generate_knowledge("map", topic, authorize_external=True,
+                                root=root, client=client, cache_enabled=False)
+    assert {s.filename for s in result.sources} == {"b.pdf"}
+    assert {s.page for s in result.sources} == {44, 45}
+    assert any(edge["kind"] == "documented" for edge in result.data["edges"])
+    assert any(edge["kind"] == "contextual" for edge in result.data["edges"])
+    visual = story_graph(result.data, topic, sources=result.sources)
+    assert len(visual["nodes"]) >= 3
+    assert any("150 milioni" in n["label"] for n in visual["nodes"])
+    assert all("bilancio" not in n["label"].casefold() for n in visual["nodes"])
