@@ -71,23 +71,66 @@ def literal_candidates(nodes, sources, contexts):
 
 
 
-def semantic_candidates(nodes, raw_nodes, topic, *, vectors=None, existing_edges=(), limit=8):
-    """Propone temi comuni fra nodi validi usando estratti distinti.
+def _named_themes(evidence):
+    """Individazioni nominative specifiche, non semplici etichette di settore."""
+    names = {}
+    for entry in evidence:
+        if not isinstance(entry, dict):
+            continue
+        passage = entry.get("quote", "")
+        for match in re.finditer(r"\b[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ\w-]*\b", passage):
+            names[match.group().casefold()] = match.group()
+        for match in re.finditer(r"(?<!\w)[«“\"]([^»”\"]{6,60})[»”\"]", passage):
+            name = match.group(1).strip()
+            if len(name.split()) <= 6:
+                names[name.casefold()] = name
+    return names
 
-    L'associazione (non causale e non direzionale) deve poi superare
-    validate_map; non trasforma un accostamento in un fatto storico.
+
+def _anchored_evidence(node, raw, sources, *, limit=5):
+    """Testi originali in cui compare il nodo, anche in altri articoli recuperati."""
+    evidence, seen = [], set()
+    pattern = re.compile(r"(?<!\w)" + re.escape(node["label"]) + r"(?!\w)", re.I)
+    for entry in raw.get("label", {}).get("evidence", []):
+        if not isinstance(entry, dict):
+            continue
+        key = (entry.get("source_id"), entry.get("quote"))
+        if key not in seen:
+            seen.add(key)
+            evidence.append(entry)
+    for source in sources:
+        if len(evidence) >= limit:
+            break
+        for sentence in re.split(r"(?<=[.!?;])\s+|\n+", source.text):
+            if len(sentence) < 20 or not pattern.search(sentence):
+                continue
+            key = (source.id, sentence)
+            if key not in seen:
+                seen.add(key)
+                evidence.append({"source_id": source.id, "quote": sentence})
+            if len(evidence) >= limit:
+                break
+    return evidence[:limit]
+
+
+def semantic_candidates(nodes, raw_nodes, topic, *, sources=(), vectors=None,
+                        existing_edges=(), limit=8):
+    """Associazioni tra fatti specifici presenti in prove indipendenti.
+
+    NON ricicla "agricoltura"/"politica"/"lavoro" dalla domanda come
+    presunti collegamenti. Cerca un'identità nominativa o un tema preciso
+    nei passaggi in cui sono effettivamente citati i due estremi.
     """
     from itertools import combinations
     from edicola.map_relations import contextual_theme, semantic_terms
+    from edicola.knowledge_relevance import broad_map_topic
 
     by_id = {item["id"]: item for item in raw_nodes if isinstance(item, dict)
              and isinstance(item.get("id"), str)}
-    # Termini della domanda, non categorie generiche come "Governo" o "legge".
-    themes = [word for word in re.findall(r"[^\W\d_]+", topic)
-              if semantic_terms(word)]
-    themes = list(dict.fromkeys(themes))
-    candidates = []
-    already = {frozenset((edge["from_id"], edge["to_id"])) for edge in existing_edges}
+    requested = [word for word in re.findall(r"[^\W\d_]+", topic)
+                 if semantic_terms(word) and not broad_map_topic(word)]
+    candidates, already = [], {frozenset((edge["from_id"], edge["to_id"]))
+                               for edge in existing_edges}
     for left, right in combinations(nodes, 2):
         if frozenset((left["id"], right["id"])) in already:
             continue
@@ -97,26 +140,32 @@ def semantic_candidates(nodes, raw_nodes, topic, *, vectors=None, existing_edges
         if not first or not second:
             continue
         if left["label"].casefold() in right["label"].casefold() or right["label"].casefold() in left["label"].casefold():
-            continue  # Un nome abbreviato non è un nuovo legame.
-        first_evidence = first.get("label", {}).get("evidence", [])[:3]
-        second_evidence = second.get("label", {}).get("evidence", [])[:3]
+            continue
+        first_evidence = _anchored_evidence(left, first, sources)
+        second_evidence = _anchored_evidence(right, second, sources)
+        named1 = _named_themes(first_evidence)
+        named2 = _named_themes(second_evidence)
+        named_shared = [named1[term] for term in named1.keys() & named2.keys()
+                        if term not in (left["label"].casefold(), right["label"].casefold())
+                        and term not in left["label"].casefold()
+                        and term not in right["label"].casefold()]
+        themes = list(dict.fromkeys(sorted(named_shared, key=lambda x: (-len(x), x))
+                                    + requested))
         for theme in themes:
-            # Manteniamo riferimenti indipendenti, mai citazioni costruite.
+            if broad_map_topic(theme):
+                continue
+            found = False
             for a in first_evidence:
                 for b in second_evidence:
-                    if not isinstance(a, dict) or not isinstance(b, dict):
-                        continue
                     evidence = [a, b]
                     if contextual_theme(left["label"], right["label"], theme, evidence, vectors=vectors):
-                        candidates.append({
-                            "from_id": left["id"], "to_id": right["id"], "kind": "thematic",
-                            "label": {"text": theme, "evidence": evidence},
-                        })
+                        candidates.append({"from_id": left["id"], "to_id": right["id"],
+                                           "kind": "thematic",
+                                           "label": {"text": theme, "evidence": evidence}})
+                        found = True
                         break
-                else:
-                    continue
+                if found:
+                    break
+            if found:
                 break
-            else:
-                continue
-            break
     return candidates
