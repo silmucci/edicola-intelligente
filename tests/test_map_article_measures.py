@@ -75,3 +75,43 @@ def test_unrelated_topic_does_not_create_context_edges():
     assert article_measure_facts(base(), SOURCES,
         {"S1": {"title": TITLE, "pages": [44, 45]}},
         "Elezioni e partiti politici") == base()
+
+
+
+def test_map_recovers_named_initiative_and_measures_when_model_returns_only_mentions():
+    """Regression: fonte pertinente verificata, ma nessun arco LLM."""
+    empty = {"nodes": [], "edges": []}
+    recovered = article_measure_facts(
+        empty, SOURCES, {"S1": {"title": TITLE, "pages": [44, 45]}},
+        "ColtivaItalia: approvazione, protagonisti, misure previste e conseguenze")
+    assert empty == {"nodes": [], "edges": []}
+    provisions = [n for n in recovered["nodes"] if n["kind"] == "proposal"]
+    assert len(provisions) == 1
+    assert provisions[0]["label"] == 'disegno di legge "ColtivaItalia"'
+    measures = [n for n in recovered["nodes"] if n["kind"] == "measure"]
+    assert len(measures) >= 3
+    assert all(edge["kind"] == "contextual" for edge in recovered["edges"])
+    assert all(edge["from_id"] == provisions[0]["id"] for edge in recovered["edges"])
+    shown = story_graph(recovered, "ColtivaItalia", sources=SOURCES)
+    assert shown["edges"]
+    assert all(edge["kind"] == "contextual" for edge in shown["edges"])
+
+
+def test_map_does_not_invent_initiative_from_article_title_alone():
+    """Verified headline alone cannot manufacture an unquoted proposal."""
+    body = Source("S1", "c1", "a.pdf", 44,
+                  "Il comparto prevede uno stanziamento di 40 milioni di euro.", .1)
+    empty = {"nodes": [], "edges": []}
+    assert article_measure_facts(
+        empty, [body], {"S1": {"title": TITLE, "pages": [44]}},
+        "ColtivaItalia: stanziamenti") == empty
+
+
+def test_map_does_not_merge_two_named_initiatives_into_one_hub():
+    first = Source("S1", "c1", "a.pdf", 44,
+        'Il disegno di legge "ColtivaItalia" stanzia 20 milioni di euro. '
+        'Il piano ColtivaItalia prevede 35 milioni di euro.', .1)
+    empty = {"nodes": [], "edges": []}
+    assert article_measure_facts(
+        empty, [first], {"S1": {"title": TITLE, "pages": [44]}},
+        "ColtivaItalia: stanziamenti") == empty
