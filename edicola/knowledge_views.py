@@ -117,8 +117,10 @@ def render_map(result, archive, technical):
 
     if view["edges"]:
         legend = "→ Relazione documentata"
-        if any(edge["kind"] != "documented" for edge in view["edges"]):
+        if any(edge["kind"] == "thematic" for edge in view["edges"]):
             legend += " · ┄ Tema comune, senza legame fattuale"
+        if any(edge["kind"] == "mention" for edge in view["edges"]):
+            legend += " · ↝ Menzione verificata dalla fonte"
         st.caption(legend)
     st.caption("Seleziona un concetto nella mappa per leggere i collegamenti e le fonti.")
     def choose(node_id):
@@ -228,9 +230,14 @@ def render_node_connections(node, data, labels, sources, archive, *, articles=No
     if not connected:
         st.caption("Nessun collegamento documentato per questo concetto.")
     for index, edge in connected:
-        st.caption(("Posizione attribuita" if relation_category(edge["label"]) == "attributed" else "Relazione documentata")
-                   if edge["kind"] == "documented" else "Tema comune · non indica un legame fattuale")
-        connector = " → " if edge["kind"] == "documented" else " — "
+        if edge["kind"] == "documented":
+            st.caption("Posizione attribuita" if relation_category(edge["label"]) == "attributed"
+                       else "Relazione fattuale documentata")
+        elif edge["kind"] == "mention":
+            st.caption("Menzione nel documento · non prova una relazione fra i soggetti citati")
+        else:
+            st.caption("Tema comune · non indica un legame fattuale")
+        connector = " → " if edge["kind"] in {"documented", "mention"} else " — "
         label = edge["label"] + (": " + edge["topic"] if edge.get("topic") else "")
         st.text(connector.join((labels[edge["from_id"]], label, labels[edge["to_id"]])))
         key = f"map_node_{node['id']}_edge_{index}"
