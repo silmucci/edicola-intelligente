@@ -441,7 +441,8 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                 # Richiedono due prove letterali ancorate agli estremi; nessun
                 # nuovo embedding o query Gemini e nessun arco per co-occorrenza.
                 semantic = semantic_candidates(data["nodes"], raw_data["nodes"], topic,
-                                               vectors=map_vectors, existing_edges=data["edges"])
+                                               sources=sources, vectors=map_vectors,
+                                               existing_edges=data["edges"])
                 if semantic:
                     linked = {frozenset((e["from_id"], e["to_id"])) for e in data["edges"]}
                     semantic = [edge for edge in semantic
