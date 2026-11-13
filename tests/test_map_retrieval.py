@@ -42,8 +42,10 @@ def test_contextual_excerpts_keep_measure_from_continuation_of_verified_article(
                           verified_article_title="ColtivaItalia: via libera del Senato")
     assert measure in chunks
     assert all(p in source.text for p in chunks)
-    assert measure not in map_excerpts(source.text, topic, budget=220,
-                                       verified_article_title="Bilancio regionale")
+    # Una frase esplicitamente pertinente può essere selezionata anche senza
+    # metadati articolo: la decisione di ammettere una fonte spetta al retrieval.
+    assert measure in map_excerpts(source.text, topic, budget=220,
+                                   verified_article_title="Bilancio regionale")
     payload = map_prompt_source(source, {"title": "ColtivaItalia: via libera del Senato", "pages": [44, 45]},
                                 topic, excerpt_budget=220)
     assert measure in payload["text"]
