@@ -69,7 +69,7 @@ MAP_INSTRUCTIONS = """
 Estrai un Knowledge Graph giornalistico tramite NER ed estrazione di triple.
 Nodi: persone, organizzazioni, luoghi, eventi, misure, proposte e concetti
 specifici. Usa N1, N2, ecc.; kind tra person, organization, place, event,
-measure, proposal, concept. Massimo 10 nodi, senza numero minimo obbligatorio.
+measure, proposal, concept; massimo 10 nodi, senza numero minimo obbligatorio.
 Usa denominazioni complete presenti nelle prove e collega le stesse entità
 solo quando l'identità è dimostrabile. Escludi i nodi privi di nessi utili.
 
