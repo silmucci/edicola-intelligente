@@ -25,6 +25,7 @@ def link_entities(raw: dict, sources: list) -> dict:
     items = [n for n in result.get("nodes", []) if isinstance(n, dict)]
     persons = [n for n in items if n.get("kind") == "person"
                and isinstance(n.get("label"), dict)]
+    valid_sources = {source.id for source in sources}
     redirects = {}
     for short in persons:
         short_label = short["label"].get("text", "")
@@ -36,10 +37,10 @@ def link_entities(raw: dict, sources: list) -> dict:
         if len(candidates) != 1:
             continue
         full = candidates[0]
-        left_ids = {p.get("source_id") for p in short["label"].get("evidence", [])
-                    if isinstance(p, dict)}
-        right_ids = {p.get("source_id") for p in full["label"].get("evidence", [])
-                     if isinstance(p, dict)}
+        left_ids = {p["source_id"] for p in short["label"].get("evidence", [])
+                    if isinstance(p, dict) and p.get("source_id") in valid_sources}
+        right_ids = {p["source_id"] for p in full["label"].get("evidence", [])
+                     if isinstance(p, dict) and p.get("source_id") in valid_sources}
         if not left_ids & right_ids:
             continue
         # L'identità non è attribuita a un altro omonimo della stessa fonte.
