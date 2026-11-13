@@ -156,7 +156,11 @@ def test_full_map_flow_uses_one_search_one_generation_and_versioned_cache(setup_
     client.models.generate_content.return_value = SimpleNamespace(text=json.dumps(raw), candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
     with caplog.at_level("INFO", logger="edicola.knowledge"):
         result = generate_knowledge("map", QUESTION, authorize_external=True, root=root, client=client)
-    assert len(result.data["nodes"]) == 3 and result.sources[0].filename == "a.pdf"
+    # Tre entità editoriali più un nodo di provenienza; il nodo Fonte
+    # non è un'entità inventata né modifica il recupero delle notizie.
+    assert len([n for n in result.data["nodes"] if n["kind"] not in {"article", "source"}]) == 3
+    assert len([n for n in result.data["nodes"] if n["kind"] == "source"]) == 1
+    assert result.sources[0].filename == "a.pdf"
     assert search.call_args.kwargs["corpus_wide"] is True
     assert ROAD not in client.models.generate_content.call_args.kwargs["contents"]
     assert FISH not in caplog.text and QUESTION not in caplog.text
