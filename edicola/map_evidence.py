@@ -38,7 +38,10 @@ def map_excerpts(text: str, topic: str, *, budget: int = 1350, max_passages: int
     # vicenda, ma riportare gli stanziamenti o le conseguenze principali.
     # Il titolo deve provenire dal verificatore dell'archivio.
     same_story = bool(verified_article_title and matcher.score(verified_article_title))
-    segments = [item.strip() for item in SENTENCE_BOUNDARY.split(text) if item.strip()]
+    # Ricompone le righe tipografiche dei PDF: il validatore confronta
+    # citazioni e fonti con gli stessi spazi normalizzati.
+    from edicola.map_facts import original_sentences
+    segments = list(original_sentences(text))
     candidates = []
     for index, segment in enumerate(segments):
         # Il modello deve vedere periodi leggibili, non pezzi tagliati a metà.
