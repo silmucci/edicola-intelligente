@@ -145,8 +145,10 @@ def generic_action(passage: str):
     Un inciso non deve attraversare un'altra proposizione: si accetta
     soltanto un breve complemento iniziale senza verbo finito.
     """
-    clauses = [part.strip() for part in passage.split(",")]
-    candidates = [clauses[0]]
+    # Non dividere i decimali degli importi (1,1 milioni). L'inciso
+    # iniziale si separa solo quando dopo la virgola comincia un soggetto.
+    clauses = re.split(r",\\s+(?=[A-ZÀ-ÖØ-Þ])", passage, maxsplit=1)
+    candidates = [clauses[0].strip()]
     if (len(clauses) > 1 and 1 <= len(clauses[0].split()) <= 8
             and not re.search(
                 r"\b(?:ha|hanno|aveva|avevano|è|sono|era|erano|"
@@ -316,13 +318,25 @@ def complete_verified_relations(data: dict, sources: list, topic: str, *,
     from edicola.knowledge_validation import validate_map
     from edicola.knowledge_relevance import relevant_map
 
-    raw = complete_salient_facts({"nodes": [], "edges": []}, sources, topic,
+    # I chunk già coinvolti in una relazione verificata tra passaggi
+    # adiacenti non vengono riesaminati singolarmente: si evitano triple
+    # parziali che duplicano o spezzano il fatto già ricostruito.
+    protected = {source_id for edge in data.get("edges", [])
+                 if edge.get("kind") == "documented" and edge.get("adjacent_evidence")
+                 for source_id in edge.get("source_ids", [])}
+    candidates = [source for source in sources if source.id not in protected]
+    if not candidates:
+        return data
+    candidate_contexts = ({source.id: contexts[source.id] for source in candidates
+                           if contexts and source.id in contexts}
+                          if contexts is not None else None)
+    raw = complete_salient_facts({"nodes": [], "edges": []}, candidates, topic,
                                  article_titles=article_titles)
     if not raw["edges"]:
         return data
-    checked, _ = validate_map(raw, sources, contexts=contexts)
-    relevant, _ = relevant_map(checked, raw, sources, Topic(topic),
-                               contexts=contexts)
+    checked, _ = validate_map(raw, candidates, contexts=candidate_contexts)
+    relevant, _ = relevant_map(checked, raw, candidates, Topic(topic),
+                               contexts=candidate_contexts)
     if not relevant["edges"]:
         return data
 

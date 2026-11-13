@@ -143,8 +143,22 @@ def verified_news_relations(data, sources, articles, topic, *,
         # Le azioni restano tra soggetto e oggetto, con il predicato
         # letterale. Il titolo verificato funge soltanto da nodo-raccordo:
         # lo collega ai fatti con un'associazione non direzionale.
+        labels = {node["id"]: node.get("label", "")
+                  for node in nodes}
+        def has_fact(source, passage):
+            action = generic_action(passage)
+            if not action:
+                return False
+            actor, verb, object_name = action
+            normalize = lambda value: " ".join(value.casefold().split())
+            return any(edge.get("kind") == "documented"
+                       and edge.get("label") == verb
+                       and source.id in edge.get("source_ids", [])
+                       and normalize(labels.get(edge.get("from_id"), "")) == normalize(actor)
+                       and normalize(labels.get(edge.get("to_id"), "")) == normalize(object_name)
+                       for edge in edges)
         descriptive = [(source, passage) for _score, source, passage in selected
-                       if not generic_action(passage)]
+                       if not has_fact(source, passage)]
         selected_ids = {source.id for _score, source, _passage in selected}
         factual = [edge for edge in edges
                    if edge.get("kind") == "documented"
