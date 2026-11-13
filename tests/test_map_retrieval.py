@@ -3,6 +3,7 @@ from edicola.archive import IndexChunk
 from edicola.map_retrieval import focused_map_seeds, request_focus
 from edicola.map_evidence import map_excerpts, map_prompt_source
 from edicola.rag import Source
+from test_knowledge import setup_knowledge
 
 
 def chunk(identifier, text, filename, page, *, article_id=None, title=None):
