@@ -290,3 +290,19 @@ def test_selected_linked_node_still_opens_verified_sources_without_api():
         assert not app.exception and graph.called and refs.called
         assert refs.call_args_list[0].args[0] == ["S1"]
         api.assert_not_called()
+
+
+def test_explicit_action_joins_minister_to_named_bill_without_semantic_guess():
+    from edicola.map_literal import literal_candidates
+    first = "Il ministro Lollobrigida ha illustrato il disegno di legge ColtivaItalia alle associazioni."
+    source = Source("S1", "one", "a.pdf", 1, first, .1)
+    nodes = [
+        {"id": "N1", "kind": "person", "label": claim("Lollobrigida", source)},
+        {"id": "N2", "kind": "proposal", "label": claim("disegno di legge ColtivaItalia", source)}
+    ]
+    valid, _ = validate_map({"nodes": nodes, "edges": []}, [source])
+    candidates = literal_candidates(valid["nodes"], [source], {})
+    assert any(edge["predicate"] == "ha illustrato" for edge in candidates)
+    checked, counts = validate_map({"nodes": nodes, "edges": candidates}, [source])
+    assert counts["accepted_edges"] >= 1
+    assert any(e["kind"] == "documented" and e["label"] == "ha illustrato" for e in checked["edges"])
