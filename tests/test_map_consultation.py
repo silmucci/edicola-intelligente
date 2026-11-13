@@ -164,3 +164,64 @@ def test_each_concept_contains_only_its_connections_and_preserves_all_proofs():
         render_node_connections(data["nodes"][3], data, labels, sources, None)
         assert not text.called and "Nessun collegamento" in caption.call_args.args[0]
     assert data == original
+
+
+
+def test_semantic_map_supports_two_articles_with_same_agricultural_theme():
+    from edicola.map_literal import semantic_candidates
+    from edicola.knowledge_relevance import Topic, relevant_map
+    first = "Il Governo ha presentato incentivi alle filiere agricole per le imprese."
+    second = "Il Senato discute la riforma dell'agricoltura e dei produttori."
+    sources = [Source("S1", "one", "a.pdf", 1, first, .1),
+               Source("S2", "two", "b.pdf", 2, second, .2)]
+    raw_nodes = [
+        {"id": "N1", "kind": "organization", "label": claim("Governo", sources[0])},
+        {"id": "N2", "kind": "organization", "label": claim("Senato", sources[1])},
+    ]
+    checked, _ = validate_map({"nodes": raw_nodes, "edges": []}, sources)
+    proposed = semantic_candidates(checked["nodes"], raw_nodes, "Governo, Senato e provvedimenti per l'agricoltura")
+    assert proposed and proposed[0]["kind"] == "thematic"
+    verified, counts = validate_map({"nodes": raw_nodes, "edges": proposed}, sources)
+    assert counts["accepted_edges"] == 1
+    edge = verified["edges"][0]
+    assert edge["label"] == "associazione tematica" and edge["topic"] == "agricoltura"
+    assert set(edge["source_ids"]) == {"S1", "S2"}
+    assert {e["quote"] for e in edge["evidence"]} == {first, second}
+    focused, _ = relevant_map(verified, {"nodes": raw_nodes}, sources,
+                              Topic("Governo, Senato e provvedimenti per l'agricoltura"))
+    assert focused["edges"] and focused["edges"][0]["kind"] == "thematic"
+
+
+def test_semantic_map_rejects_unrelated_articles_and_causal_invention():
+    first = "Il Governo ha annunciato nuove linee di trasporto pubblico."
+    second = "Il Senato discute nuovi incentivi all'agricoltura nazionale."
+    sources = [Source("S1", "one", "a.pdf", 1, first, .1),
+               Source("S2", "two", "b.pdf", 1, second, .1)]
+    nodes = [{"id": "N1", "kind": "organization", "label": claim("Governo", sources[0])},
+             {"id": "N2", "kind": "organization", "label": claim("Senato", sources[1])}]
+    evidence = [{"source_id": s.id, "quote": s.text} for s in sources]
+    for label in ("agricoltura", "provoca la crisi agricola"):
+        _, counts = validate_map({"nodes": nodes, "edges": [
+            {"from_id": "N1", "to_id": "N2", "kind": "thematic",
+             "label": {"text": label, "evidence": evidence}}
+        ]}, sources)
+        assert counts["accepted_edges"] == 0
+
+
+def test_semantic_context_can_use_existing_embeddings_for_paraphrases():
+    first = "Il Comune programma interventi per proteggere l'ambiente urbano."
+    second = "La Regione promuove la raccolta differenziata e il riciclo dei rifiuti."
+    sources = [Source("S1", "one", "a.pdf", 1, first, .1),
+               Source("S2", "two", "b.pdf", 1, second, .1)]
+    nodes = [{"id": "N1", "kind": "organization", "label": claim("Comune", sources[0])},
+             {"id": "N2", "kind": "organization", "label": claim("Regione", sources[1])}]
+    evidence = [{"source_id": s.id, "quote": s.text} for s in sources]
+    proposal = {"nodes": nodes, "edges": [
+        {"from_id": "N1", "to_id": "N2", "kind": "thematic",
+         "label": {"text": "ambiente", "evidence": evidence}}
+    ]}
+    no_vectors, _ = validate_map(proposal, sources)
+    assert not no_vectors["edges"]
+    semantic, counts = validate_map(proposal, sources,
+                                    semantic_vectors={"S1": [1., 1., 0.], "S2": [1., 1., 0.]})
+    assert counts["accepted_edges"] == 1 and semantic["edges"][0]["kind"] == "thematic"
