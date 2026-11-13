@@ -422,7 +422,8 @@ def test_map_strategy_does_not_invalidate_timeline_cache(setup_knowledge, monkey
     result = generate_knowledge("map", "Trasporti", authorize_external=True, root=root, client=client)
     assert not result.from_cache
     assert client.models.generate_content.call_count == 3
-    assert result.data["edges"][0]["evidence"]
+    assert result.data["nodes"]
+    assert all(edge["source_ids"] for edge in result.data["edges"])
     config = client.models.generate_content.call_args.kwargs["config"]
     assert "N1, N2" in config.system_instruction
     assert "massimo 10" in config.system_instruction
