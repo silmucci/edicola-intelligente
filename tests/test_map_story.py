@@ -56,6 +56,25 @@ def test_map_preserves_explicit_person_role_and_measure_category():
     assert checked["edges"][0]["label"] == "ha presentato"
 
 
+def test_passive_approval_with_an_apposition_survives_source_validation():
+    sentence = ('Il disegno di legge "PonteVerde", il piano strategico per la mobilità, '
+                'è stato approvato dal Senato con 76 voti favorevoli.')
+    source = Source("S1", "c1", "giornale.pdf", 44, sentence, .1)
+    raw = complete_salient_facts({"nodes": [], "edges": []}, [source],
+                                 "PonteVerde: approvazione e misure")
+    labels = {node["label"]["text"] for node in raw["nodes"]}
+    assert 'disegno di legge "PonteVerde"' in labels
+    assert "Senato" in labels
+    checked, metrics = validate_map(raw, [source])
+    assert metrics["accepted_edges"] == 1
+    edge = checked["edges"][0]
+    assert edge["label"] == "è stato approvato dal"
+    assert edge["evidence"][0]["quote"] == sentence
+    by_id = {node["id"]: node["label"] for node in checked["nodes"]}
+    assert by_id[edge["from_id"]] == 'disegno di legge "PonteVerde"'
+    assert by_id[edge["to_id"]] == "Senato"
+
+
 def test_map_does_not_invent_a_decision_from_a_conditional_phrase():
     sentence = "Il Senato potrebbe approvare il disegno di legge ColtivaItalia."
     source = Source("S1", "c1", "giornale.pdf", 4, sentence, .1)
