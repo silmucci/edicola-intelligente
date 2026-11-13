@@ -216,9 +216,8 @@ render_knowledge(result)
     assert not app.exception
     assert any("Trasporti" in item.value for item in app.subheader)
     assert not app.get("graphviz_chart")  # La mappa usa un componente v2.
-    if has_edges is True:
-        assert app.segmented_control(key="knowledge_map_view")
-    else:
+    assert not any(c.key == "knowledge_map_view" for c in app.segmented_control)
+    if has_edges is not True:
         assert not app.info
     assert all("chunk-1" not in text.value for text in app.text)
 
