@@ -27,7 +27,7 @@ from edicola.map_context import contiguous, select_map_chunks
 from edicola.knowledge_presentation import TIMELINE_CONTENT_VERSION
 from edicola.proposal_extraction import proposal_items
 from edicola.knowledge_fallback import graph_candidates, source_developments
-from edicola.map_literal import literal_candidates, complete_nodes
+from edicola.map_literal import literal_candidates, complete_nodes, semantic_candidates
 from edicola.knowledge_relevance import Topic, select_topic_chunks, select_visual_evidence, VISUAL_RETRIEVAL_VERSION, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION, scope_timeline
 from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
                                        selection_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION)
@@ -66,9 +66,10 @@ Usa quote focalizzate, senza unire testi di articoli diversi.
 
 MAP_INSTRUCTIONS = """
 Ricostruisci le relazioni tra protagonisti, istituzioni e provvedimenti
-della stessa vicenda: individua nelle frasi attore, azione e oggetto, non
-produrre un elenco di nomi isolati. Massimo 10 nodi, senza numero minimo
-obbligatorio. Preferisci i nodi collegati da azioni documentate.
+della stessa vicenda: individua attori, azioni e temi anche attraverso
+frasi e articoli differenti. Non produrre un elenco di nomi isolati:
+massimo 10 nodi, senza numero minimo obbligatorio. Preferisci i nodi
+collegati da azioni documentate o da un tema specifico condiviso.
 Se un provvedimento ha un nome, usa la sua denominazione completa e
 letterale (es. "disegno di legge ColtivaItalia" anziché due nodi generici).
 Puoi rielaborare i passaggi per riconoscere le associazioni, ma predicate,
@@ -83,9 +84,14 @@ Aggiungi archi solo con prove: documented richiede una quote che colleghi
 davvero entrambi i nodi; predicate contiene la relazione letterale completa
 (con negazioni, preposizioni e importi), label.text una sua breve espressione.
 Conserva direzione e forma attiva/passiva; non invertire autore e destinatario.
-thematic indica soltanto un tema comune citato esplicitamente per entrambi i nodi,
-mai causalità, direzione o una relazione inventata. La semplice presenza nello
-stesso articolo non basta; se mancano prove, lascia edges vuoto.
+thematic è un'associazione semantica NON fattuale: riconosci un tema
+specifico condiviso anche fra paragrafi, frasi o edizioni diverse. Usa
+label.text per descrivere brevemente il tema (es. "agricoltura") e
+almeno una citazione letterale con il contesto di ciascun estremo.
+Le citazioni possono provenire da fonti diverse: rielabora la semantica
+per individuare affinità, ma non inventare prove. Non affermare
+causalità, collaborazione o decisioni congiunte in assenza di documentazione.
+La semplice co-occorrenza nello stesso articolo non basta.
 
 Non presentare proposte come misure approvate, dichiarazioni come fatti accertati,
 né accostamenti come nessi causali. Mantieni nomi e formulazioni letterali,
@@ -415,6 +421,7 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                         diagnostics["extracted_developments"] = len(data["undated_events"])
                         diagnostics["undated_events"] = local_counts["undated_events"]
             if kind == "map":
+                map_vectors = {item.id: catalog.vectors.get(item.chunk_id) for item in sources}
                 extra = literal_candidates(data["nodes"], sources, {s.id: current[s.chunk_id].metadata for s in sources})
                 if extra:
                     additions, extra_diagnostics = validate_map({"nodes": raw_data["nodes"], "edges": extra}, sources,
@@ -430,6 +437,25 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                         "edge_limit": len(available_edges)-len(added), "invalid_proof": extra_diagnostics["rejected_edges"]}
                     if added:
                         diagnostics["relations_status"] = "literal_completed"
+                # Legami di contesto fra articoli: semantici, non fattuali.
+                # Richiedono due prove letterali ancorate agli estremi; nessun
+                # nuovo embedding o query Gemini e nessun arco per co-occorrenza.
+                semantic = semantic_candidates(data["nodes"], raw_data["nodes"], topic,
+                                               vectors=map_vectors)
+                if semantic:
+                    linked = {frozenset((e["from_id"], e["to_id"])) for e in data["edges"]}
+                    semantic = [edge for edge in semantic
+                                if frozenset((edge["from_id"], edge["to_id"])) not in linked]
+                    if semantic:
+                        verified, semantic_counts = validate_map(
+                            {"nodes": raw_data["nodes"], "edges": semantic}, sources,
+                            contexts={s.id: current[s.chunk_id].metadata for s in sources},
+                            semantic_vectors=map_vectors)
+                        added = verified["edges"][:max(0, 24 - len(data["edges"]))]
+                        data["edges"].extend(added)
+                        diagnostics["semantic_candidates"] = len(semantic)
+                        diagnostics["semantic_accepted"] = len(added)
+                        diagnostics["semantic_rejected"] = semantic_counts["rejected_edges"]
                 data, relevance = relevant_map(data, raw_data, sources, matcher,
                                               contexts={s.id: current[s.chunk_id].metadata for s in sources})
                 diagnostics.update(relevance)
