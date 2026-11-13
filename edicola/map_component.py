@@ -13,7 +13,7 @@ CSS = scoped_css("""
 .canvas{position:relative;margin:0 auto}.canvas svg{position:absolute;inset:0;overflow:visible;pointer-events:none}
 .node{position:absolute;box-sizing:border-box;width:208px;padding:14px;border:1px solid var(--edi-border);border-radius:16px;color:var(--edi-ink);font:650 15px/1.4 var(--edi-sans);text-align:center;white-space:normal;overflow-wrap:anywhere;cursor:pointer;box-shadow:var(--edi-shadow);transition:transform .16s ease,box-shadow .16s ease,opacity .16s ease}
 .node:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(18,49,83,.13)}
-.node.person{border-radius:32px}.node.event,.node.proposal{border-left:4px solid var(--edi-accent)}
+.node.person{border-radius:32px}.node.article{border-left:4px solid #45916A}.node.source{border-left:4px solid #9CA3AF}.node.event,.node.proposal{border-left:4px solid var(--edi-accent)}
 .node .kind{display:block;font-size:11px;font-weight:500;color:var(--edi-muted);margin-bottom:6px}.node.active{outline:3px solid var(--edi-primary);outline-offset:2px}.node:focus-visible{outline:3px solid var(--edi-accent);outline-offset:3px}
 .edge-label{font:12px var(--edi-sans);fill:var(--edi-ink);paint-order:stroke;stroke:var(--edi-paper);stroke-width:5px;stroke-linejoin:round}
 """)
@@ -64,7 +64,9 @@ export default function({parentElement,data,setTriggerValue}){
   const line=make('path',{d:path,fill:'none',stroke:data.primary,'stroke-width':2.4,'stroke-linejoin':'round'});
   const emphasized=!data.selected||edge.from===data.selected||edge.to===data.selected;
   line.setAttribute('opacity',emphasized?'1':'.2');
-  if(edge.kind==='documented')line.setAttribute('marker-end','url(#arrow)');else line.setAttribute('stroke-dasharray','6 5');
+  if(edge.kind==='documented'||edge.kind==='mention')line.setAttribute('marker-end','url(#arrow)');
+  if(edge.kind==='mention')line.setAttribute('stroke-dasharray','2 5');
+  else if(edge.kind!=='documented')line.setAttribute('stroke-dasharray','6 5');
   const original=make('title');original.textContent=edge.label;line.append(original);svg.append(line);
   const label=make('text',{x:labelX,y:labelY,'text-anchor':'middle',class:'edge-label'});
   label.setAttribute('opacity',emphasized?'1':'.25');
