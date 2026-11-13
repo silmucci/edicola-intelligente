@@ -257,7 +257,7 @@ def test_selected_linked_node_still_opens_verified_sources_without_api():
     result = KnowledgeResult("map", "Trasporti", data, SOURCES, COVERAGE, counts)
     module, code = render_script(result)
     code = code.replace("render_knowledge(result, context)",
-                        'import streamlit as st\\nst.session_state["knowledge_map_focus"] = "N1"\\nrender_knowledge(result, context)')
+                        'import streamlit as st\nst.session_state["knowledge_map_focus"] = "N1"\nrender_knowledge(result, context)')
     with installed_fixture(module), patch("edicola.knowledge_views.compact_sources") as refs, patch(
         "edicola.knowledge_views.render_graph") as graph, patch("google.genai.Client") as api:
         app = AppTest.from_string(code).run()
