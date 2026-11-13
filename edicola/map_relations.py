@@ -3,7 +3,7 @@
 import re
 
 
-VERSION = "concept-map-v9"
+VERSION = "concept-map-v10"
 # Solo elementi grammaticali trasparenti; niente wildcard che scavalchino altri attori.
 ADVERB = r"(?:oggi|ieri|anche|già|poi|ufficialmente|formalmente|direttamente|definitivamente)"
 AUXILIARY = r"(?:ha|hanno|aveva|avevano|è|sono|era|erano|stato|stata|stati|state)"
@@ -105,3 +105,90 @@ def relation_failure(left, relation, right, quote):
     if UNCERTAIN.search(quote):
         return "uncertain_or_negated"
     return "unsupported_relation_form"
+
+
+# Associazioni di argomento: contesti diversi e citazioni distinte sono ammessi.
+# Sono legami NON fattuali; gli archi di azione restano verificati da documented_relation.
+SEMANTIC_ALIASES = {
+    "agricol": "agricoltura", "agricoltur": "agricoltura", "agricoltor": "agricoltura",
+    "coltivazion": "agricoltura", "coltiv": "agricoltura", "rural": "agricoltura",
+    "filier": "agricoltura",
+    "occupazion": "lavoro", "lavor": "lavoro", "lavorator": "lavoro",
+    "impieg": "lavoro", "occupat": "lavoro",
+    "energi": "energia", "energet": "energia", "elettric": "energia",
+    "nuclear": "nucleare", "reattor": "nucleare",
+    "sanit": "sanità", "sanitari": "sanità", "salut": "sanità",
+    "scuol": "scuola", "istruzion": "scuola", "scolastic": "scuola",
+}
+GENERIC_THEMES = {"govern", "senat", "politic", "relazion", "istituzion", "provvediment",
+                  "misur", "legge", "disegn", "propost", "pian", "ital", "italia",
+                  "minist", "president", "notizi", "giornal", "articol", "novembr",
+                  "dicembr", "ottobr", "approv", "pubblic", "stat", "nazional"}
+CAUSAL_THEME = re.compile(r"\b(?:causa|provoca|determina|comporta|conseguenza|effetto|responsabil[ei])\b", re.I)
+
+
+def semantic_terms(value):
+    """Stemming leggero e sinonimi di settore SOLO per la Mappa."""
+    from edicola.knowledge_relevance import terms
+    words = terms(value)
+    return {SEMANTIC_ALIASES.get(word, word) for word in words
+            if word not in GENERIC_THEMES and len(word) >= 4}
+
+
+def anchored_contexts(endpoint, evidence):
+    """Raccoglie soltanto le proposizioni in cui compare letteralmente l'entità."""
+    pattern = re.compile(r"(?<!\w)" + re.escape(endpoint) + r"(?!\w)", re.I)
+    for item in evidence:
+        if not isinstance(item, dict) or not isinstance(item.get("quote"), str):
+            continue
+        quote = item["quote"]
+        for sentence in re.split(r"(?<=[.!?;])\s+|\n+", quote):
+            if pattern.search(sentence):
+                yield item, semantic_terms(sentence)
+
+
+def semantic_vector_similarity(first, second):
+    """Similarità soltanto tra vettori GIA' presenti, mai nuove chiamate AI."""
+    from math import sqrt
+    try:
+        dot = sum(float(x) * float(y) for x, y in zip(first, second))
+        na = sqrt(sum(float(x) ** 2 for x in first))
+        nb = sqrt(sum(float(y) ** 2 for y in second))
+        return dot / (na * nb) if na and nb else 0.0
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+
+
+def contextual_theme(left, right, theme, evidence, *, vectors=None):
+    """Verifica un tema attraverso DUE prove locali, anche in articoli differenti.
+
+    Nessuna associazione basata sulla sola compresenza nel chunk. Servono una
+    citazione per ogni estremo e un contesto specifico comune, con equivalenze
+    lessicali dichiarate; l'affinità fra embedding può sostenere un paraphrase
+    quando almeno un estremo menziona il tema. Non autorizza azioni o causalità.
+    """
+    if CAUSAL_THEME.search(theme) or len(theme) > 100:
+        return False
+    topic = semantic_terms(theme)
+    if not topic:
+        return False
+    a = list(anchored_contexts(left, evidence))
+    b = list(anchored_contexts(right, evidence))
+    for left_entry, left_words in a:
+        for right_entry, right_words in b:
+            if left_entry is right_entry:
+                continue
+            # Prove locali, non un elenco di concetti sparsi nello stesso PDF.
+            common = left_words & right_words
+            if topic & common:
+                return True
+            if not vectors or not (topic & (left_words | right_words)):
+                continue
+            first = vectors.get(left_entry.get("source_id"))
+            second = vectors.get(right_entry.get("source_id"))
+            if (first is not None and second is not None
+                    and left_entry.get("source_id") != right_entry.get("source_id")
+                    and len(left_words) >= 2 and len(right_words) >= 2
+                    and semantic_vector_similarity(first, second) >= 0.86):
+                return True
+    return False
