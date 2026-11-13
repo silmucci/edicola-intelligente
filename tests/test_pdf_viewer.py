@@ -221,5 +221,11 @@ render_knowledge(KnowledgeResult({kind!r}, "Argomento", data, [source], coverage
         button = "undated_0_pdf_S1" if kind == "timeline" else "map_selected_N1_pdf_S1"
     app = AppTest.from_string(script(context) + setup + action, default_timeout=10).run()
     assert not app.exception
-    app.button(key=button).click().run()
-    assert not app.exception and app.session_state["archive_page"] == 2
+    if kind == "map":
+        # Un unico concetto privo di collegamenti NON deve generare un grafo
+        # o un bottone alla fonte; le mappe collegate mantengono la navigazione.
+        assert not any(item.key == button for item in app.button)
+        assert any("Non emergono collegamenti" in item.value for item in app.caption)
+    else:
+        app.button(key=button).click().run()
+        assert not app.exception and app.session_state["archive_page"] == 2
