@@ -132,6 +132,14 @@ def render_map(result, archive, technical):
         with st.container(border=True):
             st.subheader(readable(captions[focus]))
             st.caption(NODE_TYPES[selected["kind"]])
+            if selected["kind"] in {"article", "source"}:
+                # Sono proprietà della pubblicazione, NON date dell'evento.
+                details = [selected.get("publication", ""),
+                           selected.get("publication_date", "")]
+                pages = selected.get("pages") or []
+                if pages:
+                    details.append("p. " + ", ".join(map(str, pages[:5])))
+                st.caption(" · ".join(value for value in details if value))
             st.text(selected["label"])
             compact_sources(selected["source_ids"], result.sources, archive, "map_selected_" + focus,
                             articles=articles)
