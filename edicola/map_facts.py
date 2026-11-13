@@ -30,10 +30,11 @@ ACTION_PATTERN = re.compile(
     r"(?<!\w)" + SUBJECT + r"\s+" + ACTION
     + r"\s+(?:(?:il|lo|la|i|gli|le|un|una|l['’])\s*)?"
     + r"(?P<object>"
-    + r"(?:(?:disegno|proposta)\s+di\s+legge|(?:decreto|riforma|"
+    + r"(?:(?:disegno|proposta)\s+di\s+legge|decreto|riforma|"
     + r"piano|progetto|programma|finanziamento|investimento|"
     + r"stanziamento|intervento|misura|accordo|emendamento|legge)"
-    + r"(?:\s+(?:[A-ZÀ-ÖØ-Þ][\w’'-]+|(?:sul|sulla|dei|delle|per)\s+\w+)){1,4})"
+    + r"(?:\s+(?:(?-i:[A-ZÀ-ÖØ-Þ])[\w’'-]+|"
+    + r"(?:sul|sulla|dei|delle|del|della|per)\s+\w+)){1,4}"
     + r")",
     re.I,
 )
