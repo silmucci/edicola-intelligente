@@ -93,3 +93,17 @@ def test_three_independent_stories_survive_a_documented_relation():
                       "evidence": [{"source_id": "S1", "quote": quote}]})
     result = story_graph({"nodes": nodes, "edges": edges}, "Attualità", limit=14)
     assert len([e for e in result["edges"] if e["kind"] == "contextual"]) == 3
+
+
+def test_unrelated_semantic_hit_cannot_override_relevant_archive_passage():
+    topic = "Tutela dei pescatori contro gli aumenti del gasolio"
+    relevant = SimpleNamespace(
+        id="fish", text="I pescatori chiedono aiuti per il gasolio delle barche.",
+        metadata={"filename": "pesca.pdf"})
+    unrelated = SimpleNamespace(
+        id="road", text="Le imprese del trasporto chiedono contributi contro il caro carburante.",
+        metadata={"filename": "strade.pdf"})
+    chunks = [relevant, unrelated]
+    selected = select_visual_evidence("map", Topic(topic, chunks), chunks,
+                                      [{"id": "road", "distance": .1}], limit=3)
+    assert [s.id for s in selected] == ["fish"]

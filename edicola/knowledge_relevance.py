@@ -307,13 +307,19 @@ def select_visual_evidence(kind, topic, chunks, hits, *, limit=28):
     positions = {hit["id"]: i for i, hit in enumerate(hits)}
     distances = {hit["id"]: float(hit.get("distance", 1.0)) for hit in hits}
     matched = []
+    # Se il corpus contiene prove lessicalmente pertinenti, un hit vettoriale
+    # privo di ancoraggio non deve introdurre un'altra vicenda. Le vere
+    # continuazioni rimangono ammesse tramite titolo di articolo verificato.
+    has_lexical_evidence = any(topic.score(c.text) > 0 for c in chunks)
     for chunk in chunks:
         lexical = topic.score(chunk.text)
-        # Una Mappa può recuperare un articolo tramite similarità vettoriale,
-        # anche senza sovrapposizione letterale con la domanda. Il risultato
-        # resta candidato, non prova, e conserva i vincoli espliciti.
         pos = positions.get(chunk.id)
-        if lexical <= 0 and (kind != "map" or pos is None
+        metadata = chunk.metadata
+        verified_title = (metadata.get("article_title", "")
+                          if metadata.get("article_title_verified") is True else "")
+        title_related = bool(verified_title and topic.score(verified_title) > 0)
+        semantic_fallback = not has_lexical_evidence or title_related
+        if lexical <= 0 and (kind != "map" or pos is None or not semantic_fallback
                              or not topic.semantic_allowed(chunk.text)):
             continue
         # La posizione semantica fa da preferenza, non da prova fattuale.
