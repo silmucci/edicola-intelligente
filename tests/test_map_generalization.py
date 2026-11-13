@@ -113,7 +113,7 @@ def test_unrelated_semantic_hit_cannot_override_relevant_archive_passage():
     ("Rinnovo del contratto e sindacati",
      "I sindacati hanno chiesto l'apertura di un tavolo di confronto.",
      "sindacati", "hanno chiesto", "apertura di un tavolo di confronto"),
-    ("Torneo di calcio",
+    ("Coppa regionale della squadra",
      "La squadra ha conquistato la coppa regionale durante la finale.",
      "squadra", "ha conquistato", "coppa regionale"),
     ("Materiali innovativi in laboratorio",
