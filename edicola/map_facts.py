@@ -132,7 +132,7 @@ GENERIC_ACTION_PATTERN = re.compile(
     + r"\s+(?P<verb>(?:" + _GENERIC_AUXILIARY + r"|" + _GENERIC_PRESENT_VERBS + r"))"
     + r"\s+(?:(?:oggi|ieri|poi|già|ufficialmente|definitivamente)\s+)?"
     + _POSTVERB_ADJUNCT + _DETERMINER
-    + r"(?P<object>(?:[^,.;!?]|\d,\d){6,150}?)\s*[.?!]?\s*$",
+    + r"(?P<object>(?:[^,.;!?]|\d,\d){6,150}?)(?:,\s+[^.!?]{1,180})?\s*[.?!]?\s*$",
     re.I,
 )
 _GENERIC_CLAUSE = re.compile(r"^(?:che|se|come)\b|\b(?:sarebbe|avrebbe|potrebbe|dovrebbe)\b", re.I)
