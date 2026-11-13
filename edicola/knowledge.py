@@ -30,6 +30,7 @@ from edicola.knowledge_fallback import graph_candidates, source_developments
 from edicola.map_literal import literal_candidates, complete_nodes, semantic_candidates, refine_proposal_nodes
 from edicola.map_ontology import link_entities, enrich_map_with_provenance
 from edicola.map_evidence import map_prompt_source
+from edicola.map_facts import complete_salient_facts
 from edicola.knowledge_relevance import Topic, select_topic_chunks, select_visual_evidence, VISUAL_RETRIEVAL_VERSION, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION, scope_timeline
 from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
                                        selection_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION)
@@ -70,10 +71,12 @@ MAP_INSTRUCTIONS = """
 Estrai un Knowledge Graph giornalistico tramite NER ed estrazione di triple.
 Nodi: persone, organizzazioni, luoghi, eventi, misure, proposte e concetti
 specifici. Usa N1, N2, ecc.; kind tra person, organization, place, event,
-measure, proposal, concept; massimo 10 nodi, senza numero minimo obbligatorio.
+measure, proposal, concept; massimo 14 nodi, senza numero minimo obbligatorio.
 Usa denominazioni complete presenti nelle prove e collega le stesse entità
 solo quando l'identità è dimostrabile. Escludi i nodi privi di nessi utili.
 
+Dai priorità ai passaggi salienti: decisioni, protagonisti, proposte,
+misure economiche e conseguenze esplicite, non soltanto i titoli dei giornali.
 Relazioni documented: triple soggetto-predicato-oggetto con soggetto, azione
 e oggetto sostenuti dalla stessa quote. predicate contiene il verbo esatto
 (con negazioni, ausiliari e preposizioni); preserva voce e direzione.
@@ -391,6 +394,9 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
             if kind == "map":
                 original_nodes, original_edges = len(raw_data.get("nodes", [])), len(raw_data.get("edges", []))
                 raw_data = graph_candidates(raw_data, sources, topic)
+                # Recupera azioni e provvedimenti salienti dal testo originale.
+                # Tutti i candidati passeranno per validate_map senza eccezioni.
+                raw_data = complete_salient_facts(raw_data, sources, topic)
                 # Disambigua una proposta soltanto quando la denominazione
                 # completa compare letteralmente nelle citazioni del nodo.
                 raw_data = refine_proposal_nodes(raw_data)
