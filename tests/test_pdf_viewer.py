@@ -213,9 +213,12 @@ if {kind!r} == "timeline":
     data, diagnostics=validate_timeline({{"events":[{{"title":claim,"description":claim,"event_date":None,"date_evidence":None}}]}}, [source], coverage)
 else:
     data, diagnostics=validate_map({{"nodes":[{{"id":"N1","kind":"concept","label":claim}}],"edges":[]}}, [source])
+if {kind!r} == "map":
+    import streamlit as st
+    st.session_state["knowledge_map_focus"] = "N1"
 render_knowledge(KnowledgeResult({kind!r}, "Argomento", data, [source], coverage, diagnostics), context)
 '''
-        button = "undated_0_pdf_S1" if kind == "timeline" else "map_node_N1_pdf_S1"
+        button = "undated_0_pdf_S1" if kind == "timeline" else "map_selected_N1_pdf_S1"
     app = AppTest.from_string(script(context) + setup + action, default_timeout=10).run()
     assert not app.exception
     app.button(key=button).click().run()
