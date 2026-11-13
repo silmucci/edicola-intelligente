@@ -36,6 +36,48 @@ def article_scope(sources, verified):
     return known
 
 
+PROVISION_NEAR_FOCUS = re.compile(
+    r"(?<!\w)(?:disegno\s+di\s+legge|proposta\s+di\s+legge|ddl|"
+    r"decreto|programma|piano|progetto|provvedimento)\s+"
+    r"(?:[«“\"])?$", re.I
+)
+
+
+def verified_initiative_hub(data, sources, articles, topic):
+    """Riconosce un'iniziativa letterale citata in un articolo verificato.
+
+    Non attribuisce al nodo azioni o ruoli: le misure rimangono
+    dichiaratamente contestuali e verificabili nei passaggi originali.
+    """
+    focus = request_focus(topic)
+    if not focus:
+        return None
+    expression = re.compile(r"(?<!\w)" + re.escape(focus) + r"(?!\w)", re.I)
+    scope = article_scope(sources, articles)
+    found = []
+    for source in sources:
+        if not expression.search(scope.get(source.id, {}).get("title", "")):
+            continue
+        for occurrence in expression.finditer(source.text):
+            before = source.text[max(0, occurrence.start() - 75):occurrence.start()]
+            match = PROVISION_NEAR_FOCUS.search(before)
+            if not match:
+                continue
+            end = occurrence.end()
+            if end < len(source.text) and source.text[end] in '»”"':
+                end += 1
+            label = " ".join((before[match.start():] + source.text[occurrence.start():end]).split())
+            found.append((source, label))
+    if not found or len({name.casefold() for _, name in found}) != 1:
+        return None
+    label = found[0][1]
+    next_id = max((int(n["id"][1:]) for n in data.get("nodes", [])
+                   if re.fullmatch(r"N\d+", n["id"])), default=0) + 1
+    return {"id": f"N{next_id}", "kind": "proposal", "label": label,
+            "source_ids": list(dict.fromkeys(source.id for source, _ in found)),
+            "origin": "verified_article_literal"}
+
+
 def article_measure_facts(data: dict, sources: list, articles: dict, topic: str, *, limit=7):
     """Collega importi a una sola iniziativa nominata nell'articolo verificato.
 
@@ -48,15 +90,20 @@ def article_measure_facts(data: dict, sources: list, articles: dict, topic: str,
     pattern = re.compile(r"(?<!\w)" + re.escape(focus) + r"(?!\w)", re.I)
     hubs = [node for node in data.get("nodes", [])
             if node.get("kind") in {"proposal", "event"} and pattern.search(node.get("label", ""))]
-    if len(hubs) != 1:
+    if len(hubs) > 1:
         return data
-    hub = hubs[0]
+    created_hub = verified_initiative_hub(data, sources, articles, topic) if not hubs else None
+    if not hubs and created_hub is None:
+        return data
+    hub = hubs[0] if hubs else created_hub
     by_id = {s.id: s for s in sources}
     hub_files = {by_id[identity].filename for identity in hub.get("source_ids", []) if identity in by_id}
     metadata = article_scope(sources, articles)
     candidates = [s for s in sources if s.filename in hub_files
                   and s.id in metadata and pattern.search(metadata[s.id].get("title", ""))]
     nodes, edges, seen = list(data["nodes"]), list(data["edges"]), set()
+    if created_hub is not None:
+        nodes.append(created_hub)
     next_id = max((int(n["id"][1:]) for n in nodes if re.fullmatch(r"N\d+", n["id"])), default=0) + 1
     for source in candidates:
         for sentence in original_sentences(source.text):
