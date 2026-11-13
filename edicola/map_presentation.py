@@ -14,6 +14,8 @@ GROUPS = {
     "event": ("Evento", "Eventi", "box", "#FFF1F2"),
     "place": ("Luogo", "Luoghi", "hexagon", "#EDF5FF"),
     "concept": ("Concetto", "Concetti", "ellipse", COLORS["surface"]),
+    "article": ("Articolo", "Articoli", "box", "#ECF7EE"),
+    "source": ("Fonte", "Fonti", "box", "#F5F5F5"),
 }
 NOMINAL = re.compile(r"^(?:proroga|sospensione|modifica|credito|contributo|ristoro|proposta|piano|programma|intervento|richiesta|riduzione|aumento)\b", re.I)
 
