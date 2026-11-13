@@ -361,7 +361,8 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
         instruction = SYSTEM + (TIMELINE_INSTRUCTIONS if kind == "timeline" else MAP_INSTRUCTIONS) + COMPARISON_INSTRUCTION + EDITORIAL_DEPTH_INSTRUCTION
         # Gli estratti sono calcolati una volta; le Source integrali
         # rimangono immutate per validazione, citazioni e visualizzazione.
-        map_payloads = ({s.id: map_prompt_source(s, article_details.get(s.id), topic)
+        map_payloads = ({s.id: map_prompt_source(s, article_details.get(s.id), topic,
+                                                               semantic_hit=s.chunk_id in distances)
                          for s in sources} if kind == "map" else {})
         def prompt_for(selected):
             payload = {"task": kind, "topic": topic, "editions": included_coverage(catalog.coverage, selected)["files"],

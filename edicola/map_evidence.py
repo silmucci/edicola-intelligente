@@ -22,7 +22,7 @@ IMPORTANT = re.compile(
 
 
 def map_excerpts(text: str, topic: str, *, budget: int = 1350, max_passages: int = 5,
-                 verified_article_title: str = "") -> list[str]:
+                 verified_article_title: str = "", semantic_hit: bool = False) -> list[str]:
     """Sceglie segmenti pertinenti, con azioni e quantità salienti.
 
     Le citazioni restano letterali e non attraversano segmenti artificiali.
@@ -38,6 +38,7 @@ def map_excerpts(text: str, topic: str, *, budget: int = 1350, max_passages: int
     # vicenda, ma riportare gli stanziamenti o le conseguenze principali.
     # Il titolo deve provenire dal verificatore dell'archivio.
     same_story = bool(verified_article_title and matcher.score(verified_article_title))
+    title_words = terms(verified_article_title) if same_story else set()
     # Ricompone le righe tipografiche dei PDF: il validatore confronta
     # citazioni e fonti con gli stessi spazi normalizzati.
     from edicola.map_facts import original_sentences
@@ -54,9 +55,16 @@ def map_excerpts(text: str, topic: str, *, budget: int = 1350, max_passages: int
         explicitly_related = bool(terms(topic) & terms(segment))
         has_action = bool(RELATION_CUES.search(segment) or IMPORTANT.search(segment))
         numeric = bool(re.search(r"\b\d+(?:[.,]\d+)?\s*(?:%|euro|milion\w*|miliard\w*|vot\w*)", segment, re.I))
-        if lexical <= 0 and not (same_story and (has_action or numeric)):
+        # La pertinenza non dipende da un elenco di verbi: un risultato
+        # sportivo, una scoperta o una mostra possono essere altrettanto salienti.
+        # Gli hit semantici sono candidati, sempre con citazioni originali.
+        substantive = len(segment.split()) >= 7 and len(terms(segment)) >= 4
+        title_overlap = len(terms(segment) & title_words) >= 2
+        if lexical <= 0 and not ((same_story and (has_action or numeric or title_overlap))
+                                 or (semantic_hit and substantive)):
             continue
-        if not (explicitly_related or has_action or (same_story and numeric)):
+        if not (explicitly_related or has_action or numeric or title_overlap
+                or (semantic_hit and substantive)):
             continue
         verbs = len(RELATION_CUES.findall(segment)) + len(IMPORTANT.findall(segment))
         candidates.append((max(lexical, 1.0 if same_story else 0.0)
@@ -79,12 +87,14 @@ def map_excerpts(text: str, topic: str, *, budget: int = 1350, max_passages: int
     return [segment for _index, segment in sorted(selected)]
 
 
-def map_prompt_source(source, article, topic, *, excerpt_budget=1350):
+def map_prompt_source(source, article, topic, *, excerpt_budget=1350,
+                      semantic_hit=False):
     """Payload più compatto, fonte originale immutata per validate_map."""
     from edicola.article_evidence import evidence_source_record
     item = evidence_source_record(source, article, include_chunk=True)
     passages = map_excerpts(source.text, topic, budget=excerpt_budget,
-                            verified_article_title=article.get("title", "") if article else "")
+                            verified_article_title=article.get("title", "") if article else "",
+                            semantic_hit=semantic_hit)
     if passages:
         # Ogni elemento è già parte contigua del chunk originale. Esplicitiamo
         # i confini per impedire al modello di unire citazioni diverse.

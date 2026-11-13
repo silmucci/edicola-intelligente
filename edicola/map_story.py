@@ -102,7 +102,7 @@ def story_graph(data: dict, topic: str, *, limit: int = 14, sources=()) -> dict:
     # componente indipendente anche se esiste già una tripla fattuale:
     # altrimenti una mappa come "Senato -> disegno di legge" nasconde
     # tutti gli approfondimenti documentati sull'argomento.
-    story_roots = set()
+    independent_stories = {}
     for edge in contextual:
         if id(edge) in used_context:
             continue
@@ -112,9 +112,17 @@ def story_graph(data: dict, topic: str, *, limit: int = 14, sources=()) -> dict:
                  and nodes[edge["from_id"]]["kind"] == "event")
         if not factual or connected:
             take(edge)
-        elif story and (edge["from_id"] in story_roots or len(story_roots) < 2):
-            if take(edge):
-                story_roots.add(edge["from_id"])
+        elif story:
+            independent_stories.setdefault(edge["from_id"], []).append(edge)
+    # Non limitare a due vicende: prima un fatto per ogni articolo, poi
+    # gli approfondimenti, sempre entro il numero massimo di nodi.
+    while any(independent_stories.values()):
+        progressed = False
+        for group in independent_stories.values():
+            if group and take(group.pop(0)):
+                progressed = True
+        if not progressed:
+            break
 
     for edge in thematic:
         # La co-menzione nella stessa edizione non basta per un rapporto

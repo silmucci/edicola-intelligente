@@ -309,11 +309,14 @@ def select_visual_evidence(kind, topic, chunks, hits, *, limit=28):
     matched = []
     for chunk in chunks:
         lexical = topic.score(chunk.text)
-        if lexical <= 0:
-            continue
-        # La posizione semantica fa da preferenza, non da esclusione:
-        # un articolo pertinente può non essere nei primi risultati vettoriali.
+        # Una Mappa può recuperare un articolo tramite similarità vettoriale,
+        # anche senza sovrapposizione letterale con la domanda. Il risultato
+        # resta candidato, non prova, e conserva i vincoli espliciti.
         pos = positions.get(chunk.id)
+        if lexical <= 0 and (kind != "map" or pos is None
+                             or not topic.semantic_allowed(chunk.text)):
+            continue
+        # La posizione semantica fa da preferenza, non da prova fattuale.
         semantic_bonus = 6 / (1 + pos / 6) if pos is not None else 0
         evidence_cues = TEMPORAL_CUES if kind == "timeline" else RELATION_CUES
         signal = min(3, len(evidence_cues.findall(chunk.text)))

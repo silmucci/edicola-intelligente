@@ -52,10 +52,12 @@ def _parts(text):
 
 
 def _meaningful(sentence):
-    return (38 <= len(sentence) <= 195
+    # I verbi istituzionali sono un bonus di ranking, non una condizione
+    # di esistenza per sport, scienza, cultura, ambiente e cronaca.
+    return (38 <= len(sentence) <= 420
             and len(sentence.split()) >= 7
-            and not _EDITORIAL.search(sentence)
-            and bool(_CONTENT.search(sentence) or re.search(r"\b\d+(?:[.,]\d+)?\b", sentence)))
+            and len(terms(sentence) - _NEUTRAL) >= 4
+            and not _EDITORIAL.search(sentence))
 
 
 def _similar(a, b):
@@ -75,7 +77,13 @@ def _source_records(sources, articles, topic, *, max_stories):
     stories = defaultdict(list)
     for source in sources:
         title = _unique_title(articles, source)
-        if not title or matcher.score(title) <= 0:
+        if not title:
+            continue
+        # Il titolo di un articolo verificato può essere più generico della
+        # domanda, mentre il contenuto contiene il tema richiesto.
+        if matcher.score(title) <= 0 and not any(
+                matcher.score(sentence) > 0
+                for paragraph in _parts(source.text) for sentence in paragraph):
             continue
         story_id = (source.filename, title.casefold())
         stories[story_id].append((source, title))
@@ -112,7 +120,7 @@ def _source_records(sources, articles, topic, *, max_stories):
 
 
 def verified_news_relations(data, sources, articles, topic, *,
-                            max_stories=3, max_statements=8):
+                            max_stories=4, max_statements=12):
     """Integra un fatto/contesto per notizie non riconosciute come triple.
 
     Un titolo verificato identifica il gruppo; la prova del contenuto è

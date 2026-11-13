@@ -25,13 +25,6 @@ _GENERIC = {
 
 _CAMELCASE = re.compile(r"(?<!\w)[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+[A-ZÀ-ÖØ-Þ]\w+(?!\w)")
 _UPPER_NAME = re.compile(r"^(?:[A-ZÀ-ÖØ-Þ][\w’'-]+\s+){1,3}[A-ZÀ-ÖØ-Þ][\w’'-]+$")
-_BROAD_HEAD = re.compile(
-    r"^(?:sicurezza|morti?|incidenti?|infortuni?|rinnovo|contratto|"
-    r"bilancio|consiglio|ritorno|peste|sanità|crisi|economia|"
-    r"lavoro|politica|nucleare|energia|agricoltura)\b", re.I
-)
-
-
 def request_focus(topic: str) -> str | None:
     """Solo nomi propri identificabili, mai l'intero tema prima dei due punti.
 
@@ -49,7 +42,7 @@ def request_focus(topic: str) -> str | None:
         return None
     candidate = " ".join(before.strip(" \"'«»“”").split())
     if (4 <= len(candidate) <= 65 and len(candidate.split()) <= 4
-            and "," not in candidate and not _BROAD_HEAD.search(candidate)
+            and "," not in candidate
             and _UPPER_NAME.fullmatch(candidate)):
         return candidate
     return None
