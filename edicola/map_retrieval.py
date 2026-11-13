@@ -60,6 +60,22 @@ def _article_key(chunk):
     return None
 
 
+def _declared_article_pages(chunk):
+    """Pagine dichiarate dal parsing dell'articolo, solo se titolo verificato."""
+    if not _verified_title(chunk):
+        return ()
+    raw = chunk.metadata.get("article_pages_json", "[]")
+    try:
+        pages = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        return ()
+    if not isinstance(pages, list) or len(pages) > 80:
+        return ()
+    if not all(type(page) is int and page >= 1 for page in pages):
+        return ()
+    return tuple(sorted(set(pages)))
+
+
 def focused_map_seeds(topic, chunks, hits, *, fallback, limit=28):
     """Se il focus è documentato nell'archivio, esclude notizie generiche.
 
@@ -76,12 +92,27 @@ def focused_map_seeds(topic, chunks, hits, *, fallback, limit=28):
     if not direct:
         return list(fallback)
     article_keys = {_article_key(c) for c in direct if _article_key(c) is not None}
-    # Gli altri articoli delle stesse pagine non diventano automaticamente
-    # pertinenti: si richiede identità editoriale specifica.
+    # Se l'articolo verificato prosegue su altre pagine, queste sono
+    # candidati di recupero. Si escludono altri articoli identificati,
+    # anche quando si trovano nello stesso foglio.
+    article_pages = set()
+    for match in direct:
+        for page in _declared_article_pages(match):
+            if page != match.metadata.get("page"):
+                article_pages.add((match.metadata.get("filename"), page))
     selected = {c.id: c for c in direct}
     for chunk in chunks:
-        if _article_key(chunk) in article_keys and _article_key(chunk) is not None:
+        key = _article_key(chunk)
+        if key in article_keys and key is not None:
             selected[chunk.id] = chunk
+            continue
+        if (chunk.metadata.get("filename"), chunk.metadata.get("page")) not in article_pages:
+            continue
+        if key is not None and key not in article_keys:
+            continue  # Un'altra identità articolo accertata.
+        if chunk.metadata.get("article_id"):
+            continue  # Non attribuire una prosecuzione ad altro articolo.
+        selected[chunk.id] = chunk
     positions = {h["id"]: i for i, h in enumerate(hits)}
     matched = terms(topic)
     relevance = []
@@ -93,6 +124,8 @@ def focused_map_seeds(topic, chunks, hits, *, fallback, limit=28):
         # più importanti: non relegarla dopo notizie estranee.
         score = (30 if direct_text else 0) + (23 if direct_title else 0)
         score += 7 if _article_key(chunk) in article_keys else 0
+        if (chunk.metadata.get("filename"), chunk.metadata.get("page")) in article_pages:
+            score += 5
         score += min(6, len(RELATION_CUES.findall(chunk.text)))
         score += min(7, len(terms(chunk.text) & matched))
         if hits_rank is not None:
