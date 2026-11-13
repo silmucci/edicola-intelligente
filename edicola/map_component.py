@@ -18,6 +18,14 @@ CSS = scoped_css("""
 .edge-label{font:12px var(--edi-sans);fill:var(--edi-ink);paint-order:stroke;stroke:var(--edi-paper);stroke-width:5px;stroke-linejoin:round}
 """)
 
+DIRECTIONAL_EDGE_KINDS = frozenset({"documented", "mention"})
+
+
+def is_directional_edge(edge):
+    """Solo azioni verificate e menzioni della fonte hanno una freccia."""
+    return edge.get("kind") in DIRECTIONAL_EDGE_KINDS
+
+
 JS = r"""
 export default function({parentElement,data,setTriggerValue}){
  const canvas=parentElement.querySelector('.canvas');canvas.replaceChildren();
@@ -100,7 +108,7 @@ export default function({parentElement,data,setTriggerValue}){
   const line=make('path',{d:path,fill:'none',stroke:data.primary,'stroke-width':2.4,'stroke-linejoin':'round'});
   const emphasized=!data.selected||edge.from===data.selected||edge.to===data.selected;
   line.setAttribute('opacity',emphasized?'1':'.2');
-  if(edge.kind==='documented'||edge.kind==='mention'||edge.kind==='contextual')line.setAttribute('marker-end','url(#arrow)');
+  if(edge.directed)line.setAttribute('marker-end','url(#arrow)');
   if(edge.kind==='mention')line.setAttribute('stroke-dasharray','2 5');
   else if(edge.kind!=='documented')line.setAttribute('stroke-dasharray','6 5');
   const original=make('title');original.textContent=edge.label;line.append(original);svg.append(line);
@@ -122,7 +130,8 @@ def render_graph(data, *, topic, selected, on_select):
     captions = node_captions(data["nodes"])
     payload = {"nodes": [{"id": n["id"], "label": captions[n["id"]], "kind": n["kind"],
                           "type": GROUPS[n["kind"]][0], "color": GROUPS[n["kind"]][3]} for n in data["nodes"]],
-               "edges": [{"from": e["from_id"], "to": e["to_id"], "label": e.get("topic") or e["label"], "kind": e["kind"]} for e in data["edges"]]}
+               "edges": [{"from": e["from_id"], "to": e["to_id"], "label": e.get("topic") or e["label"],
+                           "kind": e["kind"], "directed": is_directional_edge(e)} for e in data["edges"]]}
     identity = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
     key = "knowledge_graph_" + identity
     def choose():
