@@ -343,9 +343,13 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
         if not sources:
             return KnowledgeResult(kind, topic, {}, [], catalog.coverage, {"status": "no_sources"})
         instruction = SYSTEM + (TIMELINE_INSTRUCTIONS if kind == "timeline" else MAP_INSTRUCTIONS) + COMPARISON_INSTRUCTION + EDITORIAL_DEPTH_INSTRUCTION
+        # Gli estratti sono calcolati una volta; le Source integrali
+        # rimangono immutate per validazione, citazioni e visualizzazione.
+        map_payloads = ({s.id: map_prompt_source(s, article_details.get(s.id), topic)
+                         for s in sources} if kind == "map" else {})
         def prompt_for(selected):
             payload = {"task": kind, "topic": topic, "editions": included_coverage(catalog.coverage, selected)["files"],
-                                        "sources": [(map_prompt_source(s, article_details.get(s.id), topic)
+                                        "sources": [(map_payloads[s.id]
                                            if kind == "map" else evidence_source_record(
                                                s, article_details.get(s.id), include_chunk=True))
                             for s in selected]}
@@ -354,7 +358,8 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                 payload["adjacent_sources"] = [[a.id, b.id] for a in selected for b in selected
                     if contiguous(current[a.chunk_id], current[b.chunk_id])]
             return json.dumps(payload, ensure_ascii=False)
-        candidates = list(sources)
+        candidates = ([source for source in sources if map_payloads[source.id]["text"].strip()]
+                      if kind == "map" else list(sources))
         sources, _ = fit_context(candidates, lambda selected: instruction + prompt_for(selected), budget)
         article_details = {s.id: article_details[s.id] for s in sources if s.id in article_details}
         if not sources:
