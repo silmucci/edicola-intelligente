@@ -109,7 +109,7 @@ def story_focus(data: dict, topic: str) -> str | None:
     factual = Counter(identity for edge in data.get("edges", [])
                       if edge["kind"] == "documented"
                       for identity in (edge["from_id"], edge["to_id"]))
-    return max(nodes, key=lambda n: (n["kind"] in CORE_KIN,
+    return max(nodes, key=lambda n: (n["kind"] in CORE_KINDS,
                                      factual[n["id"]],
                                      len(terms(n["label"]) & matches),
                                      n["kind"] not in SOURCE_KINDS,
