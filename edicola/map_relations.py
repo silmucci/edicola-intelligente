@@ -60,6 +60,13 @@ def documented_relation(left, relation, right, quote, *, _aliases=True):
     pattern = (r"(?<!\w)" + re.escape(left) + PURPOSE + BEFORE + re.escape(relation) + AFTER
                + ARTICLE + ROLE + re.escape(right) + r"(?!\w)")
     patterns = [pattern]
+    # Una sola apposizione nominale delimitata da virgole può separare
+    # il nome della legge dalla forma passiva. Non attraversare altre
+    # proposizioni né inferire una frase attiva non presente nell'articolo.
+    if re.fullmatch(r"(?:è stato|è stata|sono stati|sono state) (?:approvato|approvata|approvati|approvate|varato|varata|presentato|presentata|respinto|respinta) d(?:al|alla)", relation):
+        apposition = r"(?:\s*,\s*[^,.;!?]{3,140}\s*,)?"
+        patterns.append(r"(?<!\w)" + re.escape(left) + apposition + PURPOSE + BEFORE +
+                        re.escape(relation) + AFTER + ARTICLE + ROLE + re.escape(right) + r"(?!\w)")
     # Denominazione composta nella stessa proposizione: "Il Senato ha approvato
     # il disegno di legge ColtivaItalia". I due estremi e il verbo restano letterali.
     if len(right.split()) <= 4:
