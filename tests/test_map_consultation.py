@@ -130,7 +130,7 @@ def test_display_uses_existing_cache_and_switches_views_without_regeneration(set
         # alcune associazioni tematiche possono essere escluse se non hanno
         # prove indipendenti sufficienti.
         from edicola.map_story import story_graph
-        expected = story_graph(result.data, "Trasporti", sources=SOURCES)
+        expected = story_graph(result.data, "Trasporti", sources=result.sources)
         assert graph.called == bool(expected["edges"])
         graph.reset_mock()
         app.run()
