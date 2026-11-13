@@ -134,7 +134,7 @@ def test_display_uses_existing_cache_and_switches_views_without_regeneration(set
         assert graph.called == bool(expected["edges"])
         graph.reset_mock()
         app.run()
-        assert graph.called == has_edges and not app.dataframe
+        assert graph.called == bool(expected["edges"]) and not app.dataframe
     assert generate_knowledge("map", "Trasporti", authorize_external=True, root=root, client=client).from_cache
     assert cache.read_bytes() == saved
     search.assert_called_once()
