@@ -34,6 +34,7 @@ from edicola.map_facts import complete_salient_facts
 from edicola.map_retrieval import focused_map_seeds
 from edicola.map_article_measures import article_measure_facts, verified_headline_actions
 from edicola.map_news_events import verified_news_relations, same_paragraph_relations
+from edicola.map_headline_facts import reported_headline_facts
 from edicola.knowledge_relevance import Topic, select_topic_chunks, select_visual_evidence, VISUAL_RETRIEVAL_VERSION, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION, scope_timeline
 from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
                                        selection_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION)
@@ -264,6 +265,7 @@ def verified_source_fallback(kind, topic, sources, catalog, matcher, contexts, c
             # un provvedimento: cronaca, vertenze, salute, politica locale.
             data = verified_news_relations(data, sources, articles, topic)
             data = same_paragraph_relations(data, sources, topic)
+            data = reported_headline_facts(data, sources, articles, topic)
             useful = bool(data["edges"])
             if useful:
                 # Anche in modalità di riserva: menzioni separate da fatti.
@@ -494,6 +496,7 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                 data = verified_headline_actions(data, sources, article_details, topic)
                 data = verified_news_relations(data, sources, article_details, topic)
                 data = same_paragraph_relations(data, sources, topic)
+                data = reported_headline_facts(data, sources, article_details, topic)
                 diagnostics["news_developments"] = sum(
                     node.get("origin") in {"verified_article_story", "literal_news_statement",
                                            "literal_paragraph_fact"} for node in data["nodes"])
