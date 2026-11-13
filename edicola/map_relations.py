@@ -3,7 +3,7 @@
 import re
 
 
-VERSION = "concept-map-v11"
+VERSION = "concept-map-v12"
 # Solo elementi grammaticali trasparenti; niente wildcard che scavalchino altri attori.
 ADVERB = r"(?:oggi|ieri|anche|già|poi|ufficialmente|formalmente|direttamente|definitivamente)"
 AUXILIARY = r"(?:ha|hanno|aveva|avevano|è|sono|era|erano|stato|stata|stati|state)"
@@ -144,7 +144,7 @@ def anchored_contexts(endpoint, evidence):
         quote = item["quote"]
         for sentence in re.split(r"(?<=[.!?;])\s+|\n+", quote):
             if pattern.search(sentence):
-                yield item, semantic_terms(sentence)
+                yield item, semantic_terms(sentence), sentence
 
 
 def semantic_vector_similarity(first, second):
@@ -174,9 +174,12 @@ def contextual_theme(left, right, theme, evidence, *, vectors=None):
         return False
     a = list(anchored_contexts(left, evidence))
     b = list(anchored_contexts(right, evidence))
-    for left_entry, left_words in a:
-        for right_entry, right_words in b:
-            if left_entry is right_entry:
+    for left_entry, left_words, left_sentence in a:
+        for right_entry, right_words, right_sentence in b:
+            # Una stessa frase copiata due volte non costituisce due prove
+            # contestuali indipendenti: niente archi tematici ornamentali.
+            if (left_entry.get("source_id") == right_entry.get("source_id")
+                    and normalized(left_sentence) == normalized(right_sentence)):
                 continue
             # Prove locali, non un elenco di concetti sparsi nello stesso PDF.
             common = left_words & right_words
