@@ -66,7 +66,8 @@ GENERIC_OBJECT = re.compile(
 
 
 def complete_salient_facts(raw: dict, sources: list, topic: str, *,
-                           max_nodes: int = 16, max_edges: int = 24) -> dict:
+                           max_nodes: int = 16, max_edges: int = 24,
+                           article_titles=None) -> dict:
     """Arricchisce l'estrazione LLM senza riformulare le prove originali.
 
     Richiede sempre identità, predicato e oggetto nella stessa proposizione.
@@ -87,7 +88,8 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
     for source in sources:
         if len(items) >= max_nodes and len(edges) >= max_edges:
             break
-        if not matcher.score(source.text):
+        title = (article_titles or {}).get(source.id, {}).get("title", "")
+        if not matcher.score(source.text) and not matcher.score(title):
             continue
         sentences = re.split(r"(?<=[.!?;])\s+|\n+", source.text)
         for passage in sentences:
