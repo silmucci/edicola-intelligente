@@ -251,16 +251,15 @@ def verified_source_fallback(kind, topic, sources, catalog, matcher, contexts, c
             # Anche senza Gemini, estrai le azioni grammaticalmente
             # documentate dalle fonti, comprese le approvazioni passive.
             raw = complete_salient_facts(raw, sources, topic, article_titles=articles)
-            if not raw["edges"]:
-                return None
             data, diagnostics = validate_map(raw, sources, contexts=contexts)
             data, relevance = relevant_map(data, raw, sources, matcher, contexts=contexts)
             diagnostics.update(relevance)
+            # Anche quando l'estrattore non ricava un predicato fattuale,
+            # una iniziativa letterale in un articolo verificato può
+            # avere misure quantificate, riportate solo come contesto.
+            data = article_measure_facts(data, sources, articles, topic)
             useful = bool(data["edges"])
             if useful:
-                # Conserva i dettagli delle misure descritte nell'articolo
-                # verificato anche quando il modello remoto non risponde.
-                data = article_measure_facts(data, sources, articles, topic)
                 # Anche in modalità di riserva: menzioni separate da fatti.
                 data = enrich_map_with_provenance(data, sources, articles, catalog.coverage)
         if not useful:
