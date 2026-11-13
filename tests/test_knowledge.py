@@ -560,10 +560,13 @@ def test_map_uses_only_explicit_validated_relations_after_504(setup_knowledge):
         result = generate_knowledge("map", "trasporti", root=root, client=client,
                                     authorize_external=True)
     assert result.diagnostics["status"] == "verified_source_fallback"
-    assert len(result.data["edges"]) == 1
-    edge = result.data["edges"][0]
+    factual = [e for e in result.data["edges"] if e["kind"] == "documented"]
+    assert len(factual) == 1
+    edge = factual[0]
     assert edge["label"] == "finanzia" and edge["source_ids"] == ["S1"]
     assert edge["evidence"] == [{"source_id": "S1", "quote": text}]
+    provenance = [e for e in result.data["edges"] if e["kind"] == "mention"]
+    assert provenance and all(e["source_ids"] == ["S1"] for e in provenance)
     assert not list((root / "data/knowledge_cache").glob("*.json"))
 
 
