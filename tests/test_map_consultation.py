@@ -93,20 +93,18 @@ def test_each_node_has_named_details_and_opens_its_own_original_pdf_page(archive
     context, prepared = archive
     result = pdf_map(context, prepared)
     module, code = render_script(result, context)
-    original_popover = st.popover
-    with installed_fixture(module), patch("google.genai.Client") as api, patch("streamlit.popover", wraps=original_popover) as popover:
+    code = code.replace("render_knowledge(result, context)",
+                        'import streamlit as st\nst.session_state["knowledge_map_focus"] = "N2"\nrender_knowledge(result, context)')
+    with installed_fixture(module), patch("google.genai.Client") as api:
         app = AppTest.from_string(code).run()
         assert not app.exception and not app.dataframe
-        labels = [call.args[0] for call in popover.call_args_list]
-        assert "Prima pagina" in labels and "Seconda pagina" in labels
-        assert all("knowledge_node" not in label and "N1" not in label for label in labels)
-        assert {text.value for text in app.text} >= {s.text for s in result.sources}
-        app.button(key="map_node_N2_pdf_S2").click().run()
+        assert any("Seconda pagina" in text.value for text in app.text)
+        assert not app.segmented_control
+        app.button(key="map_selected_N2_pdf_S2").click().run()
         assert not app.exception and app.session_state["archive_page"] == 2
         assert app.session_state["archive_pdf"] == "a.pdf"
         app.run()
         api.assert_not_called()
-
 
 @pytest.mark.parametrize("change", [{"page": 999}, {"filename": "../outside.pdf"}, {"chunk_id": "obsolete"}])
 def test_node_sources_keep_existing_page_path_and_current_chunk_checks(archive, change):
@@ -114,11 +112,13 @@ def test_node_sources_keep_existing_page_path_and_current_chunk_checks(archive, 
     result = pdf_map(context, prepared)
     result.sources[0] = replace(result.sources[0], **change)
     module, code = render_script(result, context)
+    code = code.replace("render_knowledge(result, context)",
+                        'import streamlit as st\nst.session_state["knowledge_map_focus"] = "N2"\nrender_knowledge(result, context)')
     with installed_fixture(module), patch("google.genai.Client") as api:
         app = AppTest.from_string(code).run()
     assert not app.exception
-    assert not any(button.key == "map_node_N1_pdf_S1" for button in app.button)
-    assert app.button(key="map_node_N2_pdf_S2")
+    assert not any(button.key == "map_selected_N2_pdf_S1" for button in app.button)
+    assert app.button(key="map_selected_N2_pdf_S2")
     api.assert_not_called()
 
 
@@ -131,10 +131,9 @@ def test_display_uses_existing_cache_and_switches_views_without_regeneration(set
     with installed_fixture(module), patch("edicola.knowledge_views.render_graph") as graph:
         app = AppTest.from_string(code).run()
         assert not app.exception and graph.called and not app.dataframe
+        assert not app.segmented_control
         graph.reset_mock()
-        app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert not app.dataframe and not graph.called
-        app.segmented_control(key="knowledge_map_view").set_value("Grafo").run()
+        app.run()
         assert graph.called and not app.dataframe
     assert generate_knowledge("map", "Trasporti", authorize_external=True, root=root, client=client).from_cache
     assert cache.read_bytes() == saved
