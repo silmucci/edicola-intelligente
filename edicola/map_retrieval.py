@@ -23,21 +23,35 @@ _GENERIC = {
 }
 
 
+_CAMELCASE = re.compile(r"(?<!\w)[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+[A-ZÀ-ÖØ-Þ]\w+(?!\w)")
+_UPPER_NAME = re.compile(r"^(?:[A-ZÀ-ÖØ-Þ][\w’'-]+\s+){1,3}[A-ZÀ-ÖØ-Þ][\w’'-]+$")
+_BROAD_HEAD = re.compile(
+    r"^(?:sicurezza|morti?|incidenti?|infortuni?|rinnovo|contratto|"
+    r"bilancio|consiglio|ritorno|peste|sanità|crisi|economia|"
+    r"lavoro|politica|nucleare|energia|agricoltura)\b", re.I
+)
+
+
 def request_focus(topic: str) -> str | None:
-    """Riconosce un soggetto nominato, non una parola tematica generica."""
-    before, colon, _ = topic.partition(":")
-    if colon:
-        candidate = " ".join(before.strip(" \"'«»“”").split())
-        if (4 <= len(candidate) <= 65 and len(candidate.split()) <= 4
-                and "," not in candidate and " e " not in candidate.casefold()
-                and candidate.casefold() not in _GENERIC):
-            return candidate
-    named = re.search(r"(?<!\w)([A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+\w*[A-ZÀ-ÖØ-Þ]\w+)(?!\w)", topic)
-    if named and named.group(1).casefold() not in _GENERIC:
-        return named.group(1)
+    """Solo nomi propri identificabili, mai l'intero tema prima dei due punti.
+
+    'Sicurezza sul lavoro: incidenti' non è un nome di iniziativa:
+    restringere l'intero archivio a quella sequenza causava mappe vuote.
+    """
     quoted = re.search(r"[«“\"]([^»”\"]{4,65})[»”\"]", topic)
     if quoted and quoted.group(1).casefold().strip() not in _GENERIC:
         return quoted.group(1).strip()
+    named = _CAMELCASE.search(topic)
+    if named and named.group().casefold() not in _GENERIC:
+        return named.group()
+    before, colon, _ = topic.partition(":")
+    if not colon:
+        return None
+    candidate = " ".join(before.strip(" \"'«»“”").split())
+    if (4 <= len(candidate) <= 65 and len(candidate.split()) <= 4
+            and "," not in candidate and not _BROAD_HEAD.search(candidate)
+            and _UPPER_NAME.fullmatch(candidate)):
+        return candidate
     return None
 
 
