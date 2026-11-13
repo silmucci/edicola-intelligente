@@ -128,7 +128,8 @@ def test_intrinsic_graph_size_and_readable_fonts_prevent_fitting_two_nodes_to_th
     data["edges"] = [{"from_id": "N0", "to_id": "N1", "kind": "documented", "label": "riguarda", "source_ids": []}]
     with installed_fixture(module), patch("edicola.map_component.graph_component") as graph:
         AppTest.from_string(code).run()
-    assert len(graph.call_args.kwargs["data"]["nodes"]) == count
+    assert len(graph.call_args.kwargs["data"]["nodes"]) == 2
+    assert {node["id"] for node in graph.call_args.kwargs["data"]["nodes"]} == {"N0", "N1"}
     assert graph.call_args.kwargs["data"]["edges"][0]["from"] == "N0"
 
 
