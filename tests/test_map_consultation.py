@@ -126,11 +126,12 @@ def test_display_uses_existing_cache_and_switches_views_without_regeneration(set
         assert not app.segmented_control
         # Il recupero di triple fattuali può creare una mappa valida anche
         # se la risposta iniziale del modello non aveva archi.
-        # Le sole menzioni di provenienza non sono archi del grafo:
-        # il rendering parte da fatti e associazioni contestuali/tematiche.
-        has_graph_edges = any(edge["kind"] in {"documented", "contextual", "thematic"}
-                              for edge in result.data.get("edges", []))
-        assert graph.called == has_graph_edges
+        # La vista deve seguire esattamente la selezione editoriale del grafo:
+        # alcune associazioni tematiche possono essere escluse se non hanno
+        # prove indipendenti sufficienti.
+        from edicola.map_story import story_graph
+        expected = story_graph(result.data, "Trasporti", sources=SOURCES)
+        assert graph.called == bool(expected["edges"])
         graph.reset_mock()
         app.run()
         assert graph.called == has_edges and not app.dataframe
