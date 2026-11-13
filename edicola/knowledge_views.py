@@ -122,7 +122,7 @@ def render_map(result, archive, technical):
         if any(edge["kind"] == "thematic" for edge in view["edges"]):
             legend += " · ┄ Tema comune, senza legame fattuale"
         if any(edge["kind"] == "contextual" for edge in view["edges"]):
-            legend += " · ⇢ Misura descritta nello stesso articolo verificato"
+            legend += " · ⇢ Contesto verificato nell'articolo o nel titolo"
         if any(edge["kind"] == "mention" for edge in view["edges"]):
             legend += " · ↝ Menzione verificata dalla fonte"
         st.caption(legend)
@@ -262,7 +262,9 @@ def render_node_connections(node, data, labels, sources, archive, *, articles=No
         elif edge["kind"] == "mention":
             st.caption("Menzione nel documento · non prova una relazione fra i soggetti citati")
         elif edge["kind"] == "contextual":
-            st.caption("Intervento documentato nello stesso articolo verificato · collegamento di contesto")
+            st.caption("Azione riportata nel titolo verificato · da confermare nel testo"
+                       if edge.get("context_scope") == "verified_article_title"
+                       else "Misura e destinatario riportati nello stesso articolo · collegamento di contesto")
         else:
             st.caption("Tema comune · non indica un legame fattuale")
         connector = " → " if edge["kind"] in {"documented", "mention", "contextual"} else " — "
