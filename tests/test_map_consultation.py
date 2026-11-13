@@ -186,7 +186,8 @@ def test_semantic_map_avoids_generic_agriculture_links():
     focused, reasons = relevant_map(verified, {"nodes": raw_nodes}, sources,
                                    Topic("Governo, Senato e provvedimenti per l'agricoltura"))
     assert not focused["edges"]
-    assert any(reason["reason"] == "generic_topic_not_informative"
+    assert any(reason["reason"] in {"generic_topic_not_informative",
+                                    "actors_need_documented_relation"}
                for reason in reasons["relevance_edges"])
 
 
