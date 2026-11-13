@@ -8,8 +8,8 @@ from edicola.archive import IndexChunk
 # Denominazione identificabile nella stessa citazione, non inferita dalla domanda.
 # Richiede maiuscola iniziale reale per evitare 'disegno di legge sul ...'.
 _NAMED_BILL = re.compile(
-    r"(?<!\\w)disegno\\s+di\\s+legge\\s+"
-    r"(?P<name>[A-ZÀ-ÖØ-Þ][\\w’'-]*(?:\\s+[A-ZÀ-ÖØ-Þ][\\w’'-]*){0,2})"
+    r"(?<!\w)disegno\s+di\s+legge\s+"
+    r"(?P<name>[A-ZÀ-ÖØ-Þ][\w’'-]*(?:\s+[A-ZÀ-ÖØ-Þ][\w’'-]*){0,2})"
 )
 
 
