@@ -98,6 +98,17 @@ def render_map(result, archive, technical):
         st.caption("Non emergono collegamenti sufficientemente documentati per costruire una mappa.")
         return
     view = compact_map(connected)
+    # La selezione dei dieci nodi può eliminare un estremo di qualche arco.
+    # Nessuna casella senza almeno un collegamento nella vista effettiva.
+    if not view["edges"]:
+        first_edge = next((e for e in connected["edges"] if e["kind"] == "documented"),
+                          connected["edges"][0])
+        endpoints = {first_edge["from_id"], first_edge["to_id"]}
+        view = {"nodes": [n for n in connected["nodes"] if n["id"] in endpoints],
+                "edges": [first_edge]}
+    visible = {identity for edge in view["edges"]
+               for identity in (edge["from_id"], edge["to_id"])}
+    view["nodes"] = [n for n in view["nodes"] if n["id"] in visible]
     captions = node_captions(view["nodes"])
     valid_ids = {n["id"] for n in view["nodes"]}
     if st.session_state.get("knowledge_map_focus", "") not in valid_ids:
