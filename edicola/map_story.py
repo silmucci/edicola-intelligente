@@ -74,9 +74,35 @@ def story_graph(data: dict, topic: str, *, limit: int = 14, sources=()) -> dict:
 
     for edge in factual:
         take(edge)
-    # Gli interventi sono collegati al provvedimento nominato, con
-    # provenienza nello stesso articolo verificato; non sono causalità.
+    # Un intervento con importo forma un'unica unità editoriale:
+    # proposta -> obiettivo -> cifra. Evita di occupare il limite con
+    # soli obiettivi lasciando fuori i dettagli quantitativi.
+    used_context = set()
+    for detail in contextual:
+        child = nodes[detail["to_id"]]
+        parent = nodes[detail["from_id"]]
+        if child["kind"] != "measure" or parent["kind"] != "concept":
+            continue
+        introductory = next((edge for edge in contextual
+                             if edge["to_id"] == detail["from_id"]
+                             and nodes[edge["from_id"]]["kind"] in {"proposal", "event"}),
+                            None)
+        if introductory is None:
+            continue
+        required = {introductory["from_id"], introductory["to_id"], detail["to_id"]}
+        if len(selected | required) > limit:
+            continue
+        if id(introductory) not in used_context:
+            take(introductory)
+            used_context.add(id(introductory))
+        if id(detail) not in used_context:
+            take(detail)
+            used_context.add(id(detail))
+    # Per altri tipi di relazione contestuale mantieni le fonti e la
+    # selezione precedente, senza duplicare gli archi già scelti.
     for edge in contextual:
+        if id(edge) in used_context:
+            continue
         if not factual or edge["from_id"] in selected or edge["to_id"] in selected:
             take(edge)
 
