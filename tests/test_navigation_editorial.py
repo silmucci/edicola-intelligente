@@ -67,11 +67,11 @@ def test_explore_switches_views_preserving_results_without_extra_generation(arch
         app.text_input(key="knowledge_topic").set_value("Trasporti").run()
         app.button(key="map_submit").click().run()
         assert not app.exception and "map" in app.session_state["knowledge_results"]
-        app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
+        assert not any(c.key == "knowledge_map_view" for c in app.segmented_control)
         app.segmented_control(key="knowledge_kind").set_value("Timeline").run()
         assert app.text_input(key="knowledge_topic").value == "Trasporti"
         app.segmented_control(key="knowledge_kind").set_value("Mappa").run()
-        assert app.segmented_control(key="knowledge_map_view").value == "Elenco"
+        assert not any(c.key == "knowledge_map_view" for c in app.segmented_control)
         assert generate.call_count == 2
 
 def test_switching_explore_mode_cancels_pending_generation_and_keeps_consent(archive):
@@ -98,7 +98,8 @@ def test_graph_and_list_keep_documented_sources_without_api(archive):
         app = AppTest.from_string(code).run()
         assert not app.exception and not app.dataframe
         assert not any("cache" in c.value.casefold() for c in app.caption)
-        app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
+        assert not any(c.key == "knowledge_map_view" for c in app.segmented_control)
+        app.run()
         assert not app.exception and not app.dataframe
         api.assert_not_called()
 
