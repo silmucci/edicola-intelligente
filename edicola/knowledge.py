@@ -32,6 +32,7 @@ from edicola.map_ontology import link_entities, enrich_map_with_provenance
 from edicola.map_evidence import map_prompt_source
 from edicola.map_facts import complete_salient_facts
 from edicola.map_retrieval import focused_map_seeds
+from edicola.map_article_measures import article_measure_facts
 from edicola.knowledge_relevance import Topic, select_topic_chunks, select_visual_evidence, VISUAL_RETRIEVAL_VERSION, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION, scope_timeline
 from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
                                        selection_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION)
@@ -479,6 +480,12 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                 data, relevance = relevant_map(data, raw_data, sources, matcher,
                                               contexts={s.id: current[s.chunk_id].metadata for s in sources})
                 diagnostics.update(relevance)
+                # Misure e importi letterali appartenenti allo stesso articolo
+                # verificato del provvedimento, marcati come archi contestuali:
+                # non si trasformano in un'azione attribuita a un protagonista.
+                data = article_measure_facts(data, sources, article_details, topic)
+                diagnostics["contextual_measures"] = sum(e["kind"] == "contextual"
+                                                         for e in data["edges"])
                 # Ontologia di provenienza, dopo la validazione di fatti e citazioni.
                 # MENZIONA non diventa mai una relazione diretta fra attori.
                 data = enrich_map_with_provenance(data, sources, article_details,
