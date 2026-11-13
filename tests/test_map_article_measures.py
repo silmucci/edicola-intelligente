@@ -164,8 +164,9 @@ def test_same_article_grouping_does_not_merge_different_destinations():
 
 def test_verified_headline_reports_parliamentary_action_without_inventing_body_quote():
     from edicola.map_article_measures import verified_headline_actions
-    article = Source("S1", "c1", "a.pdf", 44,
-                     'Il disegno di legge "ColtivaItalia" prevede risorse.', .1)
+    original = ('Il disegno di legge "ColtivaItalia" prevede risorse. '
+                '"ColtivaItalia": via libera definitivo dal Senato.')
+    article = Source("S1", "c1", "a.pdf", 44, original, .1)
     raw = {"nodes": [{"id": "N1", "kind": "proposal",
                       "label": 'disegno di legge "ColtivaItalia"',
                       "source_ids": ["S1"]}], "edges": []}
@@ -180,7 +181,15 @@ def test_verified_headline_reports_parliamentary_action_without_inventing_body_q
     assert len(contextual) == 1
     assert contextual[0]["label"] == "via libera definitivo"
     assert contextual[0]["context_scope"] == "verified_article_title"
-    assert contextual[0]["evidence"] == [{"source_id": "S1", "quote": headline}]
+    assert contextual[0]["evidence"] == [
+        {"source_id": "S1", "quote": '"ColtivaItalia": via libera definitivo dal Senato.'}]
+    # Il titolo da solo, se il testo non documenta l'azione, non crea
+    # una nuova relazione fra istituzione e provvedimento.
+    without_action = Source("S1", "c1", "a.pdf", 44,
+                            'Il disegno di legge "ColtivaItalia" prevede risorse.', .1)
+    assert verified_headline_actions(
+        raw, [without_action], {"S1": {"title": headline, "pages": [44]}},
+        "ColtivaItalia: approvazione") == raw
     assert verified_headline_actions(raw, [article],
                                     {"S1": {"title": "ColtivaItalia al centro del dibattito"}},
                                     "ColtivaItalia: approvazione") == raw
