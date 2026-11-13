@@ -87,7 +87,18 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
                 if len(items) + len(missing) > max_nodes or len(edges) >= max_edges:
                     continue
                 evidence = [{"source_id": source.id, "quote": passage}]
-                for label, kind in ((actor, "organization"), (object_name, "proposal")):
+                # La qualifica esplicita distingue una persona da
+                # un'istituzione; senza prova non indovinare il ruolo.
+                role = re.search(
+                    r"\b(?:ministro|ministra|senatore|senatrice|sindaco|sindaca|"
+                    r"presidente|deputato|deputata)\s+" + re.escape(actor) + r"\b",
+                    match.group(0), re.I)
+                actor_kind = "person" if role else "organization"
+                measure = re.match(
+                    r"(?:finanziamento|stanziamento|investimento|intervento|misura)\b",
+                    object_name, re.I)
+                object_kind = "measure" if measure else "proposal"
+                for label, kind in ((actor, actor_kind), (object_name, object_kind)):
                     key = label.casefold()
                     if key not in labels:
                         labels[key] = f"N{next_id}"
