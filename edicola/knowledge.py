@@ -92,10 +92,9 @@ generico (es. "agricoltura", "lavoro", "economia", "politica"):
 descrivono il tema della domanda, non una relazione informativa.
 Usa label.text per identificare brevemente la vicenda condivisa, con
 almeno una citazione letterale per ciascun estremo.
-Le citazioni possono provenire da fonti diverse: rielabora la semantica
-per individuare affinità, ma non inventare prove. Non affermare
-causalità, collaborazione o decisioni congiunte in assenza di documentazione.
-La semplice co-occorrenza nello stesso articolo non basta.
+Le prove possono provenire da fonti diverse. Non inventare
+collaborazioni, decisioni congiunte o nessi causali: condividere
+un articolo, da solo, non basta.
 
 Ometti i nodi per i quali non emerge alcun collegamento sostenuto
 dalle prove: un grafo con pochi nodi significativi è preferibile a
