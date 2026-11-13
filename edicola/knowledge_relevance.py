@@ -220,6 +220,11 @@ def relevant_map(data, raw, sources, topic, *, contexts=None):
             relevant = bool(scoped_score(topic, edge["evidence"], sources, anchor, contexts or {}))
         if not {edge["from_id"], edge["to_id"]} <= ids or not relevant:
             rejected.append({"edge": i, "reason": "off_topic"})
+        elif edge["kind"] == "thematic" and all(
+                raw_nodes[identity]["kind"] in {"person", "organization"}
+                for identity in (edge["from_id"], edge["to_id"])):
+            # La medesima iniziativa non prova una relazione fra due attori.
+            rejected.append({"edge": i, "reason": "actors_need_documented_relation"})
         elif edge["kind"] == "thematic" and broad_map_topic(edge.get("topic") or edge["label"]):
             rejected.append({"edge": i, "reason": "generic_topic_not_informative"})
         elif GENERIC_PREDICATE.fullmatch(edge["label"]):
