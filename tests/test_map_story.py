@@ -227,3 +227,29 @@ def test_conditional_amount_does_not_create_a_fact():
     source = Source("S1", "b", "quotidiano.pdf", 4, sentence, .1)
     result = complete_salient_facts({"nodes": [], "edges": []}, [source], "PonteVerde")
     assert not result["edges"]
+
+
+def test_measures_are_selected_with_their_purposes_as_complete_story_branches():
+    from edicola.map_story import story_graph
+    nodes = [{"id": "N1", "kind": "proposal", "label": "Piano Civico",
+              "source_ids": ["S1"]}]
+    edges = []
+    for index in range(2, 10):
+        purpose = f"P{index}"
+        amount = f"M{index}"
+        nodes += [{"id": purpose, "kind": "concept",
+                   "label": f"Intervento {index}", "source_ids": ["S1"]},
+                  {"id": amount, "kind": "measure",
+                   "label": f"{index} milioni", "source_ids": ["S1"]}]
+        edges += [{"from_id": "N1", "to_id": purpose, "kind": "contextual",
+                   "label": "intervento", "source_ids": ["S1"], "evidence": []},
+                  {"from_id": purpose, "to_id": amount, "kind": "contextual",
+                   "label": "risorse", "source_ids": ["S1"], "evidence": []}]
+    graph = story_graph({"nodes": nodes, "edges": edges}, "Piano Civico", limit=9)
+    chosen = {n["id"] for n in graph["nodes"]}
+    for node in graph["nodes"]:
+        if node["kind"] == "concept":
+            assert any(edge["from_id"] == node["id"] and
+                       edge["to_id"] in chosen and edge["to_id"].startswith("M")
+                       for edge in graph["edges"])
+    assert len(chosen) <= 9
