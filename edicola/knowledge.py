@@ -421,10 +421,19 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
             if kind == "map":
                 original_nodes, original_edges = len(raw_data.get("nodes", [])), len(raw_data.get("edges", []))
                 raw_data = graph_candidates(raw_data, sources, topic)
+                # Prima di completare le triple, individua i passaggi che il
+                # validatore collega già fra chunk adiacenti. Non estrarre da
+                # ciascun frammento una seconda relazione parziale dello stesso fatto.
+                contexts = {s.id: current[s.chunk_id].metadata for s in sources}
+                preliminary, _ = validate_map(raw_data, sources, contexts=contexts)
+                adjacent_sources = {source_id for edge in preliminary["edges"]
+                                    if edge.get("adjacent_evidence")
+                                    for source_id in edge.get("source_ids", [])}
+                extraction_sources = [s for s in sources if s.id not in adjacent_sources]
                 # Recupera azioni e provvedimenti salienti dal testo originale.
                 # Tutti i candidati passeranno per validate_map senza eccezioni.
-                raw_data = complete_salient_facts(raw_data, sources, topic,
-                                                        article_titles=article_details)
+                raw_data = complete_salient_facts(raw_data, extraction_sources, topic,
+                                                   article_titles=article_details)
                 # Disambigua una proposta soltanto quando la denominazione
                 # completa compare letteralmente nelle citazioni del nodo.
                 raw_data = refine_proposal_nodes(raw_data)
