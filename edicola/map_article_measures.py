@@ -32,6 +32,20 @@ def initiative_predicate(sentence: str) -> str | None:
     return match.group("verb") if match else None
 
 
+_MEASURE_PREDICATE = re.compile(
+    r"\b(?P<verb>(?:(?:sono|vengono|è|si\s+considerano)\s+"
+    r"(?:previst[oaie]|stanziat[oaie]|destinat[oaie]|finanziat[oaie])|"
+    r"prevede|prevedono|stanzia|stanziano|destina|destinano|finanzia|finanziano))\b",
+    re.I,
+)
+
+
+def measure_predicate(sentence: str) -> str | None:
+    """Predicato letterale che introduce la cifra o la sua assegnazione."""
+    match = _MEASURE_PREDICATE.search(sentence)
+    return match.group("verb") if match else None
+
+
 def article_scope(sources, verified):
     """Passa il titolo alle continuazioni solo con una singola attribuzione
     dichiarata nei metadati delle pagine dello stesso PDF.
@@ -225,9 +239,7 @@ def article_measure_facts(data: dict, sources: list, articles: dict, topic: str,
             nodes.append({"id": measure_id, "kind": "measure", "label": amount_text,
                           "source_ids": [source.id], "section": purpose if scope == "section" else "",
                           "purpose": purpose, "amount": amount_text})
-            relation = ("risorse stanziate" if re.search(r"\bstanziat[oaie]\b", sentence, re.I)
-                        else "risorse previste" if re.search(r"\bprevist[oaie]\b", sentence, re.I)
-                        else "importo riportato")
+            relation = measure_predicate(sentence) or "ammonta a"
             edges.append({"from_id": purpose_id, "to_id": measure_id,
                           "kind": "contextual", "label": relation,
                           "source_ids": [source.id], "evidence": evidence,
