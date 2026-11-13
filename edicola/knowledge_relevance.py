@@ -182,7 +182,31 @@ def scoped_score(topic, evidence, sources, anchor, contexts):
         context = SimpleNamespace(id="_ranking", text=proof["text"])
         score = max(score, topic.evidence_score(
             [{"source_id": context.id, "quote": context.text}], [context], anchor=anchor))
-    return score
+    if score:
+        return score
+    # Un fatto può non ripetere il nome della vicenda in ogni frase.
+    # Un titolo di articolo VERIFICATO e associato a quel preciso chunk
+    # è contesto di pertinenza, non una prova di una relazione. La prova
+    # resta la citazione letterale già passata da validate_map.
+    originals = {source.id: " ".join(source.text.split()) for source in sources}
+    for proof in evidence:
+        if not isinstance(proof, dict):
+            continue
+        source_id = proof.get("source_id")
+        metadata = contexts.get(source_id, {})
+        if not isinstance(metadata, dict) or metadata.get("article_title_verified") is not True:
+            continue
+        title = metadata.get("article_title", "")
+        quote = proof.get("quote", "")
+        if not isinstance(title, str) or not 8 <= len(title.strip()) <= 220:
+            continue
+        if not isinstance(quote, str) or " ".join(quote.split()) not in originals.get(source_id, ""):
+            continue
+        if anchor and not re.search(r"(?<!\w)" + re.escape(anchor) + r"(?!\w)", quote, re.I):
+            continue
+        if topic.score(title):
+            return 1.0
+    return 0.0
 
 
 def relevant_map(data, raw, sources, topic, *, contexts=None):
