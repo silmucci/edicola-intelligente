@@ -244,10 +244,18 @@ def verified_headline_actions(data: dict, sources: list, articles: dict, topic: 
         title = item.get("title", "")
         if not isinstance(title, str) or not focused.search(title):
             continue
-        match = _HEADLINE_ACTION.search(title)
-        if not match or source.filename not in {
+        if source.filename not in {
                 s.filename for s in sources if s.id in hub.get("source_ids", [])}:
             continue
+        # Il titolo verifica la pertinenza, ma la prova dell'azione deve
+        # comparire nello stesso passaggio testuale del quotidiano.
+        matched = [(action, passage)
+                   for passage in original_sentences(source.text)
+                   for action in [_HEADLINE_ACTION.search(passage)]
+                   if action and focused.search(passage)]
+        if not matched:
+            continue
+        match, literal_quote = matched[0]
         institution, action = match.group("institution"), match.group("action")
         signature = (institution.casefold(), action.casefold())
         if signature in seen:
@@ -263,7 +271,7 @@ def verified_headline_actions(data: dict, sources: list, articles: dict, topic: 
             "from_id": names[institution.casefold()], "to_id": hub["id"],
             "kind": "contextual", "label": action,
             "source_ids": [source.id],
-            "evidence": [{"source_id": source.id, "quote": title}],
+            "evidence": [{"source_id": source.id, "quote": literal_quote}],
             "context_scope": "verified_article_title",
         })
         if len(seen) >= 2:
