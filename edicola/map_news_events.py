@@ -140,12 +140,6 @@ def verified_news_relations(data, sources, articles, topic, *,
         selected = statements[:max(0, max_statements - added)]
         if not selected:
             break
-        hub_id = f"N{next_id}"
-        next_id += 1
-        distinct_ids = list(dict.fromkeys(src.id for _, src, _ in selected))
-        nodes.append({"id": hub_id, "kind": "event", "label": title,
-                      "source_ids": distinct_ids,
-                      "origin": "verified_article_story"})
         # Le frasi con un predicato soggetto-verbo-oggetto sono già
         # rappresentate dai loro archi fattuali, orientati come nella fonte.
         # Non aggiungiamo un secondo arco titolo -> frase che possa invertire
