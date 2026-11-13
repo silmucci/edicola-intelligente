@@ -3,7 +3,7 @@
 import re
 
 
-VERSION = "concept-map-v10"
+VERSION = "concept-map-v11"
 # Solo elementi grammaticali trasparenti; niente wildcard che scavalchino altri attori.
 ADVERB = r"(?:oggi|ieri|anche|già|poi|ufficialmente|formalmente|direttamente|definitivamente)"
 AUXILIARY = r"(?:ha|hanno|aveva|avevano|è|sono|era|erano|stato|stata|stati|state)"
@@ -112,7 +112,6 @@ def relation_failure(left, relation, right, quote):
 SEMANTIC_ALIASES = {
     "agricol": "agricoltura", "agricoltur": "agricoltura", "agricoltor": "agricoltura",
     "coltivazion": "agricoltura", "coltiv": "agricoltura", "rural": "agricoltura",
-    "filier": "agricoltura",
     "occupazion": "lavoro", "lavor": "lavoro", "lavorator": "lavoro",
     "impieg": "lavoro", "occupat": "lavoro",
     "energi": "energia", "energet": "energia", "elettric": "energia",
@@ -120,8 +119,9 @@ SEMANTIC_ALIASES = {
     "sanit": "sanità", "sanitari": "sanità", "salut": "sanità",
     "scuol": "scuola", "istruzion": "scuola", "scolastic": "scuola",
 }
-GENERIC_THEMES = {"govern", "senat", "politic", "relazion", "istituzion", "provvediment",
-                  "misur", "legge", "disegn", "propost", "pian", "ital", "italia",
+GENERIC_THEMES = {"govern", "senat", "politic", "politich", "relazion", "istituzion",
+                  "istituzional", "provvediment", "misur", "legge", "disegn",
+                  "propost", "pian", "ital", "itali", "italian", "italia",
                   "minist", "president", "notizi", "giornal", "articol", "novembr",
                   "dicembr", "ottobr", "approv", "pubblic", "stat", "nazional"}
 CAUSAL_THEME = re.compile(r"\b(?:causa|provoca|determina|comporta|conseguenza|effetto|responsabil[ei])\b", re.I)
