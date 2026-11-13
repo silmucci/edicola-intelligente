@@ -118,6 +118,78 @@ def test_story_graph_does_not_convert_mentions_into_verified_events():
                   {"from_id": "A1", "to_id": "N2", "kind": "mention", "label": "menziona",
                    "source_ids": ["S1"], "evidence": []}]}
     out = story_graph(graph, "Comune")
-    assert len(out["edges"]) == 2
-    assert {edge["kind"] for edge in out["edges"]} == {"mention"}
-    assert not any({edge["from_id"], edge["to_id"]} == {"N1", "N2"} for edge in out["edges"])
+    assert out == {"nodes": [], "edges": []}  # Non chiamare mappa un elenco di menzioni.
+
+
+
+def test_story_graph_discards_repeated_subject_links_and_keeps_verifiable_decisions():
+    first = Source("S1", "a", "giornale-a.pdf", 4, "Il Senato approva la proposta.", .1)
+    second = Source("S2", "b", "giornale-b.pdf", 6, "Altre notizie sul tema.", .2)
+    proof = [{"source_id": "S1", "quote": first.text},
+             {"source_id": "S2", "quote": second.text}]
+    raw = {"nodes": [
+        {"id": "N1", "kind": "organization", "label": "Senato", "source_ids": ["S1"]},
+        {"id": "N2", "kind": "proposal", "label": "proposta", "source_ids": ["S1"]},
+        {"id": "N3", "kind": "person", "label": "Una persona", "source_ids": ["S2"]},
+        {"id": "N4", "kind": "measure", "label": "Risorse", "source_ids": ["S1", "S2"]},
+        {"id": "A1", "kind": "article", "label": "Titolo", "source_ids": ["S1"]},
+    ], "edges": [
+        {"from_id": "N1", "to_id": "N2", "kind": "documented",
+         "label": "approva", "source_ids": ["S1"], "evidence": [proof[0]]},
+        *[{"from_id": a, "to_id": b, "kind": "thematic",
+           "label": "associazione tematica", "topic": "stessa vicenda",
+           "source_ids": ["S1", "S2"], "evidence": proof}
+          for a, b in [("N1", "N4"), ("N2", "N3"), ("N2", "N4")]],
+        {"from_id": "A1", "to_id": "N1", "kind": "mention", "label": "menziona",
+         "source_ids": ["S1"], "evidence": [proof[0]]},
+    ]}
+    out = story_graph(raw, "stessa vicenda", sources=[first, second])
+    assert len([e for e in out["edges"] if e["kind"] == "documented"]) == 1
+    assert len([e for e in out["edges"] if e["kind"] == "thematic"]) <= 1
+    assert not any(e["kind"] == "mention" for e in out["edges"])
+    assert not any(n["kind"] == "article" for n in out["nodes"])
+    assert all(edge in raw["edges"] for edge in out["edges"])
+
+
+def test_story_graph_rejects_theme_edges_from_the_same_newspaper():
+    sources = [Source("S1", "a", "giornale-a.pdf", 1, "Tema", .1),
+               Source("S2", "b", "giornale-a.pdf", 2, "Tema", .2)]
+    raw = {"nodes": [
+        {"id": "N1", "kind": "organization", "label": "Organo", "source_ids": ["S1"]},
+        {"id": "N2", "kind": "measure", "label": "Iniziativa", "source_ids": ["S2"]}],
+        "edges": [{"from_id": "N1", "to_id": "N2", "kind": "thematic",
+                   "label": "associazione tematica", "topic": "iniziativa",
+                   "source_ids": ["S1", "S2"], "evidence": []}]}
+    assert story_graph(raw, "iniziativa", sources=sources) == {"nodes": [], "edges": []}
+
+
+def test_quoted_named_bill_remains_specific_when_approval_is_explicit():
+    sentence = 'Il Senato ha approvato il disegno di legge «ColtivaItalia».'
+    source = Source("S1", "b", "quotidiano.pdf", 4, sentence, .1)
+    extracted = complete_salient_facts({"nodes": [], "edges": []}, [source],
+                                       "ColtivaItalia approvazione")
+    texts = {n["label"]["text"] for n in extracted["nodes"]}
+    assert "disegno di legge «ColtivaItalia»" in texts
+    data, counts = validate_map(extracted, [source])
+    assert counts["accepted_edges"] == 1
+    assert data["edges"][0]["label"] == "ha approvato"
+
+
+def test_named_provision_and_exact_amount_create_validated_fact():
+    sentence = "Il programma PonteVerde stanzia oltre 1,2 miliardi di euro per la mobilità pubblica."
+    source = Source("S1", "b", "quotidiano.pdf", 4, sentence, .1)
+    extracted = complete_salient_facts({"nodes": [], "edges": []}, [source],
+                                       "PonteVerde finanziamenti mobilità")
+    names = {n["label"]["text"]: n["kind"] for n in extracted["nodes"]}
+    assert names["programma PonteVerde"] == "proposal"
+    assert names["oltre 1,2 miliardi di euro per la mobilità pubblica"] == "measure"
+    data, counts = validate_map(extracted, [source])
+    assert counts["accepted_edges"] == 1
+    assert data["edges"][0]["label"] == "stanzia"
+
+
+def test_conditional_amount_does_not_create_a_fact():
+    sentence = "Il programma PonteVerde potrebbe stanziare oltre 1,2 miliardi di euro."
+    source = Source("S1", "b", "quotidiano.pdf", 4, sentence, .1)
+    result = complete_salient_facts({"nodes": [], "edges": []}, [source], "PonteVerde")
+    assert not result["edges"]
