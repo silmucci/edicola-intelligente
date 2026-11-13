@@ -107,3 +107,63 @@ def test_unrelated_semantic_hit_cannot_override_relevant_archive_passage():
     selected = select_visual_evidence("map", Topic(topic, chunks), chunks,
                                       [{"id": "road", "distance": .1}], limit=3)
     assert [s.id for s in selected] == ["fish"]
+
+
+@pytest.mark.parametrize("topic,sentence,actor,verb,object_name", [
+    ("Rinnovo del contratto e sindacati",
+     "I sindacati hanno chiesto l'apertura di un tavolo di confronto.",
+     "sindacati", "hanno chiesto", "apertura di un tavolo di confronto"),
+    ("Torneo di calcio",
+     "La squadra ha conquistato la coppa regionale durante la finale.",
+     "squadra", "ha conquistato", "coppa regionale"),
+    ("Materiali innovativi in laboratorio",
+     "I ricercatori del laboratorio hanno scoperto un nuovo materiale resistente.",
+     "ricercatori del laboratorio", "hanno scoperto", "nuovo materiale resistente"),
+    ("Parco e sostenibilità urbana",
+     "Il Comune ha inaugurato il parco urbano davanti ai cittadini.",
+     "Comune", "ha inaugurato", "parco urbano"),
+])
+def test_generic_action_relations_are_validated(topic, sentence, actor, verb, object_name):
+    from edicola.map_facts import complete_salient_facts
+    from edicola.knowledge_validation import validate_map
+    source = Source("S1", "chunk", "quotidiano.pdf", 1, sentence, .1)
+    raw = complete_salient_facts({"nodes": [], "edges": []}, [source], topic)
+    checked, diagnostic = validate_map(raw, [source])
+    labels = {node["id"]: node["label"] for node in checked["nodes"]}
+    assert any(labels[edge["from_id"]] == actor
+               and edge["label"] == verb
+               and labels[edge["to_id"]] == object_name
+               and edge["kind"] == "documented"
+               for edge in checked["edges"]), diagnostic
+
+
+@pytest.mark.parametrize("sentence", [
+    "I sindacati non hanno firmato l'accordo.",
+    "Il ministro ha annunciato che potrebbe essere istituito un comitato.",
+    "Secondo gli osservatori, la società ha annunciato una nuova misura.",
+])
+def test_generic_relations_do_not_invent_negated_or_attributed_actions(sentence):
+    from edicola.map_facts import complete_salient_facts
+    source = Source("S1", "chunk", "quotidiano.pdf", 1, sentence, .1)
+    result = complete_salient_facts({"nodes": [], "edges": []}, [source], sentence)
+    assert not result["edges"]
+
+
+def test_verified_article_connects_grounded_action_to_its_story():
+    from edicola.map_facts import complete_salient_facts
+    from edicola.knowledge_validation import validate_map
+    text = "I sindacati hanno chiesto l'apertura di un tavolo di confronto sulla sanità privata."
+    topic = "sindacati sanità privata confronto"
+    source = Source("S1", "chunk", "giornale.pdf", 2, text, .2)
+    raw = complete_salient_facts({"nodes": [], "edges": []}, [source], topic)
+    accepted, _ = validate_map(raw, [source])
+    complete = verified_news_relations(
+        accepted, [source], {"S1": {"title": "Sindacati e sanità privata: richiesta di confronto"}}, topic)
+    hub = next(node for node in complete["nodes"]
+               if node.get("origin") == "verified_article_story")
+    bridge = next(edge for edge in complete["edges"]
+                  if edge["from_id"] == hub["id"] and edge["label"] == "documenta un'azione")
+    assert bridge["source_ids"] == ["S1"]
+    assert bridge["evidence"][0]["quote"] == text
+    graph = story_graph(complete, topic, sources=[source])
+    assert bridge in graph["edges"]

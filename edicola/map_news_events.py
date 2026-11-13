@@ -145,6 +145,27 @@ def verified_news_relations(data, sources, articles, topic, *,
         nodes.append({"id": hub_id, "kind": "event", "label": title,
                       "source_ids": distinct_ids,
                       "origin": "verified_article_story"})
+        # Se nello stesso articolo è già stata verificata una tripla
+        # fattuale, connettila alla vicenda. "Documenta" è un rapporto
+        # editoriale, non un'azione o una causa inventata.
+        for fact in edges[:]:
+            if fact.get("kind") != "documented":
+                continue
+            proofs = fact.get("source_ids", [])
+            if not any(sid in distinct_ids for sid in proofs):
+                continue
+            if fact["from_id"] == hub_id or fact["to_id"] == hub_id:
+                continue
+            proof = next((item for item in fact.get("evidence", [])
+                          if item.get("source_id") in distinct_ids), None)
+            if proof is None:
+                continue
+            edges.append({"from_id": hub_id, "to_id": fact["from_id"],
+                          "kind": "contextual", "label": "documenta un'azione",
+                          "source_ids": [proof["source_id"]],
+                          "evidence": [proof],
+                          "context_scope": "same_verified_article"})
+            break
         for _score, source, passage in selected:
             detail_id = f"N{next_id}"
             next_id += 1

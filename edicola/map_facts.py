@@ -81,6 +81,47 @@ GENERIC_OBJECT = re.compile(
 )
 
 
+# Azioni dirette di cronaca, sport, cultura, ricerca e vertenze: nessuna
+# lista di soggetti o temi. Si riconosce solo una proposizione esplicita
+# con ausiliare e participio, poi il validatore ricontrolla la citazione.
+_GENERIC_VERBS = (
+    r"(?:approvato|respinto|annunciato|presentato|finanziato|stanziato|"
+    r"firmato|chiesto|avviato|inaugurato|aperto|chiuso|sospeso|"
+    r"annullato|organizzato|realizzato|completato|pubblicato|"
+    r"denunciato|conquistato|vinto|scoperto|rilevato|ottenuto|"
+    r"lanciato|proposto|adottato|sostenuto|confermato|bloccato|"
+    r"convocato|segnalato|raggiunto|ridotto|aumentato|"
+    r"rilanciato|selezionato|votato)"
+)
+_DETERMINER = r"(?:(?:il|lo|la|i|gli|le|un|una|uno)\\s+|l['’])?"
+GENERIC_ACTION_PATTERN = re.compile(
+    r"^\\s*" + _DETERMINER
+    + r"(?P<actor>[\\wÀ-ÿ’'-]+(?:\\s+(?!(?:ha|hanno|aveva|avevano|non)\\b)[\\wÀ-ÿ’'-]+){0,6})"
+    + r"\\s+(?P<verb>(?:ha|hanno|aveva|avevano)\\s+" + _GENERIC_VERBS + r")"
+    + r"\\s+(?:(?:oggi|ieri|poi|già|ufficialmente|definitivamente)\\s+)?"
+    + _DETERMINER + r"(?P<object>[^,.;!?]{6,150}?)\\s*[.?!]?\\s*$",
+    re.I,
+)
+_GENERIC_CLAUSE = re.compile(r"^(?:che|se|come)\\b|\\b(?:sarebbe|avrebbe|potrebbe|dovrebbe)\\b", re.I)
+_GENERIC_TAIL = re.compile(r"\\s+(?:durante|davanti\\s+a|presso|dopo|grazie\\s+a|in\\s+occasione\\s+di)\\b", re.I)
+
+
+def generic_action(passage: str):
+    """Solo SVO esplicito nella frase; niente negazioni, ipotesi o discorso riferito."""
+    match = GENERIC_ACTION_PATTERN.match(passage)
+    if match is None:
+        return None
+    actor, verb = match.group("actor", "verb")
+    object_name = _GENERIC_TAIL.split(match.group("object"), maxsplit=1)[0].strip()
+    if (_GENERIC_CLAUSE.search(object_name) or len(object_name) < 7
+            or len(actor) < 3 or actor.casefold() == object_name.casefold()):
+        return None
+    # Citazione e predicato devono conservare una proposizione verificabile.
+    if not documented_relation(actor, verb, object_name, passage):
+        return None
+    return actor, verb, object_name
+
+
 def original_sentences(text: str):
     """Ricompone le righe tipografiche senza attraversare i paragrafi.
 
@@ -127,12 +168,17 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
             passage = passage.strip()
             if len(passage) < 30 or len(passage) > 1400 or len(edges) >= max_edges:
                 continue
-            # Non trattare titoli isolati come fatti: serve una proposizione.
-            for match in (list(ACTION_PATTERN.finditer(passage))
-                          + list(FUNDS_PATTERN.finditer(passage))
-                          + list(PASSIVE_PATTERN.finditer(passage))):
-                actor, verb, object_name = (match.group(key).strip() for key in ("actor", "verb", "object"))
-                passive = match.re is PASSIVE_PATTERN
+            # Prima le azioni/proposte già riconosciute. Per le altre
+            # rubriche, prova una tripla soggetto-verbo-oggetto conservativa.
+            matches = (list(ACTION_PATTERN.finditer(passage))
+                       + list(FUNDS_PATTERN.finditer(passage))
+                       + list(PASSIVE_PATTERN.finditer(passage)))
+            generic = generic_action(passage) if not matches else None
+            for match in (matches if matches else [None] if generic else []):
+                actor, verb, object_name = (
+                    (match.group(key).strip() for key in ("actor", "verb", "object"))
+                    if match is not None else generic)
+                passive = match is not None and match.re is PASSIVE_PATTERN
                 if passive:
                     # La frase cita il provvedimento (soggetto grammaticale)
                     # e poi l'istituzione agente. Non invertire il predicato.
@@ -147,16 +193,18 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
                 evidence = [{"source_id": source.id, "quote": passage}]
                 # La qualifica esplicita distingue una persona da
                 # un'istituzione; senza prova non indovinare il ruolo.
-                role = re.search(
+                role = (re.search(
                     r"\b(?:ministro|ministra|senatore|senatrice|sindaco|sindaca|"
                     r"presidente|deputato|deputata)\s+" + re.escape(actor) + r"\b",
-                    match.group(0), re.I)
-                actor_kind = ("proposal" if match.re in {FUNDS_PATTERN, PASSIVE_PATTERN}
+                    match.group(0), re.I) if match is not None else None)
+                actor_kind = ("concept" if match is None else
+                              "proposal" if match.re in {FUNDS_PATTERN, PASSIVE_PATTERN}
                               else "person" if role else "organization")
                 measure = re.match(
                     r"(?:finanziamento|stanziamento|investimento|intervento|misura)\b",
                     object_name, re.I)
-                object_kind = ("organization" if passive else
+                object_kind = ("concept" if match is None else
+                               "organization" if passive else
                                "measure" if measure or match.re is FUNDS_PATTERN
                                else "proposal")
                 for label, kind in ((actor, actor_kind), (object_name, object_kind)):

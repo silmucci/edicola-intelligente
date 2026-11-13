@@ -81,6 +81,9 @@ solo quando l'identità è dimostrabile. Escludi i nodi privi di nessi utili.
 
 Dai priorità ai passaggi salienti: decisioni, protagonisti, proposte,
 misure economiche e conseguenze esplicite, non soltanto i titoli dei giornali.
+Per ogni vicenda cerca anzitutto i rapporti espliciti tra chi agisce,
+che cosa fa e su quale destinatario o oggetto; preferisci triple concrete
+ai nodi che ripetono interi paragrafi. Non inventare gli elementi assenti.
 Relazioni documented: triple soggetto-predicato-oggetto con soggetto, azione
 e oggetto sostenuti dalla stessa quote. predicate contiene il verbo esatto
 (con negazioni, ausiliari e preposizioni); preserva voce e direzione.
