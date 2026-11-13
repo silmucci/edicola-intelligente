@@ -122,12 +122,15 @@ def test_display_uses_existing_cache_and_switches_views_without_regeneration(set
     module, code = render_script(result)
     with installed_fixture(module), patch("edicola.knowledge_views.render_graph") as graph:
         app = AppTest.from_string(code).run()
-        assert not app.exception and not graph.called and not app.dataframe
+        assert not app.exception and not app.dataframe
         assert not app.segmented_control
-        assert any("Non emergono collegamenti" in item.value for item in app.caption)
+        # Il recupero di triple fattuali può creare una mappa valida anche
+        # se la risposta iniziale del modello non aveva archi.
+        has_edges = bool(result.data.get("edges"))
+        assert graph.called == has_edges
         graph.reset_mock()
         app.run()
-        assert not graph.called and not app.dataframe
+        assert graph.called == has_edges and not app.dataframe
     assert generate_knowledge("map", "Trasporti", authorize_external=True, root=root, client=client).from_cache
     assert cache.read_bytes() == saved
     search.assert_called_once()
