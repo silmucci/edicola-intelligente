@@ -3,7 +3,7 @@
 import re
 
 
-VERSION = "concept-map-v13"
+VERSION = "concept-map-v14"
 # Solo elementi grammaticali trasparenti; niente wildcard che scavalchino altri attori.
 ADVERB = r"(?:oggi|ieri|anche|già|poi|ufficialmente|formalmente|direttamente|definitivamente)"
 AUXILIARY = r"(?:ha|hanno|aveva|avevano|è|sono|era|erano|stato|stata|stati|state)"
