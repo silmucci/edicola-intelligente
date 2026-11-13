@@ -129,6 +129,20 @@ def render_map(result, archive, technical):
         st.session_state["knowledge_map_focus"] = node_id
     render_graph(view, topic=result.topic, selected=focus, on_select=choose)
 
+    # Lettura editoriale opzionale: solo triple validate, sempre con i passaggi
+    # e i PDF originali. Nessuna sintesi generata senza prove.
+    documented = [edge for edge in view["edges"] if edge["kind"] == "documented"]
+    if documented:
+        labels = {node["id"]: node["label"] for node in data["nodes"]}
+        with st.expander("I fatti principali, documentati dai quotidiani", expanded=False):
+            for i, edge in enumerate(documented[:8]):
+                left, right = labels[edge["from_id"]], labels[edge["to_id"]]
+                st.markdown(f"**{readable(left)}** — {readable(edge['label'])} — **{readable(right)}**")
+                for evidence in edge.get("evidence", [])[:2]:
+                    st.caption(evidence["quote"])
+                compact_sources(edge["source_ids"], result.sources, archive,
+                                f"map_main_fact_{i}", articles=articles)
+
     if focus:
         selected = next(n for n in view["nodes"] if n["id"] == focus)
         with st.container(border=True):
