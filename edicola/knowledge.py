@@ -27,7 +27,7 @@ from edicola.map_context import contiguous, select_map_chunks
 from edicola.knowledge_presentation import TIMELINE_CONTENT_VERSION
 from edicola.proposal_extraction import proposal_items
 from edicola.knowledge_fallback import graph_candidates, source_developments
-from edicola.map_literal import literal_candidates, complete_nodes, semantic_candidates
+from edicola.map_literal import literal_candidates, complete_nodes, semantic_candidates, refine_proposal_nodes
 from edicola.knowledge_relevance import Topic, select_topic_chunks, select_visual_evidence, VISUAL_RETRIEVAL_VERSION, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION, scope_timeline
 from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
                                        selection_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION)
@@ -400,6 +400,9 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
             if kind == "map":
                 original_nodes, original_edges = len(raw_data.get("nodes", [])), len(raw_data.get("edges", []))
                 raw_data = graph_candidates(raw_data, sources, topic)
+                # Disambigua una proposta soltanto quando la denominazione
+                # completa compare letteralmente nelle citazioni del nodo.
+                raw_data = refine_proposal_nodes(raw_data)
                 extraction_counts["grounded_nodes_added"] = len(raw_data["nodes"]) - original_nodes
                 extraction_counts["grounded_edges_added"] = len(raw_data["edges"]) - original_edges
             if kind == "map":
