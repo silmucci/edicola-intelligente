@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from edicola.knowledge_relevance import Topic, RELATION_CUES
+from edicola.knowledge_relevance import Topic, RELATION_CUES, terms
 
 
 SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?;])\s+|\n+")
@@ -40,7 +40,12 @@ def map_excerpts(text: str, topic: str, *, budget: int = 1350, max_passages: int
         if not 20 <= len(segment) <= budget:
             continue
         lexical = matcher.score(segment)
-        if lexical <= 0:
+        # Una domanda generica come "Finanziamenti" può lasciare il focus
+        # lessicale vuoto. In tal caso il ranking non deve premiare
+        # qualunque frase irrilevante o ripetuta del quotidiano.
+        explicitly_related = bool(terms(topic) & terms(segment))
+        has_action = bool(RELATION_CUES.search(segment) or IMPORTANT.search(segment))
+        if lexical <= 0 or not (explicitly_related or has_action):
             continue
         verbs = len(RELATION_CUES.findall(segment)) + len(IMPORTANT.findall(segment))
         numeric = bool(re.search(r"\b\d+(?:[.,]\d+)?\s*(?:%|euro|milion\w*|miliard\w*|vot\w*)", segment, re.I))
@@ -73,6 +78,8 @@ def map_prompt_source(source, article, topic, *, excerpt_budget=1350):
         # i confini per impedire al modello di unire citazioni diverse.
         item["text"] = "\n\n".join(passages)
     else:
-        item["text"] = source.text
+        # Non inoltrare al modello un intero chunk enorme privo di passaggi
+        # selezionabili: verrà escluso dalla scelta delle fonti per la Mappa.
+        item["text"] = source.text if len(source.text) <= excerpt_budget else ""
     item["excerpts_are_original"] = True
     return item
