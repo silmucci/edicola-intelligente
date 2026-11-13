@@ -82,6 +82,28 @@ _GENERIC_SECTIONS = {
     "il provvedimento", "il ddl", "la legge", "il programma", "il piano",
     "la misura", "le misure", "le risorse", "le novità", "il senato",
 }
+_UNINFORMATIVE_PURPOSE = re.compile(
+    r"^(?:questa?|queste?|quella?|quelle?|tale|suddetta?|"
+    r"il\s+provvedimento|la\s+legge|la\s+misura|le\s+misure)\b"
+    r"|\b(?:edizione\s+del|pagina\s+\d+|pagg?\.?\s*\d+)\b"
+    r"|\b\d{1,2}/\d{1,2}/\d{4}\b",
+    re.I,
+)
+_PROSE_VERBS = re.compile(
+    r"\b(?:ha|hanno|è|sono|era|erano|sarà|saranno|"
+    r"prevede|previsto|annuncia|dichiara|approva|contrasta)\b", re.I
+)
+
+
+def informative_purpose(value: str) -> bool:
+    """Solo denominazioni leggibili, senza deittici o artefatti di pagina."""
+    words = value.strip().split()
+    return (2 <= len(words) <= 12
+            and len(value.strip()) >= 8
+            and not _UNINFORMATIVE_PURPOSE.search(value)
+            and not _PROSE_VERBS.search(value))
+
+
 _PURPOSE_AFTER = re.compile(
     r"\bper\s+((?:l['’]|il\s+|la\s+|le\s+|gli\s+|i\s+)?[^,.;!?]{7,85})",
     re.I,
@@ -104,17 +126,17 @@ def described_purpose(sentence: str, amount) -> tuple[str, str] | None:
     header = SECTION.match(sentence)
     if header:
         title = " ".join(header.group(1).split()).strip(" «»“”\"")
-        if title.casefold() not in _GENERIC_SECTIONS and len(title.split()) >= 2:
+        if title.casefold() not in _GENERIC_SECTIONS and informative_purpose(title):
             return title, "section"
     before = _PURPOSE_BEFORE.search(sentence[:amount.start()])
     if before:
         purpose = " ".join(before.group("purpose").split()).strip(" «»“”\"")
-        if len(purpose.split()) <= 15:
+        if informative_purpose(purpose):
             return purpose, "beneficiary"
     match = _PURPOSE_AFTER.search(sentence, amount.end())
     if match:
         purpose = " ".join(match.group(1).split()).strip(" «»“”\"")
-        if len(purpose) >= 8 and len(purpose.split()) <= 15:
+        if informative_purpose(purpose):
             return purpose, "beneficiary"
     return None
 
