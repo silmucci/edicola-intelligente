@@ -145,9 +145,11 @@ def test_map_switch_to_readable_list_keeps_evidence_without_api():
         app = AppTest.from_string(code).run()
         assert not app.exception and graph.called
         graph.reset_mock()
-        app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert not app.exception and not graph.called and not app.dataframe
+        app.session_state["knowledge_map_focus"] = "N1"
+        app.run()
+        assert not app.exception and graph.called and not app.dataframe
         assert any("stanzia oltre quattro milioni" in t.value for t in app.text)
+        assert not any(c.key == "knowledge_map_view" for c in app.segmented_control)
         api.assert_not_called()
 
 
