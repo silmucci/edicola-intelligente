@@ -67,7 +67,7 @@ export default function({parentElement,data,setTriggerValue}){
  let leaves=0;
  const place=id=>{
   const kids=children.get(id)||[];
-  if(!kids.length){const x=40+leaves++*stepX;center.set(id,x);return x;}
+  if(!kids.length){const x=144+leaves++*stepX;center.set(id,x);return x;}
   const centers=kids.map(place);
   const x=(centers[0]+centers[centers.length-1])/2;
   center.set(id,x);return x;
