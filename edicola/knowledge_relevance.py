@@ -162,6 +162,18 @@ def select_topic_chunks(topic, chunks, hits, limit, *, preserve_editions=False):
 
 GENERIC_PREDICATE = re.compile(r"^(?:chiede|chiedono|si rivolge|si rivolgono)\s+(?:a|al|alla|ai|alle)$", re.I)
 
+# Un settore da solo non descrive un nesso interessante tra due protagonisti.
+# La Mappa deve privilegiare una decisione, una misura o un soggetto specifico.
+BROAD_MAP_TOPICS = {
+    "agricoltura", "lavoro", "occupazione", "economia", "politica",
+    "energia", "nucleare", "sanità", "salute", "scuola", "istruzione",
+    "trasporti", "ambiente", "territorio", "imprese", "sicurezza",
+    "governo", "legge", "riforma", "finanziamenti", "attualità",
+}
+
+def broad_map_topic(label):
+    return " ".join(label.casefold().split()) in BROAD_MAP_TOPICS
+
 
 def scoped_score(topic, evidence, sources, anchor, contexts):
     score = topic.evidence_score(evidence, sources, anchor=anchor)
@@ -208,6 +220,8 @@ def relevant_map(data, raw, sources, topic, *, contexts=None):
             relevant = bool(scoped_score(topic, edge["evidence"], sources, anchor, contexts or {}))
         if not {edge["from_id"], edge["to_id"]} <= ids or not relevant:
             rejected.append({"edge": i, "reason": "off_topic"})
+        elif edge["kind"] == "thematic" and broad_map_topic(edge.get("topic") or edge["label"]):
+            rejected.append({"edge": i, "reason": "generic_topic_not_informative"})
         elif GENERIC_PREDICATE.fullmatch(edge["label"]):
             secondary.append(edge)
             rejected.append({"edge": i, "reason": "generic_predicate_details_only"})
