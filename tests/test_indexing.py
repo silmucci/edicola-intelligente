@@ -388,7 +388,7 @@ def test_knowledge_generation_does_not_write_existing_sqlite_or_vectors(archive_
     sql_files = set(archive_root.rglob("*.sqlite3"))
     before = collection.get(include=["documents", "metadatas", "embeddings"])
     def structured(_client, _model, prompt, _schema, *, system_instruction, **_generation_options):
-        assert "massimo 10" in system_instruction
+        assert "massimo 14" in system_instruction
         source = json.loads(prompt)["sources"][0]
         return json.dumps({"nodes": [{"id": "N1", "kind": "concept", "label": {
             "text": source["text"].split()[0], "evidence": [{"source_id": source["source_id"], "quote": source["text"]}]}}], "edges": []})
