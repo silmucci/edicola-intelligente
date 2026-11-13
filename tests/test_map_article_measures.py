@@ -50,6 +50,8 @@ def test_verified_article_continuation_yields_specific_measures_not_just_mention
     assert any(e["from_id"] == "N1" and e["label"] == "prevede" for e in related)
     assert all(any(e["from_id"] in purposes and e["to_id"] == mid for e in related)
                for mid in measures)
+    assert any(e["label"] == "sono previsti" for e in related)
+    assert any(e["label"] == "sono stanziati" for e in related)
     assert all(edge["source_ids"] and edge["context_scope"] == "same_verified_article"
                for edge in related)
     for edge in related:
