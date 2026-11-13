@@ -28,16 +28,34 @@ ACTION = (
 )
 ACTION_PATTERN = re.compile(
     r"(?<!\w)" + SUBJECT + r"\s+" + ACTION
-    + r"\s+(?:(?:il|lo|la|i|gli|le|un|una|l['’])\s*)?"
+    + r"\s+(?:(?:definitivamente|formalmente|ufficialmente)\s+)?"
+    + r"(?:(?:il|lo|la|i|gli|le|un|una|l['’])\s*)?"
     + r"(?P<object>"
-    + r"(?:(?:disegno|proposta)\s+di\s+legge|decreto|riforma|"
+    + r"(?:(?:disegno|proposta)\s+di\s+legge|ddl|decreto|riforma|"
     + r"piano|progetto|programma|finanziamento|investimento|"
     + r"stanziamento|intervento|misura|accordo|emendamento|legge)"
-    + r"(?:\s+(?:(?-i:[A-ZÀ-ÖØ-Þ])[\w’'-]+|"
+    + r"(?:\s+(?:[«“\"][^»”\"]{3,60}[»”\"]|(?-i:[A-ZÀ-ÖØ-Þ])[\w’'-]+|"
     + r"(?:sul|sulla|dei|delle|del|della|per)\s+\w+)){1,4}"
     + r")",
     re.I,
 )
+# Collegamento fra un provvedimento specifico e risorse quantificate.
+# Solo se soggetto, azione e importo sono tutti nella stessa frase originale.
+FUNDS_PATTERN = re.compile(
+    r"(?<!\w)(?:(?:il|la|lo|l['’])\s*)?"
+    r"(?P<actor>(?:(?:disegno|proposta)\s+di\s+legge|ddl|decreto|"
+    r"programma|piano|progetto)\s+"
+    r"(?:[«“\"][^»”\"]{3,60}[»”\"]|(?-i:[A-ZÀ-ÖØ-Þ])[\w’'-]+))"
+    r"\s+(?P<verb>prevede|stanzia|destina|assegna|finanzia)"
+    r"\s+(?P<object>(?:oltre|circa|fino\s+a)?\s*"
+    r"\d+(?:[.,]\d+)?\s*(?:milion\w*|miliard\w*|euro)"
+    r"(?:\s+di\s+euro)?"
+    r"(?:\s+per\s+(?:l['’]|il\s+|la\s+|le\s+|gli\s+)?"
+    r"[\w’'-]+(?:\s+[\w’'-]+){0,3})?)",
+    re.I,
+)
+
+
 # Senza questi nomi non sappiamo a quale provvedimento si riferisca l'azione.
 GENERIC_OBJECT = re.compile(
     r"^(?:disegno\s+di\s+legge|proposta\s+di\s+legge|decreto|riforma|"
@@ -77,7 +95,7 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
             if len(passage) < 30 or len(passage) > 1400 or len(edges) >= max_edges:
                 continue
             # Non trattare titoli isolati come fatti: serve una proposizione.
-            for match in ACTION_PATTERN.finditer(passage):
+            for match in list(ACTION_PATTERN.finditer(passage)) + list(FUNDS_PATTERN.finditer(passage)):
                 actor, verb, object_name = (match.group(key).strip() for key in ("actor", "verb", "object"))
                 if GENERIC_OBJECT.fullmatch(object_name) or actor.casefold() == object_name.casefold():
                     continue
@@ -93,11 +111,12 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
                     r"\b(?:ministro|ministra|senatore|senatrice|sindaco|sindaca|"
                     r"presidente|deputato|deputata)\s+" + re.escape(actor) + r"\b",
                     match.group(0), re.I)
-                actor_kind = "person" if role else "organization"
+                actor_kind = ("proposal" if match.re is FUNDS_PATTERN
+                              else "person" if role else "organization")
                 measure = re.match(
                     r"(?:finanziamento|stanziamento|investimento|intervento|misura)\b",
                     object_name, re.I)
-                object_kind = "measure" if measure else "proposal"
+                object_kind = "measure" if measure or match.re is FUNDS_PATTERN else "proposal"
                 for label, kind in ((actor, actor_kind), (object_name, object_kind)):
                     key = label.casefold()
                     if key not in labels:
