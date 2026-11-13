@@ -62,6 +62,29 @@ def test_focused_map_does_not_force_unrelated_long_or_generic_subjects():
     assert request_focus("Lavoro e occupazione") is None
 
 
+def test_generic_colon_prompts_do_not_require_exact_title_phrase():
+    broad = (
+        "Sicurezza sul lavoro: incidenti, morti bianche, istituzioni e interventi di prevenzione",
+        "Rinnovo del contratto della sanità privata: sindacati, Ministero del Lavoro, trattative e conseguenze",
+        "Bilancio del Comune dell'Aquila: Consiglio comunale, maggioranza, opposizione e decisioni",
+        "Peste suina africana: controlli, importazioni e soggetti coinvolti",
+        "Ritorno del nucleare in Italia: Governo, Senato e tecnologie previste",
+    )
+    for question in broad:
+        assert request_focus(question) is None, question
+    chunks = [
+        chunk("a", "Morti sul lavoro: 823 vittime nei primi nove mesi.",
+              "sicurezza.pdf", 2, title="Morti sul lavoro: le vittime nel 2026"),
+        chunk("b", "Fallito il tentativo di conciliazione nella sanità privata.",
+              "sanita.pdf", 8, title="Sanità privata, confronto sul rinnovo dei contratti"),
+        chunk("c", "In Consiglio comunale all'Aquila salta il voto sul bilancio.",
+              "comune.pdf", 17, title="Salta il voto sul bilancio consolidato"),
+    ]
+    for question in broad[:3]:
+        assert focused_map_seeds(question, chunks, [],
+                                 fallback=chunks, limit=28) == chunks
+
+
 def test_focused_map_falls_back_when_specific_subject_is_absent():
     available = [chunk("a", "Il Governo presenta le novità sul settore.", "a.pdf", 1)]
     assert focused_map_seeds("ProgettoInesistente: decisioni", available, [], fallback=available) == available
