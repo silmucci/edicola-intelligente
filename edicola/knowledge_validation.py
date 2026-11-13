@@ -288,8 +288,8 @@ def map_dot(data: dict, *, topic="", grouping=False, focused_node=None) -> str:
         label = edge["label"]
         if edge.get("topic"):
             label = edge["topic"]
-        style = "solid" if edge["kind"] == "documented" else "dashed"
-        direction = "forward" if edge["kind"] == "documented" else "none"
+        style = "solid" if edge["kind"] == "documented" else "dotted" if edge["kind"] == "mention" else "dashed"
+        direction = "forward" if edge["kind"] in {"documented", "mention"} else "none"
         lines.append(f'{quote(edge["from_id"])} -> {quote(edge["to_id"])} [label={quote(wrapped(label))}, tooltip={quote(label)}, style={style}, dir={direction}];')
     return "\n".join(lines + ["}"])
 
