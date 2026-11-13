@@ -93,17 +93,17 @@ _GENERIC_VERBS = (
     r"convocato|segnalato|raggiunto|ridotto|aumentato|"
     r"rilanciato|selezionato|votato)"
 )
-_DETERMINER = r"(?:(?:il|lo|la|i|gli|le|un|una|uno)\\s+|l['’])?"
+_DETERMINER = r"(?:(?:il|lo|la|i|gli|le|un|una|uno)\s+|l['’])?"
 GENERIC_ACTION_PATTERN = re.compile(
-    r"^\\s*" + _DETERMINER
-    + r"(?P<actor>[\\wÀ-ÿ’'-]+(?:\\s+(?!(?:ha|hanno|aveva|avevano|non)\\b)[\\wÀ-ÿ’'-]+){0,6})"
-    + r"\\s+(?P<verb>(?:ha|hanno|aveva|avevano)\\s+" + _GENERIC_VERBS + r")"
-    + r"\\s+(?:(?:oggi|ieri|poi|già|ufficialmente|definitivamente)\\s+)?"
-    + _DETERMINER + r"(?P<object>[^,.;!?]{6,150}?)\\s*[.?!]?\\s*$",
+    r"^\s*" + _DETERMINER
+    + r"(?P<actor>[\wÀ-ÿ’'-]+(?:\s+(?!(?:ha|hanno|aveva|avevano|non)\b)[\wÀ-ÿ’'-]+){0,6})"
+    + r"\s+(?P<verb>(?:ha|hanno|aveva|avevano)\s+" + _GENERIC_VERBS + r")"
+    + r"\s+(?:(?:oggi|ieri|poi|già|ufficialmente|definitivamente)\s+)?"
+    + _DETERMINER + r"(?P<object>[^,.;!?]{6,150}?)\s*[.?!]?\s*$",
     re.I,
 )
-_GENERIC_CLAUSE = re.compile(r"^(?:che|se|come)\\b|\\b(?:sarebbe|avrebbe|potrebbe|dovrebbe)\\b", re.I)
-_GENERIC_TAIL = re.compile(r"\\s+(?:durante|davanti\\s+a|presso|dopo|grazie\\s+a|in\\s+occasione\\s+di)\\b", re.I)
+_GENERIC_CLAUSE = re.compile(r"^(?:che|se|come)\b|\b(?:sarebbe|avrebbe|potrebbe|dovrebbe)\b", re.I)
+_GENERIC_TAIL = re.compile(r"\s+(?:durante|davanti\s+a|presso|dopo|grazie\s+a|in\s+occasione\s+di)\b", re.I)
 
 
 def generic_action(passage: str):
