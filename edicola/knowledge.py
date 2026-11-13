@@ -258,8 +258,10 @@ def verified_source_fallback(kind, topic, sources, catalog, matcher, contexts, c
             diagnostics.update(relevance)
             useful = bool(data["edges"])
             if useful:
-                # Anche in modalità di riserva: stessi archi di menzione
-                # verificati e nessuna falsa relazione fra protagonisti.
+                # Conserva i dettagli delle misure descritte nell'articolo
+                # verificato anche quando il modello remoto non risponde.
+                data = article_measure_facts(data, sources, articles, topic)
+                # Anche in modalità di riserva: menzioni separate da fatti.
                 data = enrich_map_with_provenance(data, sources, articles, catalog.coverage)
         if not useful:
             return None
