@@ -80,8 +80,8 @@ def story_graph(data: dict, topic: str, *, limit: int = 14, sources=()) -> dict:
     used_context = set()
     for detail in contextual:
         child = nodes[detail["to_id"]]
-        parent = nodes[detail["from_id"]]
-        if child["kind"] != "measure" or parent["kind"] != "concept":
+        origin_node = nodes[detail["from_id"]]
+        if child["kind"] != "measure" or origin_node["kind"] != "concept":
             continue
         introductory = next((edge for edge in contextual
                              if edge["to_id"] == detail["from_id"]
