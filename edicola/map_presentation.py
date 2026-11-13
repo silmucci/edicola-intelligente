@@ -27,6 +27,10 @@ def node_caption(node):
     Nomi propri e frasi non riconosciute rimangono completi e vanno a capo.
     """
     text = " ".join(node["label"].split())
+    if node["kind"] in {"article", "source"} and len(text) > 112:
+        # Il nodo è un riferimento secondario; il titolo completo resta
+        # disponibile nel pannello di lettura e nella fonte originale.
+        text = text[:108].rsplit(" ", 1)[0] + "…"
     if node["kind"] in {"measure", "proposal", "concept"} and NOMINAL.match(text):
         text = re.sub(r"\bcredito di imposta\b", "credito d’imposta", text, flags=re.I)
         text = re.sub(r"\s+(?:del|della|dello|dei|degli|delle)\s+", " ", text, flags=re.I)
