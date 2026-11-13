@@ -44,6 +44,18 @@ def test_map_extracts_proven_senate_decision_without_dependence_on_a_named_case(
                for proof in edge["evidence"])
 
 
+def test_map_preserves_explicit_person_role_and_measure_category():
+    sentence = "Il ministro Rossi ha presentato il piano Trasporti."
+    source = Source("S1", "c1", "giornale.pdf", 2, sentence, .1)
+    raw = complete_salient_facts({"nodes": [], "edges": []}, [source], "Rossi piano Trasporti")
+    kinds = {n["label"]["text"]: n["kind"] for n in raw["nodes"]}
+    assert kinds["Rossi"] == "person"
+    assert kinds["piano Trasporti"] == "proposal"
+    checked, counts = validate_map(raw, [source])
+    assert counts["accepted_edges"] == 1
+    assert checked["edges"][0]["label"] == "ha presentato"
+
+
 def test_map_does_not_invent_a_decision_from_a_conditional_phrase():
     sentence = "Il Senato potrebbe approvare il disegno di legge ColtivaItalia."
     source = Source("S1", "c1", "giornale.pdf", 4, sentence, .1)
