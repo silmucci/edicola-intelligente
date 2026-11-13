@@ -39,9 +39,9 @@ def test_concept_only_map_is_visual_but_has_no_factual_or_decorative_edges():
     with installed_fixture(module), patch("google.genai.Client") as api, patch(
         "edicola.knowledge_views.render_graph") as graph:
         app = AppTest.from_string(code).run()
-        assert not app.exception and graph.called
+        assert not app.exception and not graph.called
         assert not app.info
-        # Il grafo mostra anche concetti isolati, senza inventare archi decorativi.
+        assert any("Non emergono collegamenti" in item.value for item in app.caption)
         assert not app.dataframe
         assert not app.segmented_control
         api.assert_not_called()
