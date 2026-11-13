@@ -13,6 +13,7 @@ from collections import defaultdict
 import re
 
 from edicola.knowledge_relevance import Topic, terms
+from edicola.map_facts import generic_action
 
 _CONTENT = re.compile(
     r"\b(?:approv\w*|respint\w*|bocciat\w*|vot\w*|"
@@ -145,35 +146,29 @@ def verified_news_relations(data, sources, articles, topic, *,
         nodes.append({"id": hub_id, "kind": "event", "label": title,
                       "source_ids": distinct_ids,
                       "origin": "verified_article_story"})
-        # Se nello stesso articolo è già stata verificata una tripla
-        # fattuale, connettila alla vicenda. "Documenta" è un rapporto
-        # editoriale, non un'azione o una causa inventata.
-        for fact in edges[:]:
-            if fact.get("kind") != "documented":
-                continue
-            proofs = fact.get("source_ids", [])
-            if not any(sid in distinct_ids for sid in proofs):
-                continue
-            if fact["from_id"] == hub_id or fact["to_id"] == hub_id:
-                continue
-            proof = next((item for item in fact.get("evidence", [])
-                          if item.get("source_id") in distinct_ids), None)
-            if proof is None:
-                continue
-            edges.append({"from_id": hub_id, "to_id": fact["from_id"],
-                          "kind": "contextual", "label": "documenta un'azione",
-                          "source_ids": [proof["source_id"]],
-                          "evidence": [proof],
-                          "context_scope": "same_verified_article"})
-            break
-        for _score, source, passage in selected:
+        # Le frasi con un predicato soggetto-verbo-oggetto sono già
+        # rappresentate dai loro archi fattuali, orientati come nella fonte.
+        # Non aggiungiamo un secondo arco titolo -> frase che possa invertire
+        # o duplicare l'azione. Solo i passaggi descrittivi senza SVO restano
+        # come approfondimenti editoriali, senza freccia direzionale.
+        descriptive = [(source, passage) for _score, source, passage in selected
+                       if not generic_action(passage)]
+        if not descriptive:
+            continue
+        hub_id = f"N{next_id}"
+        next_id += 1
+        distinct_ids = list(dict.fromkeys(src.id for src, _ in descriptive))
+        nodes.append({"id": hub_id, "kind": "event", "label": title,
+                      "source_ids": distinct_ids,
+                      "origin": "verified_article_story"})
+        for source, passage in descriptive:
             detail_id = f"N{next_id}"
             next_id += 1
             nodes.append({"id": detail_id, "kind": "concept", "label": passage,
                           "source_ids": [source.id],
                           "origin": "literal_news_statement"})
             edges.append({"from_id": hub_id, "to_id": detail_id,
-                          "kind": "contextual", "label": "riporta",
+                          "kind": "contextual", "label": "approfondisce",
                           "source_ids": [source.id],
                           "evidence": [{"source_id": source.id, "quote": passage}],
                           "context_scope": "same_verified_article"})
@@ -217,7 +212,7 @@ def same_paragraph_relations(data, sources, topic, *, max_stories=2):
             ])
             edges.append({
                 "from_id": primary_id, "to_id": secondary_id,
-                "kind": "contextual", "label": "stesso passaggio",
+                "kind": "contextual", "label": "approfondisce",
                 "source_ids": [source.id],
                 "evidence": [{"source_id": source.id, "quote": primary},
                              {"source_id": source.id, "quote": partner}],

@@ -27,7 +27,7 @@ def test_broad_map_without_explicit_triples_keeps_documented_headline_observatio
     assert len(data["nodes"]) >= 2
     assert 1 <= len(data["edges"]) <= 2
     assert all(edge["kind"] == "contextual" and
-               edge["label"] == "il titolo riporta" and
+               edge["label"] == "sintetizza" and
                edge["context_scope"] == "verified_article_title" and
                edge["evidence"] == [{"source_id": "S1", "quote": title}]
                for edge in data["edges"])

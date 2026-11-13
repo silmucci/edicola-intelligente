@@ -8,7 +8,7 @@ from edicola.rag import Source
 
 TITLE = "ColtivaItalia: via libera definitivo dal Senato"
 START = ('Il disegno di legge "ColtivaItalia" è stato approvato dal Senato. '
-         'Il provvedimento prevede uno stanziamento di oltre 1,1 miliardi di euro per l’agricoltura.')
+         'Il provvedimento prevede uno stanziamento di oltre 1,1 miliardi di euro per rafforzare l’agricoltura italiana.')
 FOLLOW = ('Sostegno al ricambio generazionale: sono previsti 150 milioni di euro. '
           'Settore olivicolo: sono previsti 300 milioni di euro per il comparto. '
           'Filiera cerealicola: sono stanziati 10 milioni di euro per il frumento.')
@@ -47,6 +47,7 @@ def test_verified_article_continuation_yields_specific_measures_not_just_mention
     assert purposes and len(measures) >= 3
     assert all(any(e["from_id"] == "N1" and e["to_id"] == pid for e in related)
                for pid in purposes)
+    assert any(e["from_id"] == "N1" and e["label"] == "prevede" for e in related)
     assert all(any(e["from_id"] in purposes and e["to_id"] == mid for e in related)
                for mid in measures)
     assert all(edge["source_ids"] and edge["context_scope"] == "same_verified_article"

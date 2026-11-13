@@ -16,6 +16,20 @@ from edicola.map_retrieval import request_focus
 AMOUNT = re.compile(r"(?<!\w)\d+(?:[.,]\d+)?\s*(?:miliard[oi]|milion[ei]|mila)(?:\s+di\s+euro)?\b", re.I)
 MEASURE = re.compile(r"\b(?:previst[oaie]|stanziat[oaie]|destinat[oaie]|rifinanziat[oaie]|finanziat[oaie]|investiment[oi]|stanziament[oi])\b", re.I)
 SECTION = re.compile(r"^(.{6,55}?):\s+")
+_INITIATIVE_PREDICATE = re.compile(
+    r"\b(?:il|lo|la|l['’]|questo|questa|tale)\s+"
+    r"(?:provvedimento|disegno\s+di\s+legge|proposta|decreto|piano|"
+    r"progetto|programma|riforma|misura|intervento|accordo|contratto|legge)\s+"
+    r"(?P<verb>prevede|destina|stanzia|finanzia|introduce|modifica|"
+    r"rafforza|sostiene|comprende|include|stabilisce|consente|apre|apra)\b",
+    re.I,
+)
+
+
+def initiative_predicate(sentence: str) -> str | None:
+    """Restituisce soltanto il verbo letterale riferito all'iniziativa."""
+    match = _INITIATIVE_PREDICATE.search(sentence)
+    return match.group("verb") if match else None
 
 
 def article_scope(sources, verified):
@@ -199,8 +213,9 @@ def article_measure_facts(data: dict, sources: list, articles: dict, topic: str,
                 purposes[purpose_key] = purpose_id
                 nodes.append({"id": purpose_id, "kind": "concept", "label": purpose,
                               "source_ids": [source.id], "origin": "literal_purpose"})
+                predicate = initiative_predicate(sentence) or "approfondisce"
                 edges.append({"from_id": hub["id"], "to_id": purpose_id,
-                              "kind": "contextual", "label": "ambito dell'intervento",
+                              "kind": "contextual", "label": predicate,
                               "source_ids": [source.id], "evidence": evidence,
                               "context_scope": "same_verified_article"})
             else:

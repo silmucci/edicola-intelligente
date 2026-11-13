@@ -6,6 +6,7 @@ su eventi reali. Non dipendono da un singolo nome di legge.
 import pytest
 
 from edicola.map_news_events import verified_news_relations, same_paragraph_relations
+from edicola.map_facts import complete_verified_relations
 from edicola.map_headline_facts import reported_headline_facts
 from edicola.map_story import story_graph
 from edicola.map_retrieval import request_focus
@@ -40,14 +41,18 @@ from edicola.rag import Source
 ])
 def test_verified_newspaper_issues_create_sourced_maps_without_specific_law(topic, title, body):
     source = Source("S1", "chunk1", "giornale.pdf", 7, body, .08)
-    raw = {"nodes": [], "edges": []}
+    original = {"nodes": [], "edges": []}
+    raw = complete_verified_relations(original, [source], topic,
+                                      article_titles={"S1": {"title": title, "pages": [7]}})
     enriched = verified_news_relations(raw, [source], {"S1": {"title": title, "pages": [7]}}, topic)
-    assert raw == {"nodes": [], "edges": []}
+    assert original == {"nodes": [], "edges": []}
     graph = story_graph(enriched, topic, sources=[source])
     assert graph["nodes"] and graph["edges"], topic
-    assert {edge["kind"] for edge in graph["edges"]} == {"contextual"}
-    assert all(edge["context_scope"] == "same_verified_article" for edge in graph["edges"])
-    assert any(node["kind"] == "event" for node in graph["nodes"])
+    assert {edge["kind"] for edge in graph["edges"]} <= {"documented", "contextual"}
+    assert any(edge["kind"] == "documented" for edge in graph["edges"])
+    assert all(edge["label"] not in {"riporta", "documenta un'azione"} for edge in graph["edges"])
+    assert all(edge["context_scope"] == "same_verified_article"
+               for edge in graph["edges"] if edge["kind"] == "contextual")
     for edge in graph["edges"]:
         assert edge["source_ids"] == ["S1"]
         assert edge["evidence"][0]["quote"] in source.text
@@ -116,11 +121,14 @@ def test_multiple_articles_about_same_theme_remain_separate_without_evidence_of_
         "Le aziende presentano un accordo per il lavoro.", .2)
     articles = {"S1": {"title": "Lavoro e contratti: interventi del ministero"},
                 "S2": {"title": "Lavoro e aziende: accordo in Comune"}}
-    out = verified_news_relations({"nodes": [], "edges": []},
-                                  [first, second], articles,
-                                  "Lavoro: contratti, interventi e accordi")
+    topic = "Lavoro: contratti, interventi e accordi"
+    initial = complete_verified_relations({"nodes": [], "edges": []}, [first, second],
+                                          topic, article_titles=articles)
+    out = verified_news_relations(initial, [first, second], articles, topic)
     nodes = {n["id"]: n for n in out["nodes"]}
     assert out["edges"]
+    assert any(edge["kind"] == "documented" for edge in out["edges"])
+    assert all(edge["label"] != "riporta" for edge in out["edges"])
     for edge in out["edges"]:
         assert len(edge["source_ids"]) == 1
         assert edge["source_ids"][0] in nodes[edge["from_id"]]["source_ids"]

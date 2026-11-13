@@ -152,3 +152,18 @@ def test_paraphrased_label_without_literal_predicate_has_specific_reason():
     assert not result["edges"]
     assert diagnostics["relations_status"] == "all_rejected"
     assert diagnostics["edge_rejection_details"] == {"predicate_not_literal": 1}
+
+
+
+def test_contextual_edges_are_not_drawn_as_directional_arrows():
+    data = {"nodes": [
+        {"id": "N1", "kind": "organization", "label": "Senato", "source_ids": ["S1"]},
+        {"id": "N2", "kind": "proposal", "label": "disegno di legge", "source_ids": ["S1"]}],
+        "edges": [
+            {"from_id": "N1", "to_id": "N2", "kind": "documented",
+             "label": "ha approvato", "source_ids": ["S1"]},
+            {"from_id": "N2", "to_id": "N1", "kind": "contextual",
+             "label": "approfondisce", "source_ids": ["S1"]}]}
+    dot = map_dot(data)
+    assert '"N1" -> "N2"' in dot and "dir=forward" in dot
+    assert '"N2" -> "N1"' in dot and "dir=none" in dot

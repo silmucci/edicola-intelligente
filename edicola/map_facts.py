@@ -81,27 +81,55 @@ GENERIC_OBJECT = re.compile(
 )
 
 
-# Azioni dirette di cronaca, sport, cultura, ricerca e vertenze: nessuna
-# lista di soggetti o temi. Si riconosce solo una proposizione esplicita
-# con ausiliare e participio, poi il validatore ricontrolla la citazione.
+# Predicati frequenti nella cronaca nazionale e locale. La forma mostrata
+# nel grafo viene sempre copiata dalla frase originale e rivalidata: questa
+# lista serve solo a trovare candidati, non a inventare sinonimi o relazioni.
 _GENERIC_VERBS = (
-    r"(?:approvato|respinto|annunciato|presentato|finanziato|stanziato|"
-    r"firmato|chiesto|avviato|inaugurato|aperto|chiuso|sospeso|"
-    r"annullato|organizzato|realizzato|completato|pubblicato|"
-    r"denunciato|conquistato|vinto|scoperto|rilevato|ottenuto|"
-    r"lanciato|proposto|adottato|sostenuto|confermato|bloccato|"
-    r"convocato|segnalato|raggiunto|ridotto|aumentato|"
-    r"rilanciato|selezionato|votato)"
+    r"(?:approvat[oaie]|respint[oaie]|annunciat[oaie]|presentat[oaie]|"
+    r"finanziat[oaie]|stanziat[oaie]|firmat[oaie]|chiest[oaie]|avviat[oaie]|"
+    r"inaugurat[oaie]|apert[oaie]|chius[oaie]|sospes[oaie]|annullat[oaie]|"
+    r"organizzat[oaie]|realizzat[oaie]|completat[oaie]|pubblicat[oaie]|"
+    r"denunciat[oaie]|conquistat[oaie]|vint[oaie]|scopert[oaie]|rilevat[oaie]|"
+    r"ottenut[oaie]|lanciat[oaie]|propost[oaie]|adottat[oaie]|sostenut[oaie]|"
+    r"confermat[oaie]|bloccat[oaie]|convocat[oaie]|segnalat[oaie]|raggiunt[oaie]|"
+    r"ridott[oaie]|aumentat[oaie]|rilanciat[oaie]|selezionat[oaie]|votat[oaie]|"
+    r"sottolineat[oaie]|illustrat[oaie]|registrat[oaie]|cresciut[oaie]|calat[oaie]|"
+    r"fallit[oaie]|riuscit[oaie]|rimast[oaie]|evidenziat[oaie]|indicat[oaie]|"
+    r"contestat[oaie]|criticat[oaie]|rinviat[oaie]|comunicat[oaie])"
 )
-_DETERMINER = r"(?:(?:il|lo|la|i|gli|le|un|una|uno)\s+|l['’])?"
+_GENERIC_PRESENT_VERBS = (
+    r"(?:approva|approvano|respinge|respingono|annuncia|annunciano|"
+    r"presenta|presentano|prevede|prevedono|stanzia|stanziano|"
+    r"destina|destinano|finanzia|finanziano|chiede|chiedono|"
+    r"sollecita|sollecitano|dichiara|dichiarano|sostiene|sostengono|"
+    r"critica|criticano|contesta|contestano|denuncia|denunciano|"
+    r"segnala|segnalano|rileva|rilevano|registra|registrano|"
+    r"conferma|confermano|indica|indicano|evidenzia|evidenziano|"
+    r"dimostra|dimostrano|apre|aprono|apra|chiude|chiudono|"
+    r"coinvolge|coinvolgono|colpisce|colpiscono|vince|vincono|"
+    r"conquista|conquistano|ottiene|ottengono|propone|propongono|"
+    r"firma|firmano|vota|votano|discute|discutono|rinvia|rinviano|"
+    r"sospende|sospendono|blocca|bloccano|avvia|avviano|"
+    r"inaugura|inaugurano|lancia|lanciano|rafforza|rafforzano|"
+    r"riduce|riducono|aumenta|aumentano|cresce|crescono|"
+    r"cala|calano|sale|salgono|scende|scendono|organizza|organizzano|"
+    r"realizza|realizzano|completa|completano|pubblica|pubblicano|"
+    r"scopre|scoprono|risulta|risultano|fallisce|falliscono)"
+)
+_GENERIC_AUXILIARY = (
+    r"(?:(?:ha|hanno|aveva|avevano)\s+" + _GENERIC_VERBS + r"|"
+    r"(?:è|sono|era|erano)\s+(?:(?:stato|stata|stati|state)\s+)?"
+    + _GENERIC_VERBS + r")"
+)
+_DETERMINER = r"(?:(?:il|lo|la|i|gli|le|un|una|uno|questo|questa|questi|queste|tale|suddetto|suddetta)\s+|l['’])?"
 _POSTVERB_ADJUNCT = (
     r"(?:senza\s+(?:nessun[oa]?|alcun[oa]?)\s+"
     r"(?:(?!(?:il|lo|la|i|gli|le|un|una|uno)\b)[\w’'-]+\s+){1,3})?"
 )
 GENERIC_ACTION_PATTERN = re.compile(
     r"^\s*" + _DETERMINER
-    + r"(?P<actor>[\wÀ-ÿ’'-]+(?:\s+(?!(?:ha|hanno|aveva|avevano|non)\b)[\wÀ-ÿ’'-]+){0,6})"
-    + r"\s+(?P<verb>(?:ha|hanno|aveva|avevano)\s+" + _GENERIC_VERBS + r")"
+    + r"(?P<actor>[\wÀ-ÿ’'-]+(?:\s+(?!(?:ha|hanno|aveva|avevano|è|sono|era|erano|non)\b)[\wÀ-ÿ’'-]+){0,6})"
+    + r"\s+(?P<verb>(?:" + _GENERIC_AUXILIARY + r"|" + _GENERIC_PRESENT_VERBS + r"))"
     + r"\s+(?:(?:oggi|ieri|poi|già|ufficialmente|definitivamente)\s+)?"
     + _POSTVERB_ADJUNCT + _DETERMINER
     + r"(?P<object>[^,.;!?]{6,150}?)\s*[.?!]?\s*$",
@@ -141,7 +169,9 @@ def generic_action(passage: str):
         actor, verb = match.group("actor", "verb")
         object_name = _GENERIC_TAIL.split(match.group("object"), maxsplit=1)[0].strip(' \t«»“”"')
         if (_GENERIC_CLAUSE.search(object_name) or len(object_name) < 7
-                or len(actor) < 3 or actor.casefold() == object_name.casefold()):
+                or len(actor) < 3 or actor.casefold() == object_name.casefold()
+                or re.match(r"^(?:nei|nelle|nella|nel|durante|dopo|prima|oggi|ieri|"
+                            r"secondo|per|in)\b", actor, re.I):
             continue
         # Anche con inciso, il validatore controlla l'intera citazione.
         if documented_relation(actor, verb, object_name, passage):
@@ -224,16 +254,40 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
                     r"\b(?:ministro|ministra|senatore|senatrice|sindaco|sindaca|"
                     r"presidente|deputato|deputata)\s+" + re.escape(actor) + r"\b",
                     match.group(0), re.I) if match is not None else None)
-                actor_kind = ("concept" if match is None else
-                              "proposal" if match.re in {FUNDS_PATTERN, PASSIVE_PATTERN}
-                              else "person" if role else "organization")
+                if match is None:
+                    if re.search(r"\b(?:senato|camera|parlamento|governo|comune|regione|"
+                                 r"ministero|commissione|sindacat|confartigianato|"
+                                 r"associazione|comitato|azienda|impresa|società|"
+                                 r"università|museo|squadra|club|vigili\s+del\s+fuoco)\b",
+                                 actor, re.I):
+                        actor_kind = "organization"
+                    elif re.search(r"\b(?:provvedimento|disegno\s+di\s+legge|proposta|"
+                                   r"decreto|riforma|piano|progetto|programma|"
+                                   r"accordo|contratto|legge)\b", actor, re.I):
+                        actor_kind = "proposal"
+                    elif re.search(r"\b(?:incidente|scontro|alluvione|incendio|"
+                                   r"manifestazione|protesta|vittime)\b", actor, re.I):
+                        actor_kind = "event"
+                    else:
+                        actor_kind = "concept"
+                else:
+                    actor_kind = ("proposal" if match.re in {FUNDS_PATTERN, PASSIVE_PATTERN}
+                                  else "person" if role else "organization")
                 measure = re.match(
                     r"(?:finanziamento|stanziamento|investimento|intervento|misura)\b",
                     object_name, re.I)
-                object_kind = ("concept" if match is None else
-                               "organization" if passive else
-                               "measure" if measure or match.re is FUNDS_PATTERN
-                               else "proposal")
+                if passive:
+                    object_kind = "organization"
+                elif measure or (match is not None and match.re is FUNDS_PATTERN):
+                    object_kind = "measure"
+                elif re.match(r"(?:disegno\s+di\s+legge|proposta|decreto|riforma|"
+                              r"piano|progetto|programma|accordo|contratto|legge)\b",
+                              object_name, re.I):
+                    object_kind = "proposal"
+                elif match is None:
+                    object_kind = "concept"
+                else:
+                    object_kind = "proposal"
                 for label, kind in ((actor, actor_kind), (object_name, object_kind)):
                     key = label.casefold()
                     if key not in labels:

@@ -31,7 +31,7 @@ def headline_parts(title: str) -> list[str]:
     if not 9 <= len(first) <= 100 or len(tail) < 12:
         return []
     # Due dati nella stessa testata non dimostrano di per sé una
-    # dipendenza: il predicato del grafo resta 'il titolo riporta'.
+    # dipendenza: il titolo li sintetizza, senza introdurre causalità.
     details = [part.strip(" .;,'\"«»“”") for part in re.split(r",\s+", tail)]
     details = [d for d in details if 12 <= len(d) <= 115 and not _BAD.search(d)
                and not _LAYOUT.search(d)]
@@ -44,7 +44,7 @@ def reported_headline_facts(data: dict, sources: list, articles: dict, topic: st
                             *, max_articles: int = 3) -> dict:
     """Fallback editoriale controllato, quando mancano relazioni informative.
 
-    Qualsiasi arco ha la forma 'titolo riporta', con quote esatta dal
+    Qualsiasi arco ha la forma 'il titolo sintetizza', con quote esatta dal
     metadato *verificato* e puntatore al PDF. Non usa il titolo per inventare
     un'approvazione, un rapporto diretto o una conseguenza causale.
     """
@@ -101,7 +101,7 @@ def reported_headline_facts(data: dict, sources: list, articles: dict, topic: st
             if len(edges) >= 28:
                 break
             edges.append({"from_id": identifiers[0], "to_id": detail_id,
-                          "kind": "contextual", "label": "il titolo riporta",
+                          "kind": "contextual", "label": "sintetizza",
                           "source_ids": [source.id],
                           "evidence": [{"source_id": source.id, "quote": title}],
                           "context_scope": "verified_article_title"})

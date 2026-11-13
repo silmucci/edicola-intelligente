@@ -88,7 +88,7 @@ def test_three_independent_stories_survive_a_documented_relation():
             {"id": detail, "kind": "concept", "label": f"Sviluppo documentato numero {index}", "source_ids": ["S1"]},
         ])
         edges.append({"from_id": hub, "to_id": detail,
-                      "kind": "contextual", "label": "riporta", "source_ids": ["S1"],
+                      "kind": "contextual", "label": "approfondisce", "source_ids": ["S1"],
                       "context_scope": "same_verified_article",
                       "evidence": [{"source_id": "S1", "quote": quote}]})
     result = story_graph({"nodes": nodes, "edges": edges}, "Attualità", limit=14)
@@ -159,14 +159,15 @@ def test_verified_article_connects_grounded_action_to_its_story():
     accepted, _ = validate_map(raw, [source])
     complete = verified_news_relations(
         accepted, [source], {"S1": {"title": "Sindacati e sanità privata: richiesta di confronto"}}, topic)
-    hub = next(node for node in complete["nodes"]
-               if node.get("origin") == "verified_article_story")
-    bridge = next(edge for edge in complete["edges"]
-                  if edge["from_id"] == hub["id"] and edge["label"] == "documenta un'azione")
-    assert bridge["source_ids"] == ["S1"]
-    assert bridge["evidence"][0]["quote"] == text
+    labels = {node["id"]: node["label"] for node in complete["nodes"]}
+    fact = next(edge for edge in complete["edges"]
+                if edge["kind"] == "documented" and edge["label"] == "hanno chiesto")
+    assert labels[fact["from_id"]] == "sindacati"
+    assert labels[fact["to_id"]] == "apertura di un tavolo di confronto sulla sanità privata"
+    assert not any(edge["label"] in {"riporta", "documenta un'azione"}
+                   for edge in complete["edges"])
     graph = story_graph(complete, topic, sources=[source])
-    assert bridge in graph["edges"]
+    assert fact in graph["edges"]
 
 
 def test_initial_adverbial_does_not_hide_a_literal_relation():
@@ -245,3 +246,25 @@ def test_factual_completion_survives_full_model_node_budget():
     assert any(e["label"] == "ha presentato" for e in done["edges"])
     graph = story_graph(done, "Comitato civico e quartiere", sources=[source])
     assert any(e["kind"] == "documented" for e in graph["edges"])
+
+
+
+@pytest.mark.parametrize("sentence,actor,verb,object_name", [
+    ("Il provvedimento prevede uno stanziamento di 1,1 miliardi per l'agricoltura italiana.",
+     "provvedimento", "prevede", "stanziamento di 1,1 miliardi per l'agricoltura italiana"),
+    ("Il rapporto registra un aumento degli incidenti nei luoghi di lavoro.",
+     "rapporto", "registra", "aumento degli incidenti nei luoghi di lavoro"),
+    ("Questa riforma apre una nuova prospettiva per le imprese artigiane italiane.",
+     "riforma", "apre", "nuova prospettiva per le imprese artigiane italiane"),
+])
+def test_newspaper_present_tense_predicates_become_directional_facts(sentence, actor, verb, object_name):
+    from edicola.map_facts import complete_salient_facts
+    from edicola.knowledge_validation import validate_map
+    source = Source("S1", "chunk", "quotidiano.pdf", 3, sentence, .1)
+    raw = complete_salient_facts({"nodes": [], "edges": []}, [source], sentence)
+    checked, diagnostics = validate_map(raw, [source])
+    labels = {node["id"]: node["label"] for node in checked["nodes"]}
+    assert any(labels[edge["from_id"]] == actor
+               and edge["label"] == verb
+               and labels[edge["to_id"]] == object_name
+               for edge in checked["edges"]), diagnostics
