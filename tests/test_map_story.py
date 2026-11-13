@@ -75,6 +75,21 @@ def test_passive_approval_with_an_apposition_survives_source_validation():
     assert by_id[edge["to_id"]] == "Senato"
 
 
+def test_pdf_linebreaks_keep_the_passive_decision_in_one_proven_sentence():
+    from edicola.map_facts import original_sentences
+    pdf_text = ('Il disegno di legge "PonteVerde", il più grande piano strategico\\n'
+                'per il territorio, è\\n stato approvato dal Senato con 76 voti.').replace('\\n', '\n')
+    source = Source("S1", "c1", "giornale.pdf", 44, pdf_text, .1)
+    sentences = list(original_sentences(pdf_text))
+    assert len(sentences) == 1
+    raw = complete_salient_facts({"nodes": [], "edges": []}, [source],
+                                 "PonteVerde: approvazione e protagonisti")
+    assert raw["edges"], "Le righe tipografiche non devono spezzare la tripla"
+    checked, metrics = validate_map(raw, [source])
+    assert metrics["accepted_edges"] == 1
+    assert checked["edges"][0]["label"] == "è stato approvato dal"
+
+
 def test_map_does_not_invent_a_decision_from_a_conditional_phrase():
     sentence = "Il Senato potrebbe approvare il disegno di legge ColtivaItalia."
     source = Source("S1", "c1", "giornale.pdf", 4, sentence, .1)
