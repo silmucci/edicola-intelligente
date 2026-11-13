@@ -6,7 +6,7 @@ import streamlit as st
 
 from edicola.design_tokens import COLORS, scoped_css
 from edicola.map_presentation import GROUPS, node_captions
-from edicola.knowledge_validation import map_focus
+from edicola.map_story import story_focus
 
 CSS = scoped_css("""
 .viewport{max-width:100%;max-height:75vh;overflow:auto;overscroll-behavior:contain;border:1px solid var(--edi-border);border-radius:var(--edi-radius);background:radial-gradient(circle at 20% 20%,var(--edi-surface),var(--edi-paper) 70%);font-family:var(--edi-sans);color:var(--edi-ink)}
@@ -43,16 +43,20 @@ export default function({parentElement,data,setTriggerValue}){
   if(visited.has(seed.id))continue;
   let level=[seed.id];visited.add(seed.id);
   while(level.length){
-   for(let i=0;i<level.length;i+=2)rows.push(level.slice(i,i+2));
+   for(let i=0;i<level.length;i+=3)rows.push(level.slice(i,i+3));
    const next=[];for(const id of level)for(const other of neighbors.get(id))if(!visited.has(other)){visited.add(other);next.push(other);}level=next;
   }
  }
- if(!data.edges.length){rows.length=0;for(let i=0;i<ordered.length;i+=2)rows.push(ordered.slice(i,i+2).map(node=>node.id));}
- const columns=rows.some(row=>row.length>1)?2:1,width=columns===2?608:336;
+ if(!data.edges.length){rows.length=0;for(let i=0;i<ordered.length;i+=3)rows.push(ordered.slice(i,i+3).map(node=>node.id));}
+ const columns=rows.some(row=>row.length>1)?3:1,width=columns===3?900:336;
  const gap=Math.max(100,30+15*Math.max(1,...data.edges.map(edge=>Math.ceil(edge.label.length/24))));
  let top=30;
  rows.forEach((row,rowIndex)=>{const height=Math.max(...row.map(id=>byId.get(id).height));
-  row.forEach((id,column)=>{const node=byId.get(id);node.x=columns===1||row.length===1?(width-208)/2:column===0?28:372;node.y=top;node.row=rowIndex;node.button.style.left=node.x+'px';node.button.style.top=top+'px';});top+=height+gap;
+  row.forEach((id,column)=>{const node=byId.get(id);
+    const positions=row.length===1?[(width-208)/2]:
+      row.length===2?[(width-208)/2-186,(width-208)/2+186]:[26,346,666];
+    node.x=positions[column];node.y=top;node.row=rowIndex;
+    node.button.style.left=node.x+'px';node.button.style.top=top+'px';});top+=height+gap;
  });
  const height=Math.max(140,top-60);canvas.style.width=width+'px';canvas.style.height=height+'px';svg.setAttribute('width',width);svg.setAttribute('height',height);
  for(const [index,edge] of data.edges.entries()){
@@ -93,4 +97,4 @@ def render_graph(data, *, topic, selected, on_select):
         index = st.session_state.get(key, {}).get("selected")
         if type(index) is int and 0 <= index < len(data["nodes"]):
             on_select(data["nodes"][index]["id"])
-    graph_component(data={**payload, "selected": selected, "focus": map_focus(data, topic), "primary": COLORS["primary"]}, key=key, on_selected_change=choose)
+    graph_component(data={**payload, "selected": selected, "focus": story_focus(data, topic), "primary": COLORS["primary"]}, key=key, on_selected_change=choose)
