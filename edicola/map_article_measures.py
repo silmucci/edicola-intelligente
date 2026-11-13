@@ -188,3 +188,72 @@ def article_measure_facts(data: dict, sources: list, articles: dict, topic: str,
     # Se non sono emersi interventi attribuibili, non mostrare neanche
     # un hub recuperato automaticamente e privo di relazioni.
     return {**data, "nodes": nodes, "edges": edges} if len(edges) > len(data["edges"]) else data
+
+
+# Il titolo è fonte giornalistica verificata, ma non equivale a
+# un predicato fattuale attestato dal corpo dell'articolo.
+_HEADLINE_ACTION = re.compile(
+    r"(?P<action>via\s+libera(?:\s+(?:definitivo|finale))?|"
+    r"approvazione(?:\s+definitiva)?)\s+"
+    r"(?:da\s+parte\s+)?d(?:al|alla)\s+"
+    r"(?P<institution>Senato|Camera|Parlamento|Governo|"
+    r"Consiglio\s+dei\s+ministri|Consiglio\s+regionale|"
+    r"Commissione\s+[A-ZÀ-ÖØ-Þ][\w’'-]+)\b",
+    re.I,
+)
+
+
+def verified_headline_actions(data: dict, sources: list, articles: dict, topic: str):
+    """Rappresenta l'azione dichiarata nel TITOLO verificato, se esplicita.
+
+    L'arco è CONTEXTUAL (titolo giornalistico), non un'azione verificata
+    dalla citazione del corpo. Non deduce un ruolo da una semplice menzione.
+    """
+    focus = request_focus(topic)
+    if not focus:
+        return data
+    focused = re.compile(r"(?<!\w)" + re.escape(focus) + r"(?!\w)", re.I)
+    hubs = [node for node in data.get("nodes", [])
+            if node.get("kind") in {"proposal", "event"}
+            and focused.search(node.get("label", ""))]
+    if len(hubs) != 1:
+        return data
+    hub = hubs[0]
+    names = {n["label"].casefold(): n["id"] for n in data.get("nodes", [])
+             if n.get("kind") == "organization"}
+    nodes, edges = list(data["nodes"]), list(data["edges"])
+    next_id = max((int(n["id"][1:]) for n in nodes
+                   if re.fullmatch(r"N\d+", n["id"])), default=0) + 1
+    seen = set()
+    for source in sources:
+        item = articles.get(source.id)
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title", "")
+        if not isinstance(title, str) or not focused.search(title):
+            continue
+        match = _HEADLINE_ACTION.search(title)
+        if not match or source.filename not in {
+                s.filename for s in sources if s.id in hub.get("source_ids", [])}:
+            continue
+        institution, action = match.group("institution"), match.group("action")
+        signature = (institution.casefold(), action.casefold())
+        if signature in seen:
+            continue
+        seen.add(signature)
+        if institution.casefold() not in names:
+            names[institution.casefold()] = f"N{next_id}"
+            next_id += 1
+            nodes.append({"id": names[institution.casefold()], "kind": "organization",
+                          "label": institution, "source_ids": [source.id],
+                          "origin": "verified_headline"})
+        edges.append({
+            "from_id": names[institution.casefold()], "to_id": hub["id"],
+            "kind": "contextual", "label": action,
+            "source_ids": [source.id],
+            "evidence": [{"source_id": source.id, "quote": title}],
+            "context_scope": "verified_article_title",
+        })
+        if len(seen) >= 2:
+            break
+    return {**data, "nodes": nodes, "edges": edges} if seen else data
