@@ -96,7 +96,7 @@ export default function({parentElement,data,setTriggerValue}){
   let x1=a.x+104,y1=down?a.y+a.height:a.y,x2=b.x+104,y2=down?b.y:b.y+b.height,path,labelX,labelY,rotate=false;
   if(same){x1=a.x+(a.x<b.x?208:0);x2=b.x+(a.x<b.x?0:208);y1=a.y+a.height/2;y2=b.y+b.height/2;path=`M${x1},${y1} L${x2},${y2}`;labelX=(x1+x2)/2;labelY=Math.min(y1,y2)-12;}
   else if(Math.abs(a.row-b.row)===1){const mid=(y1+y2)/2;path=`M${x1},${y1} C${x1},${mid} ${x2},${mid} ${x2},${y2}`;labelX=(x1+x2)/2;labelY=mid-8;}
-  else {const lane=index%2===0?12:width-12;x1=a.x+(lane<width/2?0:208);x2=b.x+(lane<width/2?0:208);y1=a.y+a.height/2;y2=b.y+b.height/2;path=`M${x1},${y1} L${lane},${y1} L${lane},${y2} L${x2},${y2}`;labelX=lane;labelY=(y1+y2)/2;rotate=true;}
+  else {const mid=(y1+y2)/2;path=`M${x1},${y1} C${x1},${mid} ${x2},${mid} ${x2},${y2}`;labelX=(x1+x2)/2;labelY=mid-8;}
   const line=make('path',{d:path,fill:'none',stroke:data.primary,'stroke-width':2.4,'stroke-linejoin':'round'});
   const emphasized=!data.selected||edge.from===data.selected||edge.to===data.selected;
   line.setAttribute('opacity',emphasized?'1':'.2');
