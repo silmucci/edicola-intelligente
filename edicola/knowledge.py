@@ -32,7 +32,7 @@ from edicola.map_ontology import link_entities, enrich_map_with_provenance
 from edicola.map_evidence import map_prompt_source
 from edicola.map_facts import complete_salient_facts
 from edicola.map_retrieval import focused_map_seeds
-from edicola.map_article_measures import article_measure_facts
+from edicola.map_article_measures import article_measure_facts, verified_headline_actions
 from edicola.knowledge_relevance import Topic, select_topic_chunks, select_visual_evidence, VISUAL_RETRIEVAL_VERSION, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION, scope_timeline
 from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
                                        selection_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION)
@@ -258,6 +258,7 @@ def verified_source_fallback(kind, topic, sources, catalog, matcher, contexts, c
             # una iniziativa letterale in un articolo verificato può
             # avere misure quantificate, riportate solo come contesto.
             data = article_measure_facts(data, sources, articles, topic)
+            data = verified_headline_actions(data, sources, articles, topic)
             useful = bool(data["edges"])
             if useful:
                 # Anche in modalità di riserva: menzioni separate da fatti.
@@ -485,6 +486,7 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
                 # verificato del provvedimento, marcati come archi contestuali:
                 # non si trasformano in un'azione attribuita a un protagonista.
                 data = article_measure_facts(data, sources, article_details, topic)
+                data = verified_headline_actions(data, sources, article_details, topic)
                 diagnostics["contextual_measures"] = sum(e["kind"] == "contextual"
                                                          for e in data["edges"])
                 # Ontologia di provenienza, dopo la validazione di fatti e citazioni.
