@@ -71,7 +71,7 @@ def literal_candidates(nodes, sources, contexts):
 
 
 
-def semantic_candidates(nodes, raw_nodes, topic, *, vectors=None, limit=8):
+def semantic_candidates(nodes, raw_nodes, topic, *, vectors=None, existing_edges=(), limit=8):
     """Propone temi comuni fra nodi validi usando estratti distinti.
 
     L'associazione (non causale e non direzionale) deve poi superare
@@ -87,7 +87,10 @@ def semantic_candidates(nodes, raw_nodes, topic, *, vectors=None, limit=8):
               if semantic_terms(word)]
     themes = list(dict.fromkeys(themes))
     candidates = []
+    already = {frozenset((edge["from_id"], edge["to_id"])) for edge in existing_edges}
     for left, right in combinations(nodes, 2):
+        if frozenset((left["id"], right["id"])) in already:
+            continue
         if len(candidates) >= limit:
             break
         first, second = by_id.get(left["id"]), by_id.get(right["id"])
