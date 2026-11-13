@@ -17,6 +17,8 @@ from edicola.knowledge_relevance import Topic, terms
 _CONTENT = re.compile(
     r"\b(?:approv\w*|respint\w*|bocciat\w*|vot\w*|"
     r"rinviat\w*|saltat\w*|salta|"
+    r"discute\w*|discut\w*|esamin\w*|confront\w*|"
+    r"prosegu\w*|riprend\w*|firm\w*|"
     r"annunc\w*|present\w*|decis\w*|decid\w*|"
     r"chied\w*|richiest\w*|sollecit\w*|"
     r"dichiar\w*|critic\w*|accus\w*|sosten\w*|"
