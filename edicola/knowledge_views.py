@@ -121,6 +121,8 @@ def render_map(result, archive, technical):
         legend = "→ Relazione documentata"
         if any(edge["kind"] == "thematic" for edge in view["edges"]):
             legend += " · ┄ Tema comune, senza legame fattuale"
+        if any(edge["kind"] == "contextual" for edge in view["edges"]):
+            legend += " · ⇢ Misura descritta nello stesso articolo verificato"
         if any(edge["kind"] == "mention" for edge in view["edges"]):
             legend += " · ↝ Menzione verificata dalla fonte"
         st.caption(legend)
