@@ -197,7 +197,16 @@ def relevant_map(data, raw, sources, topic, *, contexts=None):
     edges, secondary, rejected = [], [], []
     for i, edge in enumerate(data["edges"]):
         anchor = edge.get("topic") or edge["label"]
-        if not {edge["from_id"], edge["to_id"]} <= ids or not scoped_score(topic, edge["evidence"], sources, anchor, contexts or {}):
+        if edge["kind"] == "thematic":
+            # Per una connessione semantica la descrizione del tema può
+            # parafrasare i due passaggi: valutare i contesti dei NODI,
+            # non pretendere la stessa frase letterale su entrambi.
+            relevant = all(scoped_score(topic, edge["evidence"], sources,
+                            raw_nodes[identity]["label"]["text"], contexts or {})
+                           for identity in (edge["from_id"], edge["to_id"]))
+        else:
+            relevant = bool(scoped_score(topic, edge["evidence"], sources, anchor, contexts or {}))
+        if not {edge["from_id"], edge["to_id"]} <= ids or not relevant:
             rejected.append({"edge": i, "reason": "off_topic"})
         elif GENERIC_PREDICATE.fullmatch(edge["label"]):
             secondary.append(edge)
