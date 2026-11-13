@@ -86,6 +86,13 @@ _PURPOSE_AFTER = re.compile(
     r"\bper\s+((?:l['’]|il\s+|la\s+|le\s+|gli\s+|i\s+)?[^,.;!?]{7,85})",
     re.I,
 )
+_PURPOSE_BEFORE = re.compile(
+    r"^\s*per\s+(?P<purpose>[^,.;!?]{8,100}?)\s+"
+    r"(?:sono|vengono|è|si\s+considerano)\s+"
+    r"(?:previst[oaie]|stanziat[oaie]|destinat[oaie]|finanziat[oaie])\b",
+    re.I,
+)
+
 
 
 def described_purpose(sentence: str, amount) -> tuple[str, str] | None:
@@ -99,6 +106,11 @@ def described_purpose(sentence: str, amount) -> tuple[str, str] | None:
         title = " ".join(header.group(1).split()).strip(" «»“”\"")
         if title.casefold() not in _GENERIC_SECTIONS and len(title.split()) >= 2:
             return title, "section"
+    before = _PURPOSE_BEFORE.search(sentence[:amount.start()])
+    if before:
+        purpose = " ".join(before.group("purpose").split()).strip(" «»“”\"")
+        if len(purpose.split()) <= 15:
+            return purpose, "beneficiary"
     match = _PURPOSE_AFTER.search(sentence, amount.end())
     if match:
         purpose = " ".join(match.group(1).split()).strip(" «»“”\"")
