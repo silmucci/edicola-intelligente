@@ -242,7 +242,7 @@ def verified_headline_actions(data: dict, sources: list, articles: dict, topic: 
         if not isinstance(item, dict):
             continue
         title = item.get("title", "")
-        if not isinstance(title, str) or not focused.search(title):
+        if not isinstance(title, str) or not focused.search(title) or not _HEADLINE_ACTION.search(title):
             continue
         if source.filename not in {
                 s.filename for s in sources if s.id in hub.get("source_ids", [])}:
