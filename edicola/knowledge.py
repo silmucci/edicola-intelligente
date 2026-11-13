@@ -247,6 +247,9 @@ def verified_source_fallback(kind, topic, sources, catalog, matcher, contexts, c
             useful = bool(data["events"] or data["undated_events"])
         else:
             raw = graph_candidates({"nodes": [], "edges": []}, sources, topic)
+            # Anche senza Gemini, estrai le azioni grammaticalmente
+            # documentate dalle fonti, comprese le approvazioni passive.
+            raw = complete_salient_facts(raw, sources, topic, article_titles=articles)
             if not raw["edges"]:
                 return None
             data, diagnostics = validate_map(raw, sources, contexts=contexts)
