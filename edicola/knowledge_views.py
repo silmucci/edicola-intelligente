@@ -261,9 +261,11 @@ def render_node_connections(node, data, labels, sources, archive, *, articles=No
                        else "Relazione fattuale documentata")
         elif edge["kind"] == "mention":
             st.caption("Menzione nel documento · non prova una relazione fra i soggetti citati")
+        elif edge["kind"] == "contextual":
+            st.caption("Intervento documentato nello stesso articolo verificato · collegamento di contesto")
         else:
             st.caption("Tema comune · non indica un legame fattuale")
-        connector = " → " if edge["kind"] in {"documented", "mention"} else " — "
+        connector = " → " if edge["kind"] in {"documented", "mention", "contextual"} else " — "
         label = edge["label"] + (": " + edge["topic"] if edge.get("topic") else "")
         st.text(connector.join((labels[edge["from_id"]], label, labels[edge["to_id"]])))
         key = f"map_node_{node['id']}_edge_{index}"
