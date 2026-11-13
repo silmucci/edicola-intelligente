@@ -11,7 +11,7 @@ from edicola.article_evidence import article_reference
 from edicola.knowledge_components import event_card, event_text, timeline_story, LABELS
 from edicola.knowledge_presentation import undated_order, ordered_timeline, empty_knowledge_message, theme_title, short_text
 from edicola.knowledge_validation import compact_map
-from edicola.map_presentation import GROUPS, node_captions, node_groups
+from edicola.map_presentation import GROUPS, node_captions
 from edicola.chat_sources import render_context_limit
 from edicola.map_relations import relation_category
 from edicola.map_component import render_graph
@@ -90,51 +90,31 @@ def render_map(result, archive, technical):
     articles = getattr(result, "source_articles", None) or {}
     captions = node_captions(data["nodes"])
     view = compact_map(data)
-    if not data["edges"]:
-        mode = "Elenco"
-    else:
-        mode = st.segmented_control("Vista della mappa", ["Grafo", "Elenco"], default="Grafo", key="knowledge_map_view") or "Grafo"
-    focus = ""
-    if mode == "Grafo":
-        if st.session_state.get("knowledge_map_focus", "") not in {n["id"] for n in view["nodes"]}:
-            st.session_state["knowledge_map_focus"] = ""
-        focus = st.session_state.get("knowledge_map_focus", "")
-    isolated = {n["id"] for n in view["nodes"]} - {identity for e in view["edges"] for identity in (e["from_id"], e["to_id"])}
+    valid_ids = {n["id"] for n in view["nodes"]}
+    if st.session_state.get("knowledge_map_focus", "") not in valid_ids:
+        st.session_state["knowledge_map_focus"] = ""
+    focus = st.session_state.get("knowledge_map_focus", "")
+
     if view["edges"]:
         legend = "→ Relazione documentata"
         if any(edge["kind"] != "documented" for edge in view["edges"]):
             legend += " · ┄ Tema comune, senza legame fattuale"
-        if isolated:
-            legend += " · Concetti separati: nessun collegamento documentato"
         st.caption(legend)
-    if mode == "Grafo":
-        def choose(node_id):
-            st.session_state["knowledge_map_focus"] = node_id
-        st.caption("Seleziona un concetto per leggere collegamenti e fonti. Scorri nella mappa per esplorarla.")
-        render_graph(view, topic=result.topic, selected=focus, on_select=choose)
-        if focus:
-            selected = next(n for n in view["nodes"] if n["id"] == focus)
-            with st.container(border=True):
-                st.subheader(readable(captions[focus]))
-                st.caption(NODE_TYPES[selected["kind"]])
-                st.text(selected["label"])
-                compact_sources(selected["source_ids"], result.sources, archive, "map_selected_" + focus,
-                                articles=articles)
-                render_node_connections(selected, data, {n["id"]: n["label"] for n in data["nodes"]}, result.sources, archive,
-                                        articles=articles)
-    if mode == "Grafo" and len(view["nodes"]) < len(data["nodes"]):
-        st.caption("Altri concetti disponibili nella vista Elenco.")
-    nodes = {n["id"]: n["label"] for n in data["nodes"]}
-    for kind, members in node_groups(data["nodes"] if mode == "Elenco" else []):
-        st.caption(GROUPS[kind][1])
-        with st.container(horizontal=mode == "Grafo", gap="small"):
-            for node in members:
-                with st.popover(readable(captions[node["id"]]), key="knowledge_node_" + node["id"], icon=":material/info:"):
-                    st.caption(NODE_TYPES[kind])
-                    st.text(node["label"])
-                    compact_sources(node["source_ids"], result.sources, archive, "map_node_" + node["id"],
-                                    articles=articles)
-                    render_node_connections(node, data, nodes, result.sources, archive, articles=articles)
+    st.caption("Seleziona un concetto nella mappa per leggere i collegamenti e le fonti.")
+    def choose(node_id):
+        st.session_state["knowledge_map_focus"] = node_id
+    render_graph(view, topic=result.topic, selected=focus, on_select=choose)
+
+    if focus:
+        selected = next(n for n in view["nodes"] if n["id"] == focus)
+        with st.container(border=True):
+            st.subheader(readable(captions[focus]))
+            st.caption(NODE_TYPES[selected["kind"]])
+            st.text(selected["label"])
+            compact_sources(selected["source_ids"], result.sources, archive, "map_selected_" + focus,
+                            articles=articles)
+            render_node_connections(selected, data, {n["id"]: n["label"] for n in data["nodes"]},
+                                    result.sources, archive, articles=articles)
     if technical:
         with st.expander("Relazioni · sviluppo"):
             st.caption("Nodi nel grafo: " + ", ".join(n["id"] for n in view["nodes"]))
