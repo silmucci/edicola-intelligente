@@ -173,6 +173,7 @@ def test_native_node_focus_changes_only_graph_and_keeps_sources_without_ai(monke
         assert graph.call_args.kwargs["selected"] == "N1"
         assert any(SOURCES[0].text in text.value for text in app.text)
         graph.reset_mock()
-        app.segmented_control(key="knowledge_map_view").set_value("Elenco").run()
-        assert not graph.called and not app.dataframe
+        app.run()
+        assert graph.called and not app.dataframe
+        assert not any(c.key == "knowledge_map_view" for c in app.segmented_control)
         api.assert_not_called()
