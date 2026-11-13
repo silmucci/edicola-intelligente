@@ -24,7 +24,7 @@ ACTION = (
     r"proposto|discusso|esaminato|promosso|sostenuto|varato|firmato|"
     r"votato|adottato|respinto|chiesto|confermato)|"
     r"(?:approva|annuncia|presenta|finanzia|stanzia|illustra|propone|"
-    r"discute|esamina|promuove|sostiene|vara|firma|vota|adotta|respinge))"
+    r"discute|esamina|promuove|sostiene|vara|firma|vota|adotta|respinge)))"
 )
 ACTION_PATTERN = re.compile(
     r"(?<!\w)" + SUBJECT + r"\s+" + ACTION
