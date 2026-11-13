@@ -147,7 +147,7 @@ def generic_action(passage: str):
     """
     # Non dividere i decimali degli importi (1,1 milioni). L'inciso
     # iniziale si separa solo quando dopo la virgola comincia un soggetto.
-    clauses = re.split(r",\\s+(?=[A-ZÀ-ÖØ-Þ])", passage, maxsplit=1)
+    clauses = re.split(r",\s+(?=[A-ZÀ-ÖØ-Þ])", passage, maxsplit=1)
     candidates = [clauses[0].strip()]
     if (len(clauses) > 1 and 1 <= len(clauses[0].split()) <= 8
             and not re.search(
