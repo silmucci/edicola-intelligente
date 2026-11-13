@@ -50,6 +50,28 @@ def test_documented_but_off_topic_edge_is_not_a_substitute_for_relevant_isolates
     assert {n["id"] for n in compact_map(selected)["nodes"]} == {"N3", "N4", "N5"}
 
 
+def test_verified_article_context_keeps_facts_without_repeating_keyword_in_every_sentence():
+    source = Source("S1", "c1", "giornale.pdf", 5,
+                    "Il Senato ha approvato il disegno di legge.", .1)
+    raw = {"nodes": [
+        {"id": "N1", "kind": "organization", "label": claim("Senato", source)},
+        {"id": "N2", "kind": "proposal", "label": claim("disegno di legge", source)}],
+        "edges": [{"from_id": "N1", "to_id": "N2", "kind": "documented",
+                   "label": claim("ha approvato", source)}]}
+    valid, counts = validate_map(raw, [source])
+    assert counts["accepted_edges"] == 1
+    topic = Topic("ColtivaItalia")
+    assert not relevant_map(valid, raw, [source], topic)[0]["edges"]
+    contexts = {"S1": {"article_title_verified": True,
+                        "article_title": "ColtivaItalia, approvazione del Senato"}}
+    selected, _ = relevant_map(valid, raw, [source], topic, contexts=contexts)
+    assert selected["edges"][0]["label"] == "ha approvato"
+    assert {n["id"] for n in selected["nodes"]} == {"N1", "N2"}
+    # Un titolo non verificato non può rendere pertinenti prove estranee.
+    contexts["S1"]["article_title_verified"] = False
+    assert not relevant_map(valid, raw, [source], topic, contexts=contexts)[0]["edges"]
+
+
 @pytest.mark.parametrize("question,good,bad", [
     (QUESTION, "La marineria propone un credito di imposta per i pescherecci.", ROAD),
     ("Quali aiuti per le imprese di pesca contro il costo del diesel?", FISH, ROAD),
