@@ -193,3 +193,31 @@ def test_verified_headline_reports_parliamentary_action_without_inventing_body_q
     assert verified_headline_actions(raw, [article],
                                     {"S1": {"title": "ColtivaItalia al centro del dibattito"}},
                                     "ColtivaItalia: approvazione") == raw
+
+
+def test_purpose_filter_rejects_pronouns_dates_and_ocr_page_artifacts():
+    from edicola.map_article_measures import informative_purpose
+    for label in ("questa misura", "questo provvedimento",
+                  "Il Edizione del 5/11/2026 contrasta la Peste suina africana",
+                  "pagina 18", "la misura", "sono previsti 150 milioni"):
+        assert not informative_purpose(label), label
+    for label in ("Sostegno al ricambio generazionale",
+                  "rafforzare i controlli sulle importazioni",
+                  "rafforzare la filiera agricola"):
+        assert informative_purpose(label), label
+
+
+def test_uninformative_section_does_not_become_a_node_without_other_purpose():
+    from edicola.map_article_measures import described_purpose, AMOUNT
+    examples = [
+        "Questa misura: sono previsti 150 milioni di euro.",
+        "Il Edizione del 5/11/2026 contrasta la Peste suina africana: "
+        "sono stanziati 150 milioni di euro.",
+    ]
+    for sentence in examples:
+        amount = AMOUNT.search(sentence)
+        assert amount is not None
+        assert described_purpose(sentence, amount) is None
+    useful = "Ricambio generazionale: sono previsti 150 milioni di euro."
+    assert described_purpose(useful, AMOUNT.search(useful)) == (
+        "Ricambio generazionale", "section")
