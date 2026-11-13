@@ -68,3 +68,52 @@ def literal_candidates(nodes, sources, contexts):
                     candidates.append({"from_id": left["id"], "to_id": right["id"], "kind": "documented",
                         "predicate": predicate, "label": {"text": predicate, "evidence": proof["evidence"]}})
     return candidates[:24]
+
+
+
+def semantic_candidates(nodes, raw_nodes, topic, *, vectors=None, limit=8):
+    """Propone temi comuni fra nodi validi usando estratti distinti.
+
+    L'associazione (non causale e non direzionale) deve poi superare
+    validate_map; non trasforma un accostamento in un fatto storico.
+    """
+    from itertools import combinations
+    from edicola.map_relations import contextual_theme, semantic_terms
+
+    by_id = {item["id"]: item for item in raw_nodes if isinstance(item, dict)
+             and isinstance(item.get("id"), str)}
+    # Termini della domanda, non categorie generiche come "Governo" o "legge".
+    themes = [word for word in re.findall(r"[^\W\d_]+", topic)
+              if semantic_terms(word)]
+    themes = list(dict.fromkeys(themes))
+    candidates = []
+    for left, right in combinations(nodes, 2):
+        if len(candidates) >= limit:
+            break
+        first, second = by_id.get(left["id"]), by_id.get(right["id"])
+        if not first or not second:
+            continue
+        if left["label"].casefold() in right["label"].casefold() or right["label"].casefold() in left["label"].casefold():
+            continue  # Un nome abbreviato non è un nuovo legame.
+        first_evidence = first.get("label", {}).get("evidence", [])[:3]
+        second_evidence = second.get("label", {}).get("evidence", [])[:3]
+        for theme in themes:
+            # Manteniamo riferimenti indipendenti, mai citazioni costruite.
+            for a in first_evidence:
+                for b in second_evidence:
+                    if not isinstance(a, dict) or not isinstance(b, dict):
+                        continue
+                    evidence = [a, b]
+                    if contextual_theme(left["label"], right["label"], theme, evidence, vectors=vectors):
+                        candidates.append({
+                            "from_id": left["id"], "to_id": right["id"], "kind": "thematic",
+                            "label": {"text": theme, "evidence": evidence},
+                        })
+                        break
+                else:
+                    continue
+                break
+            else:
+                continue
+            break
+    return candidates
