@@ -186,8 +186,9 @@ def test_empty_map_and_grouping_reference_open_current_pdf(archive):
                         'import streamlit as st\nst.session_state["knowledge_map_focus"] = "N1"\nrender_knowledge(result, context)')
     with installed_fixture(module), patch("google.genai.Client") as api:
         app = AppTest.from_string(code).run()
-        app.button(key="map_selected_N1_pdf_S1").click().run()
-        assert app.session_state["archive_page"] == chunk.page and not app.exception
+        assert not app.exception
+        assert not any(button.key == "map_selected_N1_pdf_S1" for button in app.button)
+        assert any("Non emergono collegamenti" in item.value for item in app.caption)
         api.assert_not_called()
     result.data = {"nodes": [], "edges": []}
     with installed_fixture(module):
