@@ -61,3 +61,31 @@ def test_focused_map_does_not_force_unrelated_long_or_generic_subjects():
 def test_focused_map_falls_back_when_specific_subject_is_absent():
     available = [chunk("a", "Il Governo presenta le novità sul settore.", "a.pdf", 1)]
     assert focused_map_seeds("ProgettoInesistente: decisioni", available, [], fallback=available) == available
+
+
+
+def test_focus_includes_declared_article_continuation_even_if_name_not_repeated():
+    title = "PonteVerde: via libera al piano"
+    first = chunk("start", 'Il progetto "PonteVerde" viene esaminato.',
+                  "a.pdf", 7, title=title)
+    first.metadata["article_pages_json"] = "[7,8]"
+    continuation = chunk("continued", "Sono previsti finanziamenti per i territori.",
+                         "a.pdf", 8)
+    different = chunk("other", "Il bilancio comunale è stato approvato.",
+                      "a.pdf", 8, article_id="unrelated_article_2026")
+    outside = chunk("outside", "Altri stanziamenti per l'economia.",
+                    "a.pdf", 9)
+    result = focused_map_seeds("PonteVerde: misure e conseguenze",
+                               [first, continuation, different, outside],
+                               [], fallback=[first])
+    assert {c.id for c in result} == {"start", "continued"}
+
+
+def test_undeclared_next_page_not_assumed_to_be_same_article():
+    first = chunk("start", "Il progetto PonteVerde è stato presentato.",
+                  "a.pdf", 7, title="PonteVerde: piano")
+    unknown = chunk("other", "Un'altra notizia sullo sport.",
+                    "a.pdf", 8)
+    result = focused_map_seeds("PonteVerde: novità", [first, unknown], [],
+                               fallback=[first])
+    assert [c.id for c in result] == ["start"]
