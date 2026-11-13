@@ -29,6 +29,7 @@ from edicola.proposal_extraction import proposal_items
 from edicola.knowledge_fallback import graph_candidates, source_developments
 from edicola.map_literal import literal_candidates, complete_nodes, semantic_candidates, refine_proposal_nodes
 from edicola.map_ontology import link_entities, enrich_map_with_provenance
+from edicola.map_evidence import map_prompt_source
 from edicola.knowledge_relevance import Topic, select_topic_chunks, select_visual_evidence, VISUAL_RETRIEVAL_VERSION, relevant_map, relevant_timeline, VERSION as RELEVANCE_VERSION, scope_timeline
 from edicola.context_selection import (VERSION as CONTEXT_VERSION, fit_context, included_coverage,
                                        selection_coverage, COMPARISON_INSTRUCTION, EDITORIAL_DEPTH_INSTRUCTION)
@@ -341,9 +342,12 @@ def generate_knowledge(kind: str, topic: str, *, authorize_external=False, root:
         instruction = SYSTEM + (TIMELINE_INSTRUCTIONS if kind == "timeline" else MAP_INSTRUCTIONS) + COMPARISON_INSTRUCTION + EDITORIAL_DEPTH_INSTRUCTION
         def prompt_for(selected):
             payload = {"task": kind, "topic": topic, "editions": included_coverage(catalog.coverage, selected)["files"],
-                                        "sources": [evidence_source_record(s, article_details.get(s.id), include_chunk=True)
+                                        "sources": [(map_prompt_source(s, article_details.get(s.id), topic)
+                                           if kind == "map" else evidence_source_record(
+                                               s, article_details.get(s.id), include_chunk=True))
                             for s in selected]}
             if kind == "map":
+                payload["evidence_rule"] = "Ogni quote deve essere un passaggio originale contiguo di una singola fonte; non unire estratti."
                 payload["adjacent_sources"] = [[a.id, b.id] for a in selected for b in selected
                     if contiguous(current[a.chunk_id], current[b.chunk_id])]
             return json.dumps(payload, ensure_ascii=False)
