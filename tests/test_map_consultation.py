@@ -190,30 +190,55 @@ def test_semantic_map_avoids_generic_agriculture_links():
                for reason in reasons["relevance_edges"])
 
 
-def test_semantic_map_joins_distinct_articles_about_a_named_initiative():
+def test_same_initiative_does_not_invent_relation_between_senato_and_minister():
     from edicola.map_literal import semantic_candidates
     from edicola.knowledge_relevance import Topic, relevant_map
-    first = "Il Governo ha presentato il programma ColtivaItalia a sostegno del settore."
-    second = "Il Senato esamina il progetto ColtivaItalia presentato in Commissione."
+    first = "Il Senato ha approvato il disegno di legge ColtivaItalia."
+    second = "Lollobrigida presenta iniziative per ColtivaItalia in una conferenza."
     sources = [Source("S1", "one", "a.pdf", 1, first, .1),
                Source("S2", "two", "b.pdf", 2, second, .2)]
-    raw_nodes = [
-        {"id": "N1", "kind": "organization", "label": claim("Governo", sources[0])},
-        {"id": "N2", "kind": "organization", "label": claim("Senato", sources[1])},
+    nodes = [
+        {"id": "N1", "kind": "organization", "label": claim("Senato", sources[0])},
+        {"id": "N2", "kind": "person", "label": claim("Lollobrigida", sources[1])},
     ]
-    checked, _ = validate_map({"nodes": raw_nodes, "edges": []}, sources)
-    proposed = semantic_candidates(checked["nodes"], raw_nodes,
+    checked, _ = validate_map({"nodes": nodes, "edges": []}, sources)
+    # Una co-menzione della legge NON indica un rapporto fra i protagonisti.
+    proposed = semantic_candidates(checked["nodes"], nodes,
                                    "Governo, Senato e provvedimenti per l'agricoltura",
                                    sources=sources)
-    assert len(proposed) == 1 and proposed[0]["label"]["text"] == "ColtivaItalia"
-    verified, counts = validate_map({"nodes": raw_nodes, "edges": proposed}, sources)
-    assert counts["accepted_edges"] == 1
-    edge = verified["edges"][0]
-    assert edge["label"] == "associazione tematica" and edge["topic"] == "coltivaitalia"
-    assert set(edge["source_ids"]) == {"S1", "S2"}
-    focused, _ = relevant_map(verified, {"nodes": raw_nodes}, sources,
-                              Topic("Governo, Senato e provvedimenti per l'agricoltura"))
-    assert focused["edges"] and focused["edges"][0]["kind"] == "thematic"
+    assert proposed == []
+    raw = {"nodes": nodes, "edges": [{"from_id": "N1", "to_id": "N2",
+            "kind": "thematic", "label": {"text": "ColtivaItalia",
+            "evidence": [{"source_id": s.id, "quote": s.text} for s in sources]}}]}
+    validated, _ = validate_map(raw, sources)
+    filtered, diagnostics = relevant_map(validated, raw, sources, Topic("ColtivaItalia"))
+    assert not filtered["edges"]
+    assert any(reason["reason"] == "actors_need_documented_relation"
+               for reason in diagnostics["relevance_edges"])
+
+
+def test_specific_disegno_di_legge_name_is_preserved_in_nodes():
+    from edicola.map_literal import refine_proposal_nodes, complete_nodes
+    from copy import deepcopy
+    specific = "Il Senato ha approvato il disegno di legge ColtivaItalia con 76 voti favorevoli."
+    source = Source("S1", "one", "a.pdf", 1, specific, .1)
+    raw = {"nodes": [{"id": "N1", "kind": "organization", "label": claim("Senato", source)},
+                     {"id": "N2", "kind": "proposal", "label": claim("disegno di legge", source)}],
+           "edges": []}
+    preserved = deepcopy(raw)
+    out = refine_proposal_nodes(deepcopy(raw))
+    assert out["nodes"][1]["label"]["text"] == "disegno di legge ColtivaItalia"
+    assert out["nodes"][1]["label"]["evidence"] == preserved["nodes"][1]["label"]["evidence"]
+    completed = complete_nodes(out["nodes"], [source], accepted_ids={"N1", "N2"})
+    assert "disegno di legge" not in [n["label"]["text"] for n in completed]
+    checked, _ = validate_map({"nodes": out["nodes"], "edges": []}, [source])
+    assert checked["nodes"][1]["label"] == "disegno di legge ColtivaItalia"
+    # Non indovinare il nome quando il passaggio cita leggi differenti.
+    multiple = ("Il Senato esamina il disegno di legge ColtivaItalia e il disegno "
+                "di legge ScuolaItalia senza decisioni congiunte.")
+    raw["nodes"][1]["label"]["evidence"] = [{"source_id": "S1", "quote": multiple}]
+    assert refine_proposal_nodes(raw)["nodes"][1]["label"]["text"] == "disegno di legge"
+
 
 def test_semantic_map_rejects_unrelated_articles_and_causal_invention():
     first = "Il Governo ha annunciato nuove linee di trasporto pubblico."
