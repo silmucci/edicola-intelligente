@@ -248,6 +248,10 @@ def verified_source_fallback(kind, topic, sources, catalog, matcher, contexts, c
             data, relevance = relevant_map(data, raw, sources, matcher, contexts=contexts)
             diagnostics.update(relevance)
             useful = bool(data["edges"])
+            if useful:
+                # Anche in modalità di riserva: stessi archi di menzione
+                # verificati e nessuna falsa relazione fra protagonisti.
+                data = enrich_map_with_provenance(data, sources, articles, catalog.coverage)
         if not useful:
             return None
         diagnostics["status"] = "verified_source_fallback"
