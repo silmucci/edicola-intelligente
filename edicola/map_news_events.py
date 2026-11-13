@@ -174,7 +174,7 @@ def same_paragraph_relations(data, sources, topic, *, max_stories=2):
                 continue
             primary = good[0]
             partner = next((p for p in good[1:]
-                            if (terms(primary) & terms(p)) - _NEUTRAL
+                            if len((terms(primary) & terms(p)) - _NEUTRAL) >= 2
                             and not _similar(primary, p)), None)
             if not partner:
                 continue
