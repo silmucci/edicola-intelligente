@@ -56,6 +56,22 @@ FUNDS_PATTERN = re.compile(
 )
 
 
+# Formulazioni passive frequenti nelle cronache parlamentari.
+# "Il disegno di legge X, [apposizione], è stato approvato dal Senato".
+# Conserva l'ordine e la voce effettivamente presenti nella citazione.
+PASSIVE_PATTERN = re.compile(
+    r"(?<!\w)(?P<object>(?:disegno|proposta)\s+di\s+legge\s+"
+    r"(?:[«“\"][^»”\"]{3,70}[»”\"]|(?-i:[A-ZÀ-ÖØ-Þ])[\w’'-]+"
+    r"(?:\s+(?-i:[A-ZÀ-ÖØ-Þ])[\w’'-]+){0,2}))"
+    r"(?:\s*,\s*[^,.;!?]{3,140}\s*,)?"
+    r"\s+(?P<verb>è\s+stato\s+(?:approvato|varato|presentato|respinto)\s+d(?:al|alla))"
+    r"\s+(?P<actor>(?:Senato|Camera|Parlamento|Governo|"
+    r"Consiglio\s+(?:dei\s+ministri|regionale|comunale)|"
+    r"Commissione\s+\w+))\b",
+    re.I,
+)
+
+
 # Senza questi nomi non sappiamo a quale provvedimento si riferisca l'azione.
 GENERIC_OBJECT = re.compile(
     r"^(?:disegno\s+di\s+legge|proposta\s+di\s+legge|decreto|riforma|"
@@ -97,8 +113,15 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
             if len(passage) < 30 or len(passage) > 1400 or len(edges) >= max_edges:
                 continue
             # Non trattare titoli isolati come fatti: serve una proposizione.
-            for match in list(ACTION_PATTERN.finditer(passage)) + list(FUNDS_PATTERN.finditer(passage)):
+            for match in (list(ACTION_PATTERN.finditer(passage))
+                          + list(FUNDS_PATTERN.finditer(passage))
+                          + list(PASSIVE_PATTERN.finditer(passage))):
                 actor, verb, object_name = (match.group(key).strip() for key in ("actor", "verb", "object"))
+                passive = match.re is PASSIVE_PATTERN
+                if passive:
+                    # La frase cita il provvedimento (soggetto grammaticale)
+                    # e poi l'istituzione agente. Non invertire il predicato.
+                    actor, object_name = object_name, actor
                 if GENERIC_OBJECT.fullmatch(object_name) or actor.casefold() == object_name.casefold():
                     continue
                 if not documented_relation(actor, verb, object_name, passage):
@@ -113,12 +136,14 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
                     r"\b(?:ministro|ministra|senatore|senatrice|sindaco|sindaca|"
                     r"presidente|deputato|deputata)\s+" + re.escape(actor) + r"\b",
                     match.group(0), re.I)
-                actor_kind = ("proposal" if match.re is FUNDS_PATTERN
+                actor_kind = ("proposal" if match.re in {FUNDS_PATTERN, PASSIVE_PATTERN}
                               else "person" if role else "organization")
                 measure = re.match(
                     r"(?:finanziamento|stanziamento|investimento|intervento|misura)\b",
                     object_name, re.I)
-                object_kind = "measure" if measure or match.re is FUNDS_PATTERN else "proposal"
+                object_kind = ("organization" if passive else
+                               "measure" if measure or match.re is FUNDS_PATTERN
+                               else "proposal")
                 for label, kind in ((actor, actor_kind), (object_name, object_kind)):
                     key = label.casefold()
                     if key not in labels:
