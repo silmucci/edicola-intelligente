@@ -9,9 +9,9 @@ from edicola.map_presentation import GROUPS, node_captions
 from edicola.map_story import story_focus
 
 CSS = scoped_css("""
-.viewport{width:100%;max-width:100%;min-height:0;overflow:visible;border:0;border-radius:0;background:transparent;font-family:var(--edi-sans);color:var(--edi-ink);box-sizing:border-box}
-.canvas{position:relative;width:100%;margin:0 auto}.canvas svg{position:absolute;inset:0;overflow:visible;pointer-events:none}
-.node{position:absolute;box-sizing:border-box;width:208px;padding:14px;border:1px solid var(--edi-border);border-radius:16px;color:var(--edi-ink);font:650 15px/1.4 var(--edi-sans);text-align:center;white-space:normal;overflow-wrap:anywhere;cursor:pointer;box-shadow:var(--edi-shadow);transition:transform .16s ease,box-shadow .16s ease,opacity .16s ease}
+.viewport{width:100%;max-width:100%;min-height:240px;overflow:visible;border:0;border-radius:0;background:transparent;font-family:var(--edi-sans);color:var(--edi-ink);box-sizing:border-box}
+.canvas{position:relative;width:100%;margin:0 auto}.canvas svg{position:absolute;inset:0;overflow:visible;pointer-events:none}.graph-fallback{padding:40px 18px;text-align:center;color:var(--edi-muted);font:14px/1.5 var(--edi-sans)}
+.node{position:absolute;box-sizing:border-box;width:250px;padding:14px;border:1px solid var(--edi-border);border-radius:16px;color:var(--edi-ink);font:650 15px/1.4 var(--edi-sans);text-align:center;white-space:normal;overflow-wrap:anywhere;cursor:pointer;box-shadow:var(--edi-shadow);transition:transform .16s ease,box-shadow .16s ease,opacity .16s ease}
 .node:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(18,49,83,.13)}
 .node.person{border-radius:32px}.node.article{border-left:4px solid #45916A}.node.source{border-left:4px solid #9CA3AF}.node.event,.node.proposal{border-left:4px solid var(--edi-accent)}
 .node .kind{display:block;font-size:11px;font-weight:500;color:var(--edi-muted);margin-bottom:6px}.node.active{outline:3px solid var(--edi-primary);outline-offset:2px}.node:focus-visible{outline:3px solid var(--edi-accent);outline-offset:3px}
@@ -30,7 +30,8 @@ def is_directional_edge(edge):
 JS = r"""
 export default function({parentElement,data,setTriggerValue}){
  const viewport=parentElement.querySelector('.viewport');
- const canvas=viewport.querySelector('.canvas');canvas.replaceChildren();
+ const canvas=viewport.querySelector('.canvas'),fallback=viewport.querySelector('.graph-fallback');
+ fallback.hidden=false;canvas.replaceChildren();
  if(parentElement.__ediGraphObserver)parentElement.__ediGraphObserver.disconnect();
  const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');canvas.append(svg);
  const make=(tag,attrs)=>{const el=document.createElementNS(ns,tag);for(const [key,value] of Object.entries(attrs||{}))el.setAttribute(key,value);return el;};
@@ -45,7 +46,10 @@ export default function({parentElement,data,setTriggerValue}){
   return {...node,button,height:80};
  });
  const byId=new Map(nodes.map(node=>[node.id,node])),neighbors=new Map(nodes.map(node=>[node.id,[]]));
- for(const edge of data.edges){neighbors.get(edge.from).push(edge.to);neighbors.get(edge.to).push(edge.from);}
+ // Relazioni che non hanno entrambe le estremità visualizzate non possono
+ // determinare le posizioni. Le prove originali non sono modificate.
+ const visibleEdges=data.edges.filter(edge=>byId.has(edge.from)&&byId.has(edge.to));
+ for(const edge of visibleEdges){neighbors.get(edge.from).push(edge.to);neighbors.get(edge.to).push(edge.from);}
  for(const node of nodes){node.button.style.opacity=!data.selected||node.id===data.selected||neighbors.get(data.selected)?.includes(node.id)?'1':'.45';}
  const preferred=byId.has(data.focus)?data.focus:nodes[0]?.id;
  const starts=[preferred,...nodes.map(n=>n.id).filter(id=>id!==preferred)].filter(Boolean);
@@ -53,9 +57,9 @@ export default function({parentElement,data,setTriggerValue}){
  function layout(){
   // Ogni componente della mappa scorre nel normale documento. Niente
   // canvas esteso oltre lo schermo né scrollbars annidate.
-  const width=Math.max(260,Math.round(viewport.getBoundingClientRect().width||parentElement.clientWidth||900));
-  const gutter=18,spacing=24;
-  const nodeWidth=Math.min(208,width-2*gutter);
+  const width=Math.max(280,Math.round(viewport.getBoundingClientRect().width||parentElement.clientWidth||900));
+  const gutter=20,spacing=30;
+  const nodeWidth=Math.min(250,width-2*gutter);
   const columns=Math.max(1,Math.min(4,Math.floor((width-2*gutter+spacing)/(nodeWidth+spacing))));
   for(const node of nodes){
    node.button.style.width=nodeWidth+'px';
@@ -70,7 +74,7 @@ export default function({parentElement,data,setTriggerValue}){
     const [id,depth]=queue.shift();
     (levels[depth]||(levels[depth]=[])).push(byId.get(id));
     const next=[...neighbors.get(id)].sort((a,b)=>{
-     const rank=x=>data.edges.some(e=>e.kind==='documented'&&
+     const rank=x=>visibleEdges.some(e=>e.kind==='documented'&&
       (e.from===id&&e.to===x||e.to===id&&e.from===x))?0:1;
      return rank(a)-rank(b);
     });
@@ -83,24 +87,31 @@ export default function({parentElement,data,setTriggerValue}){
     for(let offset=0;offset<level.length;offset+=columns){
      const group=level.slice(offset,offset+columns);
      const groupWidth=group.length*nodeWidth+(group.length-1)*spacing;
-     const left=Math.max(gutter,(width-groupWidth)/2);
+     // Il gruppo utilizza davvero la pagina: se c'è spazio, i fratelli
+     // si distribuiscono orizzontalmente, senza creare scroll interno.
+     const available=width-2*gutter;
+     const stretch=group.length>1?Math.min(
+      available,groupWidth+(group.length-1)*Math.min(150,Math.max(0,(available-groupWidth)/2))
+     ):groupWidth;
+     const left=Math.max(gutter,(width-stretch)/2);
+     const step=group.length>1?(stretch-nodeWidth)/(group.length-1):0;
      for(const [index,node] of group.entries()){
-      node.x=Math.round(left+index*(nodeWidth+spacing));
+      node.x=Math.round(left+index*step);
       node.y=Math.round(top);
       node.button.style.left=node.x+'px';
       node.button.style.top=node.y+'px';
      }
      top+=Math.max(...group.map(n=>n.height))+
-          (offset+columns<level.length?38:100);
+          (offset+columns<level.length?42:76);
     }
    }
-   top+=28;
+   top+=12;
   }
-  const height=Math.max(220,top-60);
+  const height=Math.max(240,top-44);
   canvas.style.height=height+'px';canvas.style.width='100%';
   svg.replaceChildren(defs);
   svg.setAttribute('width',width);svg.setAttribute('height',height);
-  for(const edge of data.edges){
+  for(const edge of visibleEdges){
    const a=byId.get(edge.from),b=byId.get(edge.to);
    const aBefore=a.y+a.height<=b.y,bBefore=b.y+b.height<=a.y;
    let x1,y1,x2,y2,path,labelX,labelY;
@@ -135,12 +146,22 @@ export default function({parentElement,data,setTriggerValue}){
    svg.append(label);
   }
  }
- layout();
+ function safeLayout(){
+  try{layout();fallback.hidden=true;return true;}
+  catch(error){fallback.hidden=false;return false;}
+ }
+ safeLayout();
+ if(typeof requestAnimationFrame==='function'){
+  requestAnimationFrame(()=>{
+   const width=Math.round(viewport.getBoundingClientRect().width);
+   if(width>0&&width!==lastWidth){lastWidth=width;safeLayout();}
+  });
+ }
  if(typeof ResizeObserver!=='undefined'){
   lastWidth=Math.round(viewport.getBoundingClientRect().width);
   const observer=new ResizeObserver(()=>{
    const width=Math.round(viewport.getBoundingClientRect().width);
-   if(width!==lastWidth){lastWidth=width;layout();}
+   if(width>0&&width!==lastWidth){lastWidth=width;safeLayout();}
   });
   observer.observe(viewport);
   parentElement.__ediGraphObserver=observer;
@@ -148,7 +169,7 @@ export default function({parentElement,data,setTriggerValue}){
 }
 """
 
-graph_component = st.components.v2.component("edicola_concept_graph", html='<div class="viewport" tabindex="0" role="region" aria-label="Mappa: seleziona un concetto per esplorare relazioni e fonti"><div class="canvas"></div></div>',
+graph_component = st.components.v2.component("edicola_concept_graph", html='<div class="viewport" tabindex="0" role="region" aria-label="Mappa: seleziona un concetto per esplorare relazioni e fonti"><div class="canvas"></div><p class="graph-fallback">La mappa non è visualizzabile. Puoi consultare i fatti documentati qui sotto.</p></div>',
                                            css=CSS, js=JS, isolate_styles=True)
 
 
