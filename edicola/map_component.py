@@ -148,7 +148,7 @@ export default function({parentElement,data,setTriggerValue}){
 }
 """
 
-graph_component = st.components.v2.component("edicola_concept_graph", html='<div class="viewport" tabindex="0" role="region" aria-label="Mappa: seleziona un concetto o scorri per esplorare"><div class="canvas"></div></div>',
+graph_component = st.components.v2.component("edicola_concept_graph", html='<div class="viewport" tabindex="0" role="region" aria-label="Mappa: seleziona un concetto per esplorare relazioni e fonti"><div class="canvas"></div></div>',
                                            css=CSS, js=JS, isolate_styles=True)
 
 

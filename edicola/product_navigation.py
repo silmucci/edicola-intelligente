@@ -92,7 +92,7 @@ def cancel_navigation_action():
     st.session_state.pop("consent_pending", None)
     st.session_state["nav_section"] = canonical_section(st.session_state.get("nav_section"))
     if st.session_state.get("nav_section") not in SECTIONS:
-        st.session_state["nav_section"] = SECTIONS[0]
+        st.session_state["nav_section"] = DEFAULT_SECTION
     pending = st.session_state.get("rag_pending")
     if pending:
         pending["new"] = False
