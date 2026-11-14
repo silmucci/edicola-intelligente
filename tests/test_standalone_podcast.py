@@ -454,8 +454,9 @@ def test_model_abstention_with_found_sources_is_not_misreported_as_no_sources(st
     standalone.text.models.generate_content.return_value = SimpleNamespace(
         text=json.dumps({"sufficient": False, "news": []}),
         candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
-    with pytest.raises(PodcastError) as captured:
-        generate(standalone, topic="Scuola", embedder=Mock())
+    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
+        with pytest.raises(PodcastError) as captured:
+            generate(standalone, topic="Scuola", embedder=Mock())
     assert captured.value.reason == "model_abstention"
     assert standalone.audio.models.generate_content.call_count == 0
 
