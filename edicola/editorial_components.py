@@ -17,7 +17,9 @@ CARD_CSS = scoped_css("""
 @media(max-width:600px){.cards{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:6px 3px 18px}.card{flex:0 0 155px;scroll-snap-align:start;min-height:184px;box-sizing:border-box;padding:16px}.highlights .card{flex-basis:85%;min-height:160px;border:0}.card h3{font-size:18px}}
 @media(prefers-reduced-motion:reduce){.card{transition:none}.card:hover{transform:none}}
 .cards.products{grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;padding-bottom:18px}
-.products .card{padding:16px 14px;gap:9px}.products .card svg{width:26px;height:26px;flex-shrink:0}
+.products .card{padding:16px 14px;gap:9px}.products .card svg{width:23px;height:23px;flex-shrink:0}
+.card-heading{display:flex;align-items:center;gap:9px;min-width:0;max-width:100%}
+.card-heading h3{min-width:0}.products .card-heading{gap:8px}
 .products .card h3{font-size:17px}.products .card p{font-size:12px;line-height:1.5}.products .arrow{width:24px;height:24px;font-size:14px}
 .products .card.active{border-color:var(--edi-primary);background:var(--edi-surface);box-shadow:inset 0 0 0 1px var(--edi-primary)}
 .products .card.active svg{stroke:var(--edi-primary)}.products .card.active h3{color:var(--edi-primary)}
@@ -37,14 +39,15 @@ export default function({parentElement,data,setTriggerValue}){
  for(const [index,item] of data.items.entries()){
   const card=document.createElement('button');card.type='button';card.className='card';
   if(item.active){card.classList.add('active');card.setAttribute('aria-current','page');}
+  const heading=document.createElement('span');heading.className='card-heading';
   if(data.mode!=='highlights'){
    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
-   const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',paths[item.icon]||paths.paper);svg.append(path);card.append(svg);
+   const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',paths[item.icon]||paths.paper);svg.append(path);heading.append(svg);
   }
-  const title=document.createElement('h3');title.textContent=item.title;
+  const title=document.createElement('h3');title.textContent=item.title;heading.append(title);
   const text=document.createElement('p');text.textContent=item.description;
   const arrow=document.createElement('span');arrow.className='arrow';arrow.textContent='→';arrow.setAttribute('aria-hidden','true');
-  card.append(title,text,arrow);card.onclick=()=>setTriggerValue('selected',data.mode==='products'?item.id:index);root.append(card);
+  card.append(heading,text,arrow);card.onclick=()=>setTriggerValue('selected',data.mode==='products'?item.id:index);root.append(card);
  }
 }
 """

@@ -24,7 +24,7 @@ def test_start_and_previous_sessions(previous, expected):
         app.run()
         assert not app.exception and app.session_state['nav_section'] == expected
         items = cards.call_args.kwargs['data']['items']
-        assert [p['id'] for p in items] == ['archive', 'for_you', 'chat', 'briefing', 'podcast', 'explore']
+        assert [p['id'] for p in items] == ['for_you', 'archive', 'chat', 'briefing', 'podcast', 'explore']
         assert sum(p['active'] for p in items) == 1
         assert all(p['icon'] and p['description'] for p in items)
     assert destination('Archivio PDF') == 'In edicola'
@@ -209,3 +209,11 @@ def test_typing_topic_never_submits_and_explicit_submit_is_consumed_once(standal
         assert service.call_args.kwargs['topic'] == 'sanità abruzzese'
         app.run()
         assert service.call_count == 1
+
+
+def test_navigation_card_icons_are_inline_with_titles():
+    from edicola.editorial_components import CARD_CSS, CARD_JS
+    assert "card-heading" in CARD_CSS
+    assert "heading.append(svg)" in CARD_JS
+    assert "heading.append(title)" in CARD_JS
+    assert "card.append(heading,text,arrow)" in CARD_JS

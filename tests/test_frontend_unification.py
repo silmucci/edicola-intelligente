@@ -7,7 +7,7 @@ from edicola import product_navigation as navigation
 
 def test_six_visible_sections_and_profile_in_header():
     assert [p["id"] for p in navigation.PRODUCTS if p["id"] != "profile"] == [
-        "archive", "for_you", "chat", "briefing", "podcast", "explore"
+        "for_you", "archive", "chat", "briefing", "podcast", "explore"
     ]
     assert len({p["section"] for p in navigation.PRODUCTS}) == 7
     assert navigation.destination("profile") == "Il mio profilo"
@@ -77,3 +77,9 @@ def test_subview_inputs_are_preserved_across_navigation():
     assert {"for_you_mode", "for_you_topic", "knowledge_kind", "knowledge_topic"}.issubset(
         navigation.VIEW_INPUTS
     )
+
+
+def test_first_card_is_for_you_but_archive_remains_initial_section():
+    assert navigation.PRODUCTS[0]["id"] == "for_you"
+    assert navigation.PRODUCTS[1]["id"] == "archive"
+    assert navigation.DEFAULT_SECTION == "In edicola"

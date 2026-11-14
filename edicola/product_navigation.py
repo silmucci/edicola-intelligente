@@ -3,8 +3,8 @@
 import streamlit as st
 
 PRODUCTS = [
-    dict(id="archive", title="In edicola", description="Sfoglia i quotidiani originali.", icon="archive"),
     dict(id="for_you", title="Per te", description="Notizie consigliate e rassegna completa.", icon="paper"),
+    dict(id="archive", title="In edicola", description="Sfoglia i quotidiani originali.", icon="archive"),
     dict(id="chat", title="Chat AI", description="Fai domande e approfondisci le notizie.", icon="chat"),
     dict(id="briefing", title="Briefing", description="Approfondimenti con fonti verificate.", kind="Briefing", icon="list"),
     dict(id="podcast", title="Podcast", description="Ascolta gli approfondimenti.", icon="audio"),
@@ -15,6 +15,8 @@ for product in PRODUCTS:
     product["section"] = product["title"]
 
 SECTIONS = [product["title"] for product in PRODUCTS]
+# L'ordine delle card non deve cambiare la sezione iniziale né gli ID.
+DEFAULT_SECTION = "In edicola"
 EDITORIAL_SECTIONS = [p["section"] for p in PRODUCTS if p["id"] != "profile"]
 # Alias mantenuti per bozze, collegamenti e sessioni create prima del restyling.
 LEGACY_SECTIONS = {
@@ -69,7 +71,7 @@ def render_navigation():
     _legacy_mode(requested)
     st.session_state["nav_section"] = canonical_section(requested)
     if st.session_state.get("nav_section") not in SECTIONS:
-        st.session_state["nav_section"] = SECTIONS[0]
+        st.session_state["nav_section"] = DEFAULT_SECTION
     # Import locale: il componente riusa PRODUCTS e open_product di questo modulo.
     # Unico montaggio sotto l'intestazione, anche fuori dalla Rassegna.
     from edicola.editorial_components import render_products
