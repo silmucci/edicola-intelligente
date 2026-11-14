@@ -2,7 +2,7 @@
 
 import streamlit as st
 from edicola.design_tokens import scoped_css
-from edicola.product_navigation import PRODUCTS, open_product_id
+from edicola.product_navigation import PRODUCTS, DEFAULT_SECTION, open_product_id
 
 CARD_CSS = scoped_css("""
 .cards{display:grid;grid-template-columns:repeat(9,minmax(0,1fr));gap:12px;padding:6px 3px 22px;font-family:var(--edi-sans);color:var(--edi-ink);min-width:0;max-width:100%;box-sizing:border-box}
@@ -67,7 +67,7 @@ def render_products():
         allowed = {p["id"] for _, p in visible} | {"home", "timeline", "map"}
         if isinstance(chosen, str) and chosen in allowed:
             open_product_id(chosen)
-    cards_component(data={"mode": "products", "items": [{**p, "active": p["section"] == st.session_state.get("nav_section", PRODUCTS[0]["section"])} for _, p in visible]},
+    cards_component(data={"mode": "products", "items": [{**p, "active": p["section"] == st.session_state.get("nav_section", DEFAULT_SECTION)} for _, p in visible]},
                     key="home_products", on_selected_change=selected)
 
 
