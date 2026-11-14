@@ -104,3 +104,39 @@ def test_publication_date_is_parsed_once_per_edition():
         selected = select_feed(catalog(items))
     assert [item.chunk.id for item in selected] == ["new-1", "old", "new-2"]
     assert date_type.fromisoformat.call_count == 2
+
+
+
+def test_masthead_is_not_displayed_as_verified_news_title_or_preview():
+    header = (
+        "Anno II - Numero 660 redazione@a4quotidiano.it Edizione del "
+        "5/11/2026. Il Consiglio comunale ha approvato il progetto di "
+        "riqualificazione delle scuole della città. L'intervento interesserà "
+        "gli edifici scolastici nei quartieri periferici."
+    )
+    item = _feed_item(chunk(
+        "header", "new.pdf", header,
+        title="Anno II - Numero 660 redazione@a4quotidiano.it Edizione del 5/11/2026",
+    ), ())
+    assert item is not None
+    assert not item.verified_title
+    assert "redazione@" not in item.title
+    assert item.title.startswith("Il Consiglio comunale")
+
+
+def test_short_name_list_is_not_used_as_article_preview():
+    item = _feed_item(chunk(
+        "article", "new.pdf",
+        "Horizon Service, Alberto Grazia. Gli studenti dell'istituto alberghiero "
+        "hanno partecipato a un incontro dedicato all'inclusione e alla formazione.",
+        title="Una giornata di inclusione per gli studenti a Roccaraso",
+    ), ())
+    assert item is not None
+    assert item.verified_title
+    assert item.preview.startswith("Gli studenti")
+    assert "Horizon Service" not in item.preview
+
+
+def test_only_print_header_never_becomes_a_news_card():
+    assert _feed_item(chunk("masthead", "new.pdf",
+        "Anno II - Numero 660 redazione@a4quotidiano.it Edizione del 5/11/2026."), ()) is None

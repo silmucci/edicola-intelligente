@@ -239,3 +239,19 @@ def test_home_selection_whitespace_duplicates_are_per_edition(archive):
     from_original = [chunk for chunk in selected if chunk.metadata["filename"] == original.metadata["filename"]
                      and " ".join(chunk.text.split()) == " ".join(original.text.split())]
     assert len(from_original) == 1
+
+
+
+def test_press_review_general_feed_alternates_recent_editions_without_reordering_search():
+    from edicola.press_review_ui import _readable_groups
+    from edicola.archive import IndexChunk
+    def group(name, index):
+        return [IndexChunk(str(index), "Una frase originale completa.",
+                {"filename": name, "page": 1, "position": index})]
+    groups = [group("old.pdf", 1), group("old.pdf", 2),
+              group("new.pdf", 3), group("new.pdf", 4)]
+    info = {"old.pdf": {"date": "2026-10-29"},
+            "new.pdf": {"date": "2026-11-10"}}
+    assert [g[0].id for g in _readable_groups(groups, info, "")] == [
+        "3", "1", "4", "2"]
+    assert _readable_groups(groups, info, "bilancio") == groups

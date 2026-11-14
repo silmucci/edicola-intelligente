@@ -176,7 +176,7 @@ def render_for_you(root, context):
                     details.append("Estratto originale")
                 with st.container(border=True):
                     st.caption(" · ".join(details))
-                    st.markdown("**" + readable(entry.title) + "**")
+                    st.markdown("#### " + readable(entry.title))
                     if entry.preview:
                         st.markdown(readable(entry.preview))
                     with st.container(horizontal=True, gap="small"):

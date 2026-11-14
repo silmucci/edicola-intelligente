@@ -1,12 +1,34 @@
 """Consultazione della rassegna senza invii esterni."""
 
 import streamlit as st
-from collections import Counter
+from collections import Counter, defaultdict
 
 from edicola.press_review import ReviewSelection, filter_catalog, ranked_chunks, article_groups
 from edicola.editorial_selection import read_catalog
 from edicola.for_you import article_preview
 from edicola.consent_ui import cancel_pending
+
+
+
+def _readable_groups(groups, metadata, query):
+    """Rassegna generale: edizioni recenti alternate, non blocchi per PDF.
+
+    Una ricerca esplicita conserva l'ordinamento per pertinenza già calcolato.
+    Si usano esclusivamente le date curate, non quelle ricavate dai nomi file.
+    """
+    if query.strip():
+        return groups
+    by_edition = defaultdict(list)
+    for members in groups:
+        by_edition[members[0].metadata["filename"]].append(members)
+    filenames = sorted(by_edition, key=lambda name: (
+        metadata.get(name, {}).get("date") or "", name), reverse=True)
+    ordered = []
+    while any(by_edition.values()):
+        for filename in filenames:
+            if by_edition[filename]:
+                ordered.append(by_edition[filename].pop(0))
+    return ordered
 
 
 def render_press_review(catalog, context, metadata):
@@ -38,7 +60,7 @@ def render_press_review(catalog, context, metadata):
                 st.info("La ricerca approfondita non è disponibile in questo momento. Qui trovi i risultati disponibili.")
     query = st.session_state.get("editorial_press_query", "")
     ranked = ranked_chunks(catalog.chunks, query, st.session_state.get("editorial_press_hits", []))
-    groups = article_groups(ranked)
+    groups = _readable_groups(article_groups(ranked), metadata, query)
     if not groups:
         st.info("Non ci sono notizie corrispondenti. Prova un altro argomento.")
         return
@@ -46,20 +68,25 @@ def render_press_review(catalog, context, metadata):
     for index, members in enumerate(groups[:limit]):
         # Stesso criterio di Per te: non inventare titoli e non iniziare
         # un'anteprima a metà parola quando il chunk è una continuazione.
-        display = next((item for member in members
-                        if (item := article_preview(member)) is not None), None)
+        candidates = [item for member in members
+                      if (item := article_preview(member)) is not None]
+        display = next((item for item in candidates if item.verified_title),
+                       candidates[0] if candidates else None)
         chunk = display.chunk if display else members[0]
         info = metadata.get(chunk.metadata["filename"], {})
         with st.container(border=True):
-            st.caption((info.get("title") or "Documento dell’archivio") + " · " + (info.get("date") or "Data non disponibile"))
-            st.markdown("**" + readable(display.title if display else "Dall'edizione originale") + "**")
+            st.caption((info.get("title") or "Documento dell’archivio") + " · "
+                       + (info.get("date") or "Data non disponibile")
+                       + " · pagina " + str(chunk.metadata["page"])
+                       + (" · Estratto originale" if display and not display.verified_title else ""))
+            st.markdown("#### " + readable(display.title if display else "Dall'edizione originale"))
             if display and display.preview:
                 st.markdown(readable(display.preview))
             elif not display:
                 st.caption("Leggi il passaggio completo direttamente nella fonte originale.")
             source_button(chunk.metadata["filename"], chunk.metadata["page"], context=context, chunk_id=chunk.id,
-                          key=f"press_article_{index}", label="Leggi l’articolo")
-            with st.popover("Leggi la fonte", key=f"press_original_{index}"):
+                          key=f"press_article_{index}", label="Leggi nel PDF")
+            with st.popover("Testo originale", key=f"press_original_{index}"):
                 for member in members:
                     st.text(member.text)
                     if member is not chunk:

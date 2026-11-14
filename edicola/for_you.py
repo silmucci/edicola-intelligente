@@ -29,6 +29,26 @@ def _shorten(text: str, limit: int) -> str:
     return text[:cut if cut > 0 else limit].rstrip(" ,;:") + "…"
 
 
+# La stessa regola di leggibilità vale sia per "Per te" sia per la rassegna.
+# Filtra intestazioni di edizione solo nella presentazione, mai negli indici.
+_MASTHEAD = re.compile(
+    r"\banno\s+(?:[IVXLCDM]+|\d+)\s*[-–·]?\s*numero\s+\d+\b"
+    r"|\bredazione\s*@\s*[\w.-]+\.[a-z]{2,}\b"
+    r"|\bedizione\s+del\s+\d{1,2}[/-]\d{1,2}[/-]\d{4}\b",
+    re.I,
+)
+
+
+def _editorial_noise(text: str) -> bool:
+    """Riconosce la testata/numero, non i titoli di notizie ordinarie."""
+    return bool(_MASTHEAD.search(text[:180]))
+
+
+def _informative(sentence: str) -> bool:
+    """Un elenco di pochi nomi non è un'anteprima giornalistica."""
+    return len(re.findall(r"[^\W_]+(?:['’][^\W_]+)?", sentence)) >= 7
+
+
 def _sentences(text: str) -> list[str]:
     """Scarta inizi di chunk tronchi e usa soltanto frasi complete."""
     plain = " ".join(html.unescape(text).split())
@@ -37,7 +57,7 @@ def _sentences(text: str) -> list[str]:
     for part in parts:
         sentence = part.strip(" \t\r\n«»“”")
         if (len(sentence) < 25 or not sentence[0].isupper()
-                or sentence[-1] not in ".!?"):
+                or sentence[-1] not in ".!?" or _editorial_noise(sentence)):
             continue
         complete.append(sentence)
     return complete
@@ -46,17 +66,20 @@ def _sentences(text: str) -> list[str]:
 def _feed_item(chunk, topics: tuple[str, ...]) -> FeedItem | None:
     article = verified_article(chunk.metadata)
     sentences = _sentences(chunk.text)
-    if article:
+    if article and not _editorial_noise(article["title"]):
         title = article["title"]
         preview = next((sentence for sentence in sentences
-                        if title.casefold() not in sentence.casefold()), "")
+                        if _informative(sentence)
+                        and title.casefold() not in sentence.casefold()), "")
         return FeedItem(chunk, title, _shorten(preview, 175) if preview else "",
                         topics, True)
-    if not sentences:
-        # Evita estratti che cominciano a metà parola e titoli artificiali.
+    # Le intestazioni dei quotidiani possono erroneamente essere etichettate
+    # come titoli di articolo: non promuoverle a notizia nel feed.
+    substantive = [sentence for sentence in sentences if _informative(sentence)]
+    if not substantive:
         return None
-    return FeedItem(chunk, _shorten(sentences[0], 115),
-                    _shorten(sentences[1], 175) if len(sentences) > 1 else "",
+    return FeedItem(chunk, _shorten(substantive[0], 115),
+                    _shorten(substantive[1], 175) if len(substantive) > 1 else "",
                     topics, False)
 
 
