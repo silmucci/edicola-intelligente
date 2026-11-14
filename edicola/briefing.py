@@ -28,12 +28,9 @@ doppioni e sezioni artificiali. Riunisci i passaggi dello stesso evento senza
 confondere articoli diversi. article_title e article_pages aiutano a collegarli,
 ma non sono prove. Non ripetere gli argomenti in already_covered.
 
-Se il campo focus è presente nel payload, la richiesta riguarda QUELL'argomento:
-concentrati sui fatti pertinenti al focus e non trasformare le altre notizie
-presenti nei passaggi in sezioni indipendenti. Il focus proviene dall'utente,
-non è una citazione e non autorizza fatti esterni. Senza focus prepara una
-rassegna generale. Prediligi da tre a sei notizie approfondite, quando sono
-documentate, anziché molte notizie brevissime o un JSON troppo lungo.
+Se c'è focus, approfondisci soltanto quel tema con fatti documentati.
+Senza focus prepara una rassegna generale. Quando possibile, preferisci
+3-6 notizie complete a molte sintesi brevi.
 
 Restituisci solo JSON con sufficient e news. Se mancano notizie verificabili:
 sufficient=false, news=[]. Ogni notizia ha title e summary, entrambi con text ed
