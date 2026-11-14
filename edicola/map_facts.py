@@ -195,7 +195,7 @@ def generic_action(passage: str):
 # Non identifica o completa luoghi che l'articolo non nomina.
 VENUE_PATTERN = re.compile(
     r"(?<!\w)(?:il|la|lo|l['’])\s*"
-    r"(?P<actor>[\wÀ-ÿ’'-]+(?:\s+[\wÀ-ÿ’'-]+){0,6})"
+    r"(?P<actor>[\wÀ-ÿ’'-]+(?:\s+(?!che\b)[\wÀ-ÿ’'-]+){0,6})"
     r"\s+(?:che\s+)?"
     r"(?P<verb>si\s+è\s+svolt[oaie]|ha\s+avuto\s+luogo)"
     r"(?:\s+(?:il|lo)\s+\d{1,2}\s+[\w’'-]+(?:\s+\d{4})?)?"
