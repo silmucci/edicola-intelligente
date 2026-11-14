@@ -534,3 +534,64 @@ def test_podcast_never_assigns_a_shared_quote_to_an_arbitrary_edition(standalone
         generate(standalone)
     assert failure.value.reason == "invalid_evidence"
     standalone.audio.models.generate_content.assert_not_called()
+
+
+
+def test_podcast_keeps_verified_narration_when_only_the_unspoken_title_is_invalid(standalone):
+    first = standalone.catalog.chunks[0]
+    def response(**kwargs):
+        source = json.loads(kwargs["contents"])["sources"][0]
+        quote = source["text"]
+        title = {"text": "Nel 2099 scuole ancora aperte",
+                 "evidence": [{"source_id": source["source_id"], "quote": quote}]}
+        summary = {"text": quote,
+                   "evidence": [{"source_id": source["source_id"], "quote": quote}]}
+        return SimpleNamespace(
+            text=json.dumps({"sufficient": True, "news": [{"title": title, "summary": summary}]}),
+            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    standalone.text.models.generate_content.side_effect = response
+    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
+        episode = generate(standalone, topic="Scuola", embedder=Mock())
+    assert first.text in episode.script.text
+    assert "2099" not in episode.script.text
+    assert "Notizia documentata" not in episode.script.text
+    assert episode.audio_path.exists()
+
+
+def test_podcast_rejects_unsupported_narration_even_when_title_is_valid(standalone):
+    first = standalone.catalog.chunks[0]
+    def response(**kwargs):
+        source = json.loads(kwargs["contents"])["sources"][0]
+        title = {"text": "Notizia", "evidence": [
+            {"source_id": source["source_id"], "quote": source["text"]}]}
+        summary = {"text": "Il Comune ha stanziato 99 milioni di euro per le scuole.",
+                   "evidence": [{"source_id": source["source_id"], "quote": source["text"]}]}
+        return SimpleNamespace(
+            text=json.dumps({"sufficient": True, "news": [{"title": title, "summary": summary}]}),
+            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    standalone.text.models.generate_content.side_effect = response
+    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
+        with pytest.raises(PodcastError) as exc:
+            generate(standalone, topic="Scuola", embedder=Mock())
+    assert exc.value.reason == "invalid_evidence"
+    standalone.audio.models.generate_content.assert_not_called()
+
+
+def test_podcast_rejection_diagnostics_only_contain_counts_not_source_text(standalone, caplog):
+    first = standalone.catalog.chunks[0]
+    def response(**kwargs):
+        source = json.loads(kwargs["contents"])["sources"][0]
+        title = {"text": "Una notizia", "evidence": [
+            {"source_id": source["source_id"], "quote": source["text"]}]}
+        summary = {"text": "Nel 2099 la scuola ha ricevuto 99 milioni.",
+                   "evidence": [{"source_id": source["source_id"], "quote": source["text"]}]}
+        return SimpleNamespace(
+            text=json.dumps({"sufficient": True, "news": [{"title": title, "summary": summary}]}),
+            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    standalone.text.models.generate_content.side_effect = response
+    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
+        with pytest.raises(PodcastError):
+            generate(standalone, topic="Scuola", embedder=Mock())
+    assert "unsupported_summary_numbers=1" in caplog.text
+    assert first.text not in caplog.text
+    assert "2099" not in caplog.text
