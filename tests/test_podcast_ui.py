@@ -1,5 +1,6 @@
 """Podcast autonomo: consensi sequenziali e navigazione, SDK sempre simulati."""
-from unittest.mock import patch
+import json
+from unittest.mock import Mock, patch
 from streamlit.testing.v1 import AppTest
 from edicola import consent
 from edicola.standalone_podcast import generate_standalone_podcast
@@ -142,3 +143,36 @@ def test_unreadable_episode_catalog_keeps_the_last_session_audio(standalone):
         app.run()
         assert not app.exception and len(app.get('audio')) == 1
         generate.assert_not_called()
+
+
+
+def test_topic_podcast_ignores_hidden_briefing_filters_and_searches_full_corpus(standalone):
+    """Un argomento usato nel Briefing non deve restringere il Podcast."""
+    school = standalone.catalog.chunks[0]
+    school_hit = {"id": school.id, "text": school.text, "distance": 0.19}
+    def generate(**kwargs):
+        return generate_standalone_podcast(**kwargs, client=standalone.text,
+                                           tts_client=standalone.audio,
+                                           embedder=Mock())
+    with patch("edicola.podcast_draft.semantic_search", return_value=[school_hit]) as search, patch(
+        "edicola.podcast_ui.generate_standalone_podcast", side_effect=generate
+    ) as service:
+        app = AppTest.from_string(ui_script(standalone.root)).run()
+        app.session_state["editorial_review_keyword"] = "sicurezza sul lavoro"
+        app.session_state["editorial_review_files"] = ["non-esiste.pdf"]
+        app.session_state["editorial_review_scope"] = "internazionale"
+        app.session_state["editorial_review_latest"] = True
+        app.text_input(key="podcast_topic").set_value("Scuola").run()
+        grant(app)
+        app.button(key="podcast_submit").click().run()
+        assert not app.exception
+        assert len(app.get("audio")) == 1
+        assert not any("notizie sufficienti" in notice.value for notice in app.info)
+        assert service.call_count == 1
+        assert service.call_args.kwargs["topic"] == "Scuola"
+        assert service.call_args.kwargs.get("selection") is None
+        assert search.call_args.kwargs["allowed_ids"] == {"0", "1"}
+        request = json.loads(standalone.text.models.generate_content.call_args.kwargs["contents"])
+        assert request["topic"] == "Scuola"
+        assert any(source["pdf"] == "giornale-0.pdf" for source in request["sources"])
+        assert not any("filtri delle fonti" in caption.value for caption in app.caption)
