@@ -173,6 +173,6 @@ def test_topic_podcast_ignores_hidden_briefing_filters_and_searches_full_corpus(
         assert service.call_args.kwargs.get("selection") is None
         assert search.call_args.kwargs["allowed_ids"] == {"0", "1"}
         request = json.loads(standalone.text.models.generate_content.call_args.kwargs["contents"])
-        assert request["topic"] == "Scuola"
+        assert request["topic"] == "scuola"  # Il tema è normalizzato per ricerca e cache.
         assert any(source["pdf"] == "giornale-0.pdf" for source in request["sources"])
         assert not any("filtri delle fonti" in caption.value for caption in app.caption)
