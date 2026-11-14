@@ -435,3 +435,39 @@ def test_podcast_script_fallback_never_changes_authorization(standalone, monkeyp
         generate(standalone)
     assert standalone.text.models.generate_content.call_count == 1
     standalone.audio.models.generate_content.assert_not_called()
+
+
+
+def test_topic_without_semantic_matches_still_uses_indexed_lexical_articles(standalone):
+    """Un tema di una sola parola può recuperare le notizie senza hit semantiche."""
+    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
+        episode = generate(standalone, topic="Scuola", embedder=Mock())
+    assert episode.script.sources
+    assert {s["filename"] for s in episode.script.sources} == {"giornale-0.pdf"}
+    request = json.loads(standalone.text.models.generate_content.call_args.kwargs["contents"])
+    assert request["topic"] == "scuola"
+    assert {s["pdf"] for s in request["sources"]} == {"giornale-0.pdf"}
+
+
+def test_model_abstention_with_found_sources_is_not_misreported_as_no_sources(standalone):
+    standalone.text.models.generate_content.side_effect = None
+    standalone.text.models.generate_content.return_value = SimpleNamespace(
+        text=json.dumps({"sufficient": False, "news": []}),
+        candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    with pytest.raises(PodcastError) as captured:
+        generate(standalone, topic="Scuola", embedder=Mock())
+    assert captured.value.reason == "model_abstention"
+    assert standalone.audio.models.generate_content.call_count == 0
+
+
+def test_unverifiable_generated_citations_report_separate_error_reason(standalone):
+    claim = {"text": "Notizia inesistente",
+             "evidence": [{"source_id": "S999", "quote": "Un dato inventato senza prova originale."}]}
+    standalone.text.models.generate_content.side_effect = None
+    standalone.text.models.generate_content.return_value = SimpleNamespace(
+        text=json.dumps({"sufficient": True, "news": [{"title": claim, "summary": claim}]}),
+        candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    with pytest.raises(PodcastError) as captured:
+        generate(standalone)
+    assert captured.value.reason == "invalid_evidence"
+    assert standalone.audio.models.generate_content.call_count == 0

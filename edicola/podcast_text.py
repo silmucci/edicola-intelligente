@@ -17,7 +17,11 @@ MAX_CHARS = 3500
 
 
 class PodcastError(RuntimeError):
-    """Messaggio pubblico senza contenuti della richiesta o credenziali."""
+    """Errore pubblico con causa discreta, mai con testo o dati delle fonti."""
+
+    def __init__(self, message: str, *, reason: str = ""):
+        super().__init__(message)
+        self.reason = reason
 
 
 @dataclass

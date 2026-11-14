@@ -176,3 +176,21 @@ def test_topic_podcast_ignores_hidden_briefing_filters_and_searches_full_corpus(
         assert request["topic"] == "scuola"  # Il tema è normalizzato per ricerca e cache.
         assert any(source["pdf"] == "giornale-0.pdf" for source in request["sources"])
         assert not any("filtri delle fonti" in caption.value for caption in app.caption)
+
+
+
+def test_podcast_distinguishes_no_retrieved_passages_from_unverifiable_script(tmp_path):
+    from edicola.podcast_text import PodcastError
+    scenarios = [
+        ("no_sources", "Non ho trovato passaggi pertinenti utilizzabili"),
+        ("model_abstention", "Ho trovato delle fonti"),
+        ("invalid_evidence", "il copione non ha superato la verifica"),
+    ]
+    for reason, visible in scenarios:
+        with patch("edicola.podcast_ui.generate_standalone_podcast",
+                   side_effect=PodcastError("Messaggio riservato", reason=reason)):
+            app = AppTest.from_string(ui_script(tmp_path)).run()
+            grant(app)
+            app.button(key="podcast_submit").click().run()
+            assert not app.exception
+            assert any(visible in item.value for item in app.info)

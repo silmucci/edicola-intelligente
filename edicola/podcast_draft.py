@@ -172,7 +172,12 @@ def script_from_response(raw, sources, coverage, topic="", *, max_words=350, max
                 news.append(item)
         draft = validate_briefing(json.dumps({**value, "news": news}), sources)
         if not draft.sections:
-            raise ValueError
+            reason = "model_abstention" if draft.status == "model_abstention" else "invalid_evidence"
+            logging.getLogger(__name__).warning(
+                "phase=podcast_script event=unavailable reason=%s source_count=%d",
+                reason, len(sources))
+            raise PodcastError("Il copione non è stato verificato con le fonti disponibili.",
+                               reason=reason)
         product = EditorialResult("briefing", "", draft.sections, sources, draft.used_source_ids, coverage, True)
         from edicola.podcast_text import spoken_text
         intro = ("Benvenuti. In questo episodio ci occupiamo di " + spoken_text(topic, []) +
@@ -196,7 +201,8 @@ def script_from_response(raw, sources, coverage, topic="", *, max_words=350, max
             point = point.tb_next
         logging.getLogger(__name__).warning("phase=podcast_script event=invalid type=%s line=%s",
                                            type(exc).__name__, point.tb_lineno if point else 0)
-        raise PodcastError("Le fonti non permettono di preparare un episodio affidabile.") from None
+        raise PodcastError("Le fonti non permettono di preparare un episodio affidabile.",
+                           reason="invalid_script") from None
 
 
 def narrative_script(draft, sources, coverage, intro, outro, *, max_words, max_chars):
@@ -281,7 +287,8 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
                              topic_similarity=float(os.getenv("EDITORIAL_TOPIC_SIMILARITY", "0.82")))
     cache_config = {**asdict(config), "podcast_source_chars": DEEP_SOURCE_CHARS,
                     "podcast_prompt_chars": DEEP_PROMPT_CHARS, "query_embedding": [EMBEDDING_MODEL, FORMAT_VERSION] if topic else None,
-                    "ranking": RANKING_VERSION if topic else None}
+                    "ranking": RANKING_VERSION if topic else None,
+                    "topic_context_order": "relevance-v2" if topic else None}
     identity = digest({"coverage": catalog.coverage, "chunks": [
         (c.id, c.fingerprint, c.metadata.get("article_title_verified"),
          c.metadata.get("article_title"), c.metadata.get("article_pages_json"))
@@ -300,11 +307,18 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
                            "sources": [evidence_source_record(s, article_details.get(s.id)) for s in items]},
                           ensure_ascii=False)
     candidates = sources
+    # Con un tema specifico manteniamo in testa le evidenze più pertinenti
+    # nell'ordine fornito dal retrieval, prima di quelle solo debolmente affini.
+    # Nessun limite per singolo PDF e nessuna riduzione del budget del corpus.
     sources, _ = fit_context(sources, lambda items: INSTRUCTION + prompt(items), DEEP_PROMPT_CHARS,
-                             text_budget=DEEP_SOURCE_CHARS)
+                             text_budget=DEEP_SOURCE_CHARS, balance_editions=not bool(topic))
     article_details = {s.id: article_details[s.id] for s in sources if s.id in article_details}
+    logging.getLogger(__name__).info(
+        "phase=podcast_sources topic_present=%s candidates=%d included=%d editions=%d",
+        bool(topic), len(candidates), len(sources), len({s.filename for s in sources}))
     if not sources:
-        raise PodcastError("Le fonti disponibili non sono sufficienti per preparare un episodio affidabile.")
+        raise PodcastError("Non ci sono fonti pertinenti utilizzabili per questo argomento.",
+                           reason="no_sources")
     directory.mkdir(parents=True, exist_ok=True)
     lock = path.with_suffix(".lock")
     try:
