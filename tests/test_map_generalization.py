@@ -268,3 +268,64 @@ def test_newspaper_present_tense_predicates_become_directional_facts(sentence, a
                and edge["label"] == verb
                and labels[edge["to_id"]] == object_name
                for edge in checked["edges"]), diagnostics
+
+
+
+@pytest.mark.parametrize("topic,sentence,actor,verb,object_name", [
+    (
+        "Riorganizzazione del servizio e confronto sindacale",
+        "Per queste ragioni, Fp Cgil ha chiesto la convocazione di un tavolo di "
+        "confronto con tutte le organizzazioni sindacali, al fine di approfondire "
+        "la proposta di riorganizzazione e valutarne gli effetti sui lavoratori.",
+        "Fp Cgil", "ha chiesto",
+        "convocazione di un tavolo di confronto con tutte le organizzazioni sindacali",
+    ),
+    (
+        "Sviluppo del territorio e nuova proposta",
+        "Il Comitato cittadino ha presentato un progetto di recupero del quartiere, "
+        "nel quale vengono descritte anche le criticità del territorio e le richieste "
+        "dei residenti che hanno partecipato alla riunione pubblica.",
+        "Comitato cittadino", "ha presentato",
+        "progetto di recupero del quartiere",
+    ),
+    (
+        "Assistenza e lavoratori dei servizi",
+        "Una questione importante per la regione, dove i lavoratori della sanità "
+        "privata e delle RSA rappresentano una componente importante dei servizi "
+        "sanitari e assistenziali.",
+        "lavoratori della sanità privata e delle RSA", "rappresentano",
+        "componente importante dei servizi sanitari e assistenziali",
+    ),
+])
+def test_long_journalistic_clauses_produce_verified_factual_relations(
+    topic, sentence, actor, verb, object_name,
+):
+    from edicola.map_facts import generic_action, complete_verified_relations
+    from edicola.map_story import story_graph
+    source = Source("S1", "chunk", "giornale.pdf", 1, sentence, .1)
+    assert generic_action(sentence) == (actor, verb, object_name)
+    data = complete_verified_relations(
+        {"nodes": [], "edges": []}, [source], topic,
+        article_titles={"S1": {"title": "Confronto e proposta per i servizi"}},
+    )
+    labels = {node["id"]: node["label"] for node in data["nodes"]}
+    assert any(
+        edge["kind"] == "documented"
+        and labels[edge["from_id"]] == actor
+        and edge["label"] == verb
+        and labels[edge["to_id"]] == object_name
+        and edge["evidence"] == [{"source_id": "S1", "quote": sentence}]
+        for edge in data["edges"]
+    )
+    graph = story_graph(data, topic, sources=[source])
+    assert any(edge["kind"] == "documented" for edge in graph["edges"])
+
+
+def test_clause_extraction_never_converts_attribution_or_negation_into_action():
+    from edicola.map_facts import generic_action
+    assert generic_action(
+        "Secondo gli osservatori, il Comitato ha presentato un nuovo progetto."
+    ) is None
+    assert generic_action(
+        "Per queste ragioni, il Comitato non ha presentato un nuovo progetto."
+    ) is None

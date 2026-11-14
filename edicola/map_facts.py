@@ -105,7 +105,7 @@ _GENERIC_PRESENT_VERBS = (
     r"critica|criticano|contesta|contestano|denuncia|denunciano|"
     r"segnala|segnalano|rileva|rilevano|registra|registrano|"
     r"conferma|confermano|indica|indicano|evidenzia|evidenziano|"
-    r"dimostra|dimostrano|apre|aprono|apra|chiude|chiudono|"
+    r"dimostra|dimostrano|rappresenta|rappresentano|apre|aprono|apra|chiude|chiudono|"
     r"coinvolge|coinvolgono|colpisce|colpiscono|vince|vincono|"
     r"conquista|conquistano|ottiene|ottengono|propone|propongono|"
     r"firma|firmano|vota|votano|discute|discutono|rinvia|rinviano|"
@@ -128,7 +128,7 @@ _POSTVERB_ADJUNCT = (
 )
 GENERIC_ACTION_PATTERN = re.compile(
     r"^\s*" + _DETERMINER
-    + r"(?P<actor>[\wÀ-ÿ’'-]+(?:\s+(?!(?:ha|hanno|aveva|avevano|è|sono|era|erano|non)\b)[\wÀ-ÿ’'-]+){0,6})"
+    + r"(?P<actor>[\wÀ-ÿ’'-]+(?:\s+(?!(?:ha|hanno|aveva|avevano|è|sono|era|erano|non)\b)[\wÀ-ÿ’'-]+){0,12})"
     + r"\s+(?P<verb>(?:" + _GENERIC_AUXILIARY + r"|" + _GENERIC_PRESENT_VERBS + r"))"
     + r"\s+(?:(?:oggi|ieri|poi|già|ufficialmente|definitivamente)\s+)?"
     + _POSTVERB_ADJUNCT + _DETERMINER
@@ -140,15 +140,15 @@ _GENERIC_TAIL = re.compile(r"\s+(?:durante|davanti\s+(?:a|al|allo|alla|ai|agli|a
 
 
 def generic_action(passage: str):
-    """Conserva triple letterali anche dopo brevi incisi introduttivi.
+    """Recupera una sola azione letterale senza attraversare proposizioni.
 
-    Un inciso non deve attraversare un'altra proposizione: si accetta
-    soltanto un breve complemento iniziale senza verbo finito.
+    Dopo un complemento iniziale, la frase può contenere una proposizione
+    autonoma con soggetto e verbo; gli incisi finali non devono far perdere
+    l'oggetto diretto. Prova e direzione sono ricontrollate sulla frase
+    integrale, non sul segmento accorciato.
     """
-    # Non dividere i decimali degli importi (1,1 milioni). L'inciso
-    # iniziale si separa solo quando dopo la virgola comincia un soggetto.
-    clauses = re.split(r",\s+(?=[A-ZÀ-ÖØ-Þ])", passage, maxsplit=1)
-    candidates = [clauses[0].strip()]
+    clauses = re.split(r",\s+", passage, maxsplit=1)
+    candidates = [passage]
     if (len(clauses) > 1 and 1 <= len(clauses[0].split()) <= 8
             and not re.search(
                 r"\b(?:ha|hanno|aveva|avevano|è|sono|era|erano|"
@@ -159,25 +159,33 @@ def generic_action(passage: str):
                 r"intanto|inoltre|tuttavia|così|quindi|pertanto)\b",
                 clauses[0], re.I)):
         candidates.append(clauses[1])
+    # Una subordinata relativa può riportare un'altra azione autonoma:
+    # "..., dove i lavoratori rappresentano ...". Non prendere "secondo
+    # qualcuno" o frasi ipotetiche come affermazioni dell'articolo.
+    relative = re.search(r",\s+(?:dove|mentre)\s+(.+)", passage, re.I)
+    if relative:
+        candidates.append(relative.group(1))
     for candidate in candidates:
-        # Aperture frequenti nei quotidiani, senza alterare la citazione
-        # verificata usata dal validatore.
         candidate = candidate.strip(' \t«»“”"')
         candidate = re.sub(r"^(?:oggi|ieri|stamani|stamattina)\s+",
                            "", candidate, flags=re.I)
-        match = GENERIC_ACTION_PATTERN.match(candidate)
-        if match is None:
-            continue
-        actor, verb = match.group("actor", "verb")
-        object_name = _GENERIC_TAIL.split(match.group("object"), maxsplit=1)[0].strip(' \t«»“”"')
-        if (_GENERIC_CLAUSE.search(object_name) or len(object_name) < 7
-                or len(actor) < 3 or actor.casefold() == object_name.casefold()
-                or re.match(r"^(?:nei|nelle|nella|nel|durante|dopo|prima|oggi|ieri|"
-                            r"secondo|per|in)\b", actor, re.I)):
-            continue
-        # Anche con inciso, il validatore controlla l'intera citazione.
-        if documented_relation(actor, verb, object_name, passage):
-            return actor, verb, object_name
+        # L'inciso finale "..., al fine di ..." non è parte dell'oggetto.
+        # La virgola dei numeri ("1,1 miliardi") non spezza la frase.
+        first_clause = re.split(r",\s+", candidate, maxsplit=1)[0]
+        for phrase in dict.fromkeys((first_clause, candidate)):
+            match = GENERIC_ACTION_PATTERN.match(phrase)
+            if match is None:
+                continue
+            actor, verb = match.group("actor", "verb")
+            object_name = _GENERIC_TAIL.split(
+                match.group("object"), maxsplit=1)[0].strip(' \t«»“”"')
+            if (_GENERIC_CLAUSE.search(object_name) or len(object_name) < 7
+                    or len(actor) < 3 or actor.casefold() == object_name.casefold()
+                    or re.match(r"^(?:nei|nelle|nella|nel|durante|dopo|prima|oggi|ieri|"
+                                r"secondo|per|in)\b", actor, re.I)):
+                continue
+            if documented_relation(actor, verb, object_name, passage):
+                return actor, verb, object_name
     return None
 
 
