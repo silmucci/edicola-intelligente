@@ -23,7 +23,7 @@ from edicola.search import semantic_search
 from edicola.press_review import ranked_chunks, VERSION as RANKING_VERSION
 from edicola.podcast import atomic_write
 from edicola.podcast_text import CachedProduct, PodcastError, Script, prepare_script, MAX_WORDS, MAX_CHARS
-from edicola.rag import Source, DEFAULT_MODEL
+from edicola.rag import Source, DEFAULT_MODEL, validate_response
 from edicola.article_evidence import source_articles, evidence_source_record, clean_source_articles
 
 LEGACY_VERSION = "standalone-podcast-v1"
