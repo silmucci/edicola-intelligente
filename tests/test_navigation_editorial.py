@@ -98,6 +98,9 @@ def test_graph_and_list_keep_documented_sources_without_api(archive):
         app = AppTest.from_string(code).run()
         assert not app.exception and not app.dataframe
         assert not any("cache" in c.value.casefold() for c in app.caption)
+        assert not any("Relazione documentata" in c.value
+                       or "Approfondimento contestuale" in c.value
+                       or "Esplora i fatti principali" in c.value for c in app.caption)
         assert not any(c.key == "knowledge_map_view" for c in app.segmented_control)
         app.run()
         assert not app.exception and not app.dataframe

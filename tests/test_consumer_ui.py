@@ -52,7 +52,10 @@ def test_single_product_has_no_retired_controls_and_uses_editorial_labels(consum
     assert not app.segmented_control
     assert len([p for p in PRODUCTS if p["id"] == "briefing"]) == 1
     assert len(PRODUCTS) == 7 and all(p["id"] != "dossier" for p in PRODUCTS)
-    assert all(".pdf" not in label for label in app.multiselect[0].options)
+    assert not app.multiselect
+    assert not any(select.label in {"Ambito delle edizioni", "Copertura delle edizioni"}
+                   for select in app.selectbox)
+    assert len([item for item in app.text_input if item.key == "editorial_review_keyword"]) == 1
     assert all("indicizz" not in text.value for text in app.caption)
     generate.assert_not_called()
 
@@ -153,3 +156,25 @@ def test_errors_do_not_expose_technical_messages_or_blame_the_reader(status):
     message = product_notice(product)
     assert "JSON" not in message and "EDITORIAL_" not in message
     assert "Non è stato possibile preparare" in message
+
+
+def test_briefing_always_searches_all_editions_despite_previous_hidden_filters(consumer_ui):
+    from edicola.press_review import ReviewSelection
+    app, _, _, generate, _ = consumer_ui
+    app.session_state["editorial_review_files"] = ["giornale-0.pdf"]
+    app.session_state["editorial_review_scope"] = "nazionale"
+    app.session_state["editorial_review_latest"] = True
+    app.session_state["editorial_review_from"] = "2026-11-01"
+    app.run()
+    assert not app.exception
+    for key in ("editorial_review_files", "editorial_review_scope",
+                "editorial_review_latest", "editorial_review_from"):
+        assert key not in app.session_state
+    app.session_state["consent_choices"] = {("text", "text-v3"): True}
+    app.text_input(key="editorial_review_keyword").set_value("agricoltura").run()
+    app.button(key="briefing_submit").click().run()
+    assert not app.exception
+    selection = generate.call_args.kwargs["selection"]
+    assert selection == ReviewSelection(keyword="agricoltura")
+    assert not selection.filenames and not selection.scope and not selection.latest
+    assert not selection.date_from and not selection.date_to

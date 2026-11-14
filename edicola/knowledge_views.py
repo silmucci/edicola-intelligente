@@ -117,16 +117,8 @@ def render_map(result, archive, technical):
         st.session_state["knowledge_map_focus"] = ""
     focus = st.session_state.get("knowledge_map_focus", "")
 
-    if view["edges"]:
-        legend = "→ Relazione documentata"
-        if any(edge["kind"] == "thematic" for edge in view["edges"]):
-            legend += " · ┄ Tema comune, senza legame fattuale"
-        if any(edge["kind"] == "contextual" for edge in view["edges"]):
-            legend += " · Approfondimento contestuale · senza direzione"
-        if any(edge["kind"] == "mention" for edge in view["edges"]):
-            legend += " · ↝ Menzione verificata dalla fonte"
-        st.caption(legend)
-    st.caption("Esplora i fatti principali e seleziona un nodo per leggere le relazioni e le fonti.")
+    # Le etichette delle relazioni restano sugli archi; niente legenda
+    # tecnica o istruzioni sopra la mappa nella vista di lettura.
     def choose(node_id):
         st.session_state["knowledge_map_focus"] = node_id
     render_graph(view, topic=result.topic, selected=focus, on_select=choose)

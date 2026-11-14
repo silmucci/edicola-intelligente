@@ -10,7 +10,7 @@ from edicola import editorial, knowledge, rag
 from edicola.knowledge_views import render_knowledge
 from edicola.experience_ui import readable
 from edicola.archive_ui import diagnostics_enabled
-from edicola.consent_ui import authorize_action
+from edicola.consent_ui import authorize_action, cancel_pending
 from edicola.consent import perform
 from edicola.api_guard import PermissionDenied
 from edicola.personal_store import PersonalStoreError
@@ -22,6 +22,7 @@ from edicola import chat_sessions
 from edicola.chat_navigation import render_navigation
 from edicola.chat_sources import render_sources, citation_text, render_context_limit
 from edicola.chat_data import turn_context
+from edicola.press_review import ReviewSelection
 
 
 def chat_markdown(text, *, cited=(), anchor=None):
@@ -156,15 +157,23 @@ def render_chat(root, context):
 def render_editorial(root, context):
     """Un solo flusso di generazione; lettura compatibile dei prodotti precedenti."""
     from dataclasses import asdict
-    from edicola.press_review_ui import review_controls
     from edicola.product_navigation import cancel_navigation_action
     from edicola.podcast_text import list_products, PodcastError
-    section_intro("Briefing", "Scegli un tema e le edizioni: ritrova le notizie con le loro fonti.")
+    section_intro("Briefing", "Scegli un argomento: la ricerca comprende tutti i quotidiani indicizzati.")
     results = st.session_state.setdefault("editorial_results", {})
     previous = st.session_state.get("editorial_result")
     if previous is not None:
         results[previous.kind] = previous
-    _, review = review_controls(root)
+    topic = st.text_input("Tema o parole chiave", key="editorial_review_keyword",
+                          max_chars=500, on_change=cancel_pending)
+    # I filtri per singolo quotidiano, ambito e periodo non sono più parte
+    # dell'esperienza Briefing. Pulire anche le scelte di sessioni precedenti
+    # affinché non restringano l'archivio senza alcun controllo visibile.
+    for old_key in ("editorial_review_files", "editorial_review_scope",
+                    "editorial_review_latest", "editorial_review_from",
+                    "editorial_review_to"):
+        st.session_state.pop(old_key, None)
+    review = ReviewSelection(keyword=topic.strip())
     submitted = st.button("Genera briefing", key="briefing_submit", type="primary")
     payload = ["", asdict(review)]
     if authorize_action("text", "briefing", submitted, payload):
@@ -197,7 +206,7 @@ def render_editorial(root, context):
             on_change=cancel_navigation_action)
     product = available[selected][0] if selected else results.get("briefing")
     if product is None:
-        st.info("Scegli le fonti e premi Genera briefing per iniziare.")
+        st.info("Scegli un argomento oppure genera un briefing generale dalle notizie disponibili.")
         return
     if not selected:
         expected, actual = asdict(review), product.coverage.get("selection", {})
@@ -205,7 +214,7 @@ def render_editorial(root, context):
                 or list(expected.get("filenames", ())) != actual.get("files", [])
                 or any(expected.get(key, "") != actual.get(key, "") for key in ("scope", "date_from", "date_to"))
                 or expected.get("latest", False) != actual.get("latest", False)):
-            st.caption("Questo briefing si riferisce alla selezione precedente. Generane uno nuovo per applicare i filtri attuali.")
+            st.caption("Questa lettura utilizza impostazioni precedenti. Genera un nuovo briefing per includere tutti i quotidiani disponibili.")
     render_editorial_product(product, root, context)
 
 
