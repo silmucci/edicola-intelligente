@@ -127,6 +127,12 @@ distinte pertinenti e verificabili anche da edizioni differenti. Se esiste
 una sola notizia sufficientemente documentata, genera un episodio breve
 con sufficient=true; non aggiungere notizie estranee per raggiungere
 la durata e non inventare prove o nessi.
+Se il materiale è limitato, preferisci 1-4 notizie con 2-4 frasi ciascuna,
+anziché forzare un copione lungo. Prima scegli da ogni fonte pertinente
+citazioni contigue originali di 30-180 caratteri. Copiale esattamente
+in evidence, mantenendo il corretto source_id. Poi scrivi soltanto
+affermazioni sostenute da quelle citazioni, compresi i numeri.
+Non ricostruire cifre o date non presenti nelle citazioni riportate.
 """
 
 DEEP_INTRO = "Benvenuti. In questo episodio approfondiamo le vicende raccontate dalle edizioni disponibili."
@@ -161,10 +167,61 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
+def _align_literal_source_ids(value, sources):
+    """Recupera soltanto un ID errato quando la citazione è univoca e letterale.
+
+    Nessuna modifica a testo, cifre o quote del modello. Il validatore RAG
+    rimane autoritativo anche dopo questo riallineamento di provenienza.
+    Citazioni presenti in più PDF non vengono assegnate arbitrariamente.
+    """
+    if not isinstance(value, dict) or not isinstance(value.get("news"), list):
+        return value
+    normalize = lambda text: " ".join(text.split())
+    texts = {source.id: normalize(source.text) for source in sources}
+    changes = 0
+    news = []
+    for item in value["news"]:
+        if not isinstance(item, dict):
+            news.append(item)
+            continue
+        revised = dict(item)
+        for part in ("title", "summary"):
+            claim = item.get(part)
+            if not isinstance(claim, dict) or not isinstance(claim.get("evidence"), list):
+                continue
+            revised_claim = dict(claim)
+            evidence = []
+            for entry in claim["evidence"]:
+                if not isinstance(entry, dict) or not isinstance(entry.get("quote"), str):
+                    evidence.append(entry)
+                    continue
+                quote = normalize(entry["quote"])
+                identity = entry.get("source_id")
+                if identity in texts and len(quote) >= min(20, len(texts[identity])) and quote in texts[identity]:
+                    evidence.append(entry)
+                    continue
+                matches = [source_id for source_id, text in texts.items()
+                           if quote and len(quote) >= min(20, len(text)) and quote in text]
+                if len(matches) == 1:
+                    evidence.append({**entry, "source_id": matches[0]})
+                    changes += 1
+                else:
+                    evidence.append(entry)
+            revised_claim["evidence"] = evidence
+            revised[part] = revised_claim
+        news.append(revised)
+    if changes:
+        logging.getLogger(__name__).info(
+            "phase=podcast_script event=source_id_aligned count=%d", changes)
+        return {**value, "news": news}
+    return value
+
+
 def script_from_response(raw, sources, coverage, topic="", *, max_words=350, max_chars=5000, narrative=False):
     """Riusa i validatori, respingendo anche numeri non presenti nelle prove."""
     try:
         value = json.loads(raw) if isinstance(raw, str) else raw
+        value = _align_literal_source_ids(value, sources)
         numbers = lambda text: set(re.findall(r"\b\d+(?:[.,]\d+)*\b", text))
         if (not isinstance(value, dict) or set(value) != {"sufficient", "news"} or type(value["sufficient"]) is not bool
                 or not isinstance(value.get("news"), list) or len(value["news"]) > 8):
@@ -299,7 +356,8 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
                     "podcast_prompt_chars": DEEP_PROMPT_CHARS, "query_embedding": [EMBEDDING_MODEL, FORMAT_VERSION] if topic else None,
                     "ranking": RANKING_VERSION if topic else None,
                     "topic_context_order": "relevance-v2" if topic else None,
-                    "short_topic_guidance": "v1" if short_topic else None}
+                    "short_topic_guidance": "v2" if short_topic else None,
+                    "verbatim_source_alignment": "v1"}
     identity = digest({"coverage": catalog.coverage, "chunks": [
         (c.id, c.fingerprint, c.metadata.get("article_title_verified"),
          c.metadata.get("article_title"), c.metadata.get("article_pages_json"))

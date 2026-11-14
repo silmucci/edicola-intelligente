@@ -483,3 +483,54 @@ def test_single_word_topic_is_an_editorial_category_not_a_required_unique_event(
     config = standalone.text.models.generate_content.call_args.kwargs["config"]
     assert "una sola notizia sufficientemente documentata" in config.system_instruction
     assert "non aggiungere notizie estranee" in config.system_instruction
+
+
+
+def test_podcast_recovers_a_wrong_source_id_only_for_exact_unique_evidence(standalone):
+    first, second = standalone.catalog.chunks
+    def misattributed(**kwargs):
+        ids = json.loads(kwargs["contents"])["sources"]
+        first_id = next(s["source_id"] for s in ids if s["pdf"] == first.metadata["filename"])
+        second_id = next(s["source_id"] for s in ids if s["pdf"] == second.metadata["filename"])
+        assert first_id != second_id
+        claim = {"text": first.text, "evidence": [{"source_id": second_id, "quote": first.text}]}
+        return SimpleNamespace(
+            text=json.dumps({"sufficient": True, "news": [{"title": claim, "summary": claim}]}),
+            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)],
+        )
+    standalone.text.models.generate_content.side_effect = misattributed
+    episode = generate(standalone)
+    assert len(episode.script.sources) == 1
+    assert episode.script.sources[0]["filename"] == first.metadata["filename"]
+    assert standalone.audio.models.generate_content.call_count == 1
+
+
+def test_podcast_never_repairs_paraphrased_or_unsupported_quotes(standalone):
+    first = standalone.catalog.chunks[0]
+    claim = {"text": first.text, "evidence": [
+        {"source_id": "S999", "quote": "Il Comune avrebbe stanziato altri due miliardi per nuove scuole."}
+    ]}
+    standalone.text.models.generate_content.side_effect = None
+    standalone.text.models.generate_content.return_value = SimpleNamespace(
+        text=json.dumps({"sufficient": True, "news": [{"title": claim, "summary": claim}]}),
+        candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    with pytest.raises(PodcastError) as failure:
+        generate(standalone)
+    assert failure.value.reason == "invalid_evidence"
+    standalone.audio.models.generate_content.assert_not_called()
+
+
+def test_podcast_never_assigns_a_shared_quote_to_an_arbitrary_edition(standalone):
+    first, second = standalone.catalog.chunks
+    standalone.catalog.chunks[1] = replace(second, text=first.text)
+    claim = {"text": first.text, "evidence": [
+        {"source_id": "S999", "quote": first.text}
+    ]}
+    standalone.text.models.generate_content.side_effect = None
+    standalone.text.models.generate_content.return_value = SimpleNamespace(
+        text=json.dumps({"sufficient": True, "news": [{"title": claim, "summary": claim}]}),
+        candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
+    with pytest.raises(PodcastError) as failure:
+        generate(standalone)
+    assert failure.value.reason == "invalid_evidence"
+    standalone.audio.models.generate_content.assert_not_called()
