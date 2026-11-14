@@ -576,3 +576,59 @@ def test_merge_briefing_removes_duplicate_even_with_different_reference_numbers(
     assert result.used_source_ids == ["S1", "S8"]
     assert result.diagnostics["duplicates_removed"] == 1
     assert result.diagnostics["additional_news"] == 1
+
+
+
+def test_topic_is_in_briefing_prompt_and_is_not_lost_in_source_selection(setup_editorial):
+    from edicola.press_review import ReviewSelection
+    root, _, client, _, search = setup_editorial
+    focus = "Approfondisci il piano dei trasporti e le decisioni del consiglio"
+    result = generate_product("briefing", root=root, authorize_external=True,
+                              client=client, selection=ReviewSelection(keyword=focus))
+    assert result.sufficient
+    payload = json.loads(client.models.generate_content.call_args.kwargs["contents"])
+    assert payload["task"] == "briefing"
+    assert payload["focus"] == focus
+    assert payload["sources"]
+    assert all("trasporti" in item["text"] for item in payload["sources"])
+    search.assert_not_called()
+
+
+def test_general_briefing_does_not_insert_an_artificial_topic(setup_editorial):
+    root, _, client, _, search = setup_editorial
+    result = generate_product("briefing", root=root, authorize_external=True, client=client)
+    assert result.sufficient
+    payload = json.loads(client.models.generate_content.call_args.kwargs["contents"])
+    assert "focus" not in payload
+    search.assert_not_called()
+
+
+def test_topic_is_kept_in_both_briefing_passes(setup_editorial):
+    from edicola.press_review import ReviewSelection
+    root, catalog, client, _, search = setup_editorial
+    expanded = " Il consiglio ha comunicato altri dettagli verificabili." * 70
+    catalog.chunks = [replace(chunk, text=chunk.text + expanded)
+                      for chunk in catalog.chunks]
+    prompts = []
+
+    def generated(**kwargs):
+        payload = json.loads(kwargs["contents"])
+        prompts.append(payload)
+        source = payload["sources"][0]
+        make_claim = lambda text: {"text": text, "evidence": [{
+            "source_id": source["source_id"], "quote": source["text"][:120]}]}
+        item = {"title": make_claim("Notizia documentata passaggio " + str(len(prompts))),
+                "summary": make_claim("Sviluppo del piano dei trasporti " + str(len(prompts)))}
+        return SimpleNamespace(
+            text=json.dumps({"sufficient": True, "news": [item]}),
+            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)],
+        )
+
+    client.models.generate_content.side_effect = generated
+    focus = "piano dei trasporti"
+    result = generate_product("briefing", root=root, authorize_external=True,
+                              client=client, selection=ReviewSelection(keyword=focus))
+    assert result.sufficient
+    assert len(prompts) == 2
+    assert all(payload.get("focus") == focus for payload in prompts)
+    search.assert_not_called()

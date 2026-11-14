@@ -205,6 +205,14 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
             distances = {hit["id"]: float(hit["distance"]) for hit in hits}
         elif kind == "briefing":
             selected = balanced_briefing(catalog, len(catalog.chunks), config.topic_similarity, preserve_editions=True)
+            # Il ranking iniziale copre l'intero corpus indicizzato. Con un
+            # tema esplicito, i passaggi più pertinenti precedono gli altri
+            # nel budget del prompt senza introdurre quote fisse per PDF.
+            if selection and selection.keyword:
+                from edicola.knowledge_relevance import Topic
+                matcher = Topic(selection.keyword, selected)
+                selected.sort(key=lambda chunk: (-matcher.score(chunk.text),
+                                                  chunk.metadata.get("filename", ""), chunk.id))
             assignments = topic_clusters(selected, catalog.vectors, config.topic_similarity)
             grouped = {}
             for chunk in selected:
@@ -261,7 +269,8 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
             candidates = sources
             try:
                 sources, prompt = fit_briefing_prompt(sources, catalog.coverage, groups, prompt_budget,
-                                                      source_budget=config.max_source_chars, articles=article_details)
+                                                      source_budget=config.max_source_chars, articles=article_details,
+                                                      focus=selection.keyword if selection else "")
             except ValueError:
                 logger.warning("request_id=%s phase=briefing_context status=prompt_budget_exceeded budget=%d", request_id, prompt_budget)
                 return briefing_result(BriefingDraft(status="prompt_budget_exceeded"), [],
@@ -283,7 +292,8 @@ def generate_product(kind: str, topic: str = "", *, authorize_external=False, ro
                     extra_sources, extra_prompt = fit_briefing_prompt(
                         remaining, catalog.coverage, groups, min(prompt_budget, 16000),
                         source_budget=min(config.max_source_chars, 12000), articles=article_details,
-                        already_covered=headlines, balance_editions=False)
+                        already_covered=headlines, balance_editions=False,
+                        focus=selection.keyword if selection else "")
                 except ValueError:
                     extra_sources = []
                 if extra_sources:
