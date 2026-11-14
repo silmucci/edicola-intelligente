@@ -471,3 +471,14 @@ def test_unverifiable_generated_citations_report_separate_error_reason(standalon
         generate(standalone)
     assert captured.value.reason == "invalid_evidence"
     assert standalone.audio.models.generate_content.call_count == 0
+
+
+
+def test_single_word_topic_is_an_editorial_category_not_a_required_unique_event(standalone):
+    """Il prompt deve poter ricavare un episodio breve da una sola notizia valida."""
+    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
+        episode = generate(standalone, topic="Scuola", embedder=Mock())
+    assert episode.script.sources
+    config = standalone.text.models.generate_content.call_args.kwargs["config"]
+    assert "una sola notizia sufficientemente documentata" in config.system_instruction
+    assert "non aggiungere notizie estranee" in config.system_instruction

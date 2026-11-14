@@ -120,6 +120,14 @@ parole complessive (circa 4-5 minuti). Se sono scarse, resta breve.
 Non diluire il testo per raggiungere la durata; evita ripetizioni,
 riempitivi, saluti e conclusioni, gestiti dall'app."""
 INSTRUCTION += COMPARISON_INSTRUCTION
+SHORT_TOPIC_INSTRUCTION = """
+Un topic espresso con una sola parola è un argomento di ricerca, non
+necessariamente il nome di un unico evento. Approfondisci una o più notizie
+distinte pertinenti e verificabili anche da edizioni differenti. Se esiste
+una sola notizia sufficientemente documentata, genera un episodio breve
+con sufficient=true; non aggiungere notizie estranee per raggiungere
+la durata e non inventare prove o nessi.
+"""
 
 DEEP_INTRO = "Benvenuti. In questo episodio approfondiamo le vicende raccontate dalle edizioni disponibili."
 DEEP_MAX_WORDS = 690
@@ -277,6 +285,8 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
     if retry_key:
         return load_draft(root, retry_key, catalog)
     topic = normalize_topic(topic)
+    short_topic = bool(topic) and len(topic.split()) == 1
+    generation_instruction = INSTRUCTION + (SHORT_TOPIC_INSTRUCTION if short_topic else "")
     if selection is not None:
         from edicola.press_review import filter_catalog
         catalog = filter_catalog(catalog, selection)
@@ -288,7 +298,8 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
     cache_config = {**asdict(config), "podcast_source_chars": DEEP_SOURCE_CHARS,
                     "podcast_prompt_chars": DEEP_PROMPT_CHARS, "query_embedding": [EMBEDDING_MODEL, FORMAT_VERSION] if topic else None,
                     "ranking": RANKING_VERSION if topic else None,
-                    "topic_context_order": "relevance-v2" if topic else None}
+                    "topic_context_order": "relevance-v2" if topic else None,
+                    "short_topic_guidance": "v1" if short_topic else None}
     identity = digest({"coverage": catalog.coverage, "chunks": [
         (c.id, c.fingerprint, c.metadata.get("article_title_verified"),
          c.metadata.get("article_title"), c.metadata.get("article_pages_json"))
@@ -310,7 +321,7 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
     # Con un tema specifico manteniamo in testa le evidenze più pertinenti
     # nell'ordine fornito dal retrieval, prima di quelle solo debolmente affini.
     # Nessun limite per singolo PDF e nessuna riduzione del budget del corpus.
-    sources, _ = fit_context(sources, lambda items: INSTRUCTION + prompt(items), DEEP_PROMPT_CHARS,
+    sources, _ = fit_context(sources, lambda items: generation_instruction + prompt(items), DEEP_PROMPT_CHARS,
                              text_budget=DEEP_SOURCE_CHARS, balance_editions=not bool(topic))
     article_details = {s.id: article_details[s.id] for s in sources if s.id in article_details}
     logging.getLogger(__name__).info(
@@ -339,7 +350,7 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
         contents = prompt(sources)
         response = run_text_request(
             lambda active: request_news_json(
-                client, active, contents, sources, instruction=INSTRUCTION,
+                client, active, contents, sources, instruction=generation_instruction,
                 max_output_tokens=8192, request_id=key[:12], phase="podcast_script"),
             model, fallbacks=alternative_models("PODCAST_SCRIPT", model, root=root),
             request_id=key[:12], phase="podcast_script", quota_fallback=True)
