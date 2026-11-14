@@ -38,6 +38,117 @@ def informative_theme(edge: dict) -> bool:
     return False
 
 
+
+def _entity_key(label: str) -> str:
+    """Equivalenze tipografiche senza sinonimi o deduzioni tematiche."""
+    return " ".join(label.strip().strip('«»“”"').casefold().split())
+
+
+def _same_story_entity(first: dict, second: dict) -> bool:
+    """Unisce solo denominazioni compatibili, evitando co-referenze supposte."""
+    if first["id"] == second["id"]:
+        return False
+    if first["kind"] in SOURCE_KINDS or second["kind"] in SOURCE_KINDS:
+        return False
+    a, b = _entity_key(first["label"]), _entity_key(second["label"])
+    overlap = bool(set(first.get("source_ids", [])) & set(second.get("source_ids", [])))
+    kinds = {first["kind"], second["kind"]}
+    if first["kind"] != second["kind"] and "concept" not in kinds:
+        return False
+    if first["kind"] == "person" or second["kind"] == "person":
+        # Nomi incompleti od omonimi richiedono disambiguazione a monte.
+        return False
+    if a == b:
+        # A parità di testo, una denominazione distinta condivisa da una
+        # fonte non identifica un altro soggetto. Nomi propri distintivi
+        # (CamelCase) sono riutilizzabili anche fra edizioni diverse.
+        named = any(re.search(r"[a-zà-öø-ÿ][A-ZÀ-ÖØ-Þ]", n["label"])
+                    for n in (first, second))
+        return overlap or named
+    if first["kind"] == second["kind"] == "organization" and overlap:
+        short, full = sorted((a, b), key=len)
+        # Solo forma breve e qualifica istituzionale nello stesso documento,
+        # senza dedurre equivalenze dalla semplice appartenenza geografica.
+        suffix = full[len(short):] if full.startswith(short + " ") else ""
+        return bool(re.fullmatch(
+            r"\s+(?:della|del|dei|degli)\s+[a-zà-öø-ÿ]+", suffix
+        ) and not any(
+            n in {"ministero", "regione", "comune", "provincia", "consiglio", "commissione"}
+            for n in (short,)
+        ))
+    return False
+
+
+def _consolidate_story_entities(data: dict) -> dict:
+    """Accorpa alias verificati soltanto nella vista, mantenendo ogni prova.
+
+    Non aggiunge relazioni, non identifica genericamente 'provvedimento'
+    con una legge e non modifica il grafo originale salvato in cache.
+    """
+    original = data.get("nodes", [])
+    if len(original) < 2:
+        return data
+    aliases = {node["id"]: node["id"] for node in original}
+
+    def root(identity):
+        while aliases[identity] != identity:
+            identity = aliases[identity]
+        return identity
+
+    rank_kind = {"proposal": 7, "measure": 6, "organization": 5,
+                 "event": 4, "place": 3, "person": 2, "concept": 1}
+
+    def priority(node):
+        return (rank_kind.get(node["kind"], 0),
+                len(_entity_key(node["label"])), len(node.get("source_ids", [])))
+
+    for i, first in enumerate(original):
+        for second in original[i+1:]:
+            if not _same_story_entity(first, second):
+                continue
+            a, b = root(first["id"]), root(second["id"])
+            if a == b:
+                continue
+            representative = {node["id"]: node for node in original}
+            best = max((a, b), key=lambda x: priority(representative[x]))
+            aliases[a if best == b else b] = best
+
+    if all(root(identity) == identity for identity in aliases):
+        return data
+
+    merged_nodes = {}
+    for node in original:
+        identity = root(node["id"])
+        if identity not in merged_nodes:
+            representative = next(n for n in original if n["id"] == identity)
+            merged_nodes[identity] = {**representative,
+                                      "source_ids": list(representative.get("source_ids", []))}
+        target = merged_nodes[identity]
+        target["source_ids"] = list(dict.fromkeys(
+            [*target.get("source_ids", []), *node.get("source_ids", [])]))
+
+    grouped_edges = {}
+    for edge in data.get("edges", []):
+        start, end = root(edge["from_id"]), root(edge["to_id"])
+        if start == end:
+            continue
+        signature = (start, end, edge["kind"], edge["label"], edge.get("topic"),
+                     edge.get("context_scope"))
+        if signature not in grouped_edges:
+            grouped_edges[signature] = {**edge, "from_id": start, "to_id": end,
+                                        "source_ids": list(edge.get("source_ids", [])),
+                                        "evidence": list(edge.get("evidence", []))}
+            continue
+        saved = grouped_edges[signature]
+        saved["source_ids"] = list(dict.fromkeys(
+            [*saved["source_ids"], *edge.get("source_ids", [])]))
+        for proof in edge.get("evidence", []):
+            if proof not in saved["evidence"]:
+                saved["evidence"].append(proof)
+    return {**data, "nodes": list(merged_nodes.values()),
+            "edges": list(grouped_edges.values())}
+
+
 def story_graph(data: dict, topic: str, *, limit: int = 14, sources=()) -> dict:
     """Presenta relazioni informative, non un catalogo di menzioni.
 
@@ -48,8 +159,11 @@ def story_graph(data: dict, topic: str, *, limit: int = 14, sources=()) -> dict:
     """
     if not 2 <= limit <= 20:
         raise ValueError("Numero di nodi del grafo fuori intervallo.")
-    nodes = {n["id"]: n for n in data.get("nodes", [])}
-    edges = [e for e in data.get("edges", [])
+    # La stessa entità può ricomparire in diverse frasi e con virgolette
+    # differenti. Consolidamento esclusivamente nella vista editoriale.
+    display = _consolidate_story_entities(data)
+    nodes = {n["id"]: n for n in display.get("nodes", [])}
+    edges = [e for e in display.get("edges", [])
              if e.get("from_id") in nodes and e.get("to_id") in nodes]
     if not nodes or not edges:
         return {"nodes": [], "edges": []}

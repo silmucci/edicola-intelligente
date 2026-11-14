@@ -319,3 +319,55 @@ def test_story_graph_omits_unsupported_single_word_thematic_bridge():
                Source("S2", "c2", "b.pdf", 2, proof[1]["quote"], .1)]
     assert story_graph(data, "bilancio comunale", sources=sources) == {
         "nodes": [], "edges": []}
+
+
+
+def test_story_view_merges_quote_variants_and_equivalent_organizations():
+    from edicola.map_story import _consolidate_story_entities
+    from copy import deepcopy
+    quote = "Il Senato della Repubblica ha approvato la proposta «PonteVerde»."
+    raw = {
+        "nodes": [
+            {"id": "N1", "kind": "organization", "label": "Senato", "source_ids": ["S1"]},
+            {"id": "N2", "kind": "organization", "label": "Senato della Repubblica", "source_ids": ["S1"]},
+            {"id": "N3", "kind": "proposal", "label": "«PonteVerde»", "source_ids": ["S1"]},
+            {"id": "N4", "kind": "concept", "label": "PonteVerde", "source_ids": ["S1"]},
+        ],
+        "edges": [
+            {"from_id": "N1", "to_id": "N3", "kind": "documented",
+             "label": "ha approvato", "source_ids": ["S1"],
+             "evidence": [{"source_id": "S1", "quote": quote}]},
+            {"from_id": "N2", "to_id": "N4", "kind": "documented",
+             "label": "ha approvato", "source_ids": ["S1"],
+             "evidence": [{"source_id": "S1", "quote": quote}]},
+        ],
+    }
+    original = deepcopy(raw)
+    cleaned = _consolidate_story_entities(raw)
+    assert raw == original
+    assert {n["label"] for n in cleaned["nodes"]} == {
+        "Senato della Repubblica", "«PonteVerde»"}
+    assert len(cleaned["edges"]) == 1
+    assert cleaned["edges"][0]["evidence"] == [{"source_id": "S1", "quote": quote}]
+    shown = story_graph(raw, "PonteVerde", sources=())
+    assert len(shown["nodes"]) == 2 and len(shown["edges"]) == 1
+
+
+def test_story_entity_linker_does_not_guess_generic_proposal_references():
+    from edicola.map_story import _consolidate_story_entities
+    raw = {
+        "nodes": [
+            {"id": "N1", "kind": "proposal", "label": "provvedimento", "source_ids": ["S1"]},
+            {"id": "N2", "kind": "proposal", "label": "PonteVerde", "source_ids": ["S1"]},
+            {"id": "N3", "kind": "organization", "label": "Regione", "source_ids": ["S1"]},
+            {"id": "N4", "kind": "organization", "label": "Regione Abruzzo", "source_ids": ["S1"]},
+            {"id": "N5", "kind": "person", "label": "Rossi", "source_ids": ["S1"]},
+            {"id": "N6", "kind": "person", "label": "Rossi", "source_ids": ["S2"]},
+        ],
+        "edges": [{"from_id": "N3", "to_id": "N1",
+                   "kind": "contextual", "label": "approfondisce",
+                   "source_ids": ["S1"], "evidence": []}],
+    }
+    cleaned = _consolidate_story_entities(raw)
+    assert len(cleaned["nodes"]) == len(raw["nodes"])
+    assert cleaned["edges"] == raw["edges"]
