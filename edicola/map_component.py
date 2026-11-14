@@ -53,6 +53,55 @@ export default function({parentElement,data,setTriggerValue}){
  for(const node of nodes){node.button.style.opacity=!data.selected||node.id===data.selected||neighbors.get(data.selected)?.includes(node.id)?'1':'.45';}
  const preferred=byId.has(data.focus)?data.focus:nodes[0]?.id;
  const starts=[preferred,...nodes.map(n=>n.id).filter(id=>id!==preferred)].filter(Boolean);
+ // L'attenzione editoriale evidenzia un nodo, ma non determina l'ordine
+ // dei fatti. L'origine di un arco documentato deve precedere il suo oggetto.
+ function directedLevels(component){
+  const membership=new Set(component);
+  const incoming=new Map(component.map(id=>[id,0]));
+  const outgoing=new Map(component.map(id=>[id,0]));
+  const facts=visibleEdges.filter(e=>e.directed&&membership.has(e.from)&&membership.has(e.to));
+  for(const edge of facts){
+   incoming.set(edge.to,incoming.get(edge.to)+1);
+   outgoing.set(edge.from,outgoing.get(edge.from)+1);
+  }
+  const origins=component.filter(id=>outgoing.get(id)>0&&incoming.get(id)===0);
+  const seeds=origins.length?origins:[membership.has(preferred)?preferred:component[0]];
+  const depth=new Map(seeds.map(id=>[id,0]));
+  const queue=[...seeds];
+  while(queue.length){
+   const id=queue.shift();
+   for(const other of neighbors.get(id)){
+    if(!membership.has(other)||depth.has(other))continue;
+    depth.set(other,depth.get(id)+1);queue.push(other);
+   }
+  }
+  for(const id of component)if(!depth.has(id))depth.set(id,0);
+  // Se il grafo diretto è aciclico, impone una lettura dall'alto in basso
+  // per TUTTE le frecce fattuali, anche in presenza di legami contestuali.
+  const degree=new Map(component.map(id=>[id,0]));
+  const forward=new Map(component.map(id=>[id,[]]));
+  for(const edge of facts){
+   degree.set(edge.to,degree.get(edge.to)+1);
+   forward.get(edge.from).push(edge.to);
+  }
+  const available=component.filter(id=>degree.get(id)===0);
+  const ordered=[];
+  while(available.length){
+   const id=available.shift();ordered.push(id);
+   for(const target of forward.get(id)){
+    degree.set(target,degree.get(target)-1);
+    if(degree.get(target)===0)available.push(target);
+   }
+  }
+  if(ordered.length===component.length){
+   for(const id of ordered){
+    for(const target of forward.get(id)){
+     depth.set(target,Math.max(depth.get(target),depth.get(id)+1));
+    }
+   }
+  }
+  return depth;
+ }
  let lastWidth=0;
  function layout(){
   // Ogni componente della mappa scorre nel normale documento. Niente
@@ -69,19 +118,18 @@ export default function({parentElement,data,setTriggerValue}){
   const seen=new Set();
   for(const root of starts){
    if(seen.has(root))continue;
-   const levels=[],queue=[[root,0]];seen.add(root);
+   const component=[],queue=[root];seen.add(root);
    while(queue.length){
-    const [id,depth]=queue.shift();
-    (levels[depth]||(levels[depth]=[])).push(byId.get(id));
-    const next=[...neighbors.get(id)].sort((a,b)=>{
-     const rank=x=>visibleEdges.some(e=>e.kind==='documented'&&
-      (e.from===id&&e.to===x||e.to===id&&e.from===x))?0:1;
-     return rank(a)-rank(b);
-    });
-    for(const other of next){
+    const id=queue.shift();component.push(id);
+    for(const other of neighbors.get(id)){
      if(seen.has(other))continue;
-     seen.add(other);queue.push([other,depth+1]);
+     seen.add(other);queue.push(other);
     }
+   }
+   const levels=[],depths=directedLevels(component);
+   for(const id of component){
+    const depth=depths.get(id);
+    (levels[depth]||(levels[depth]=[])).push(byId.get(id));
    }
    for(const level of levels){
     for(let offset=0;offset<level.length;offset+=columns){
