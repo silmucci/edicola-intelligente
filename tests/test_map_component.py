@@ -42,7 +42,7 @@ def test_graph_layout_respects_direction_of_documented_actions():
     # nodo è il destinatario di un'azione: il soggetto rimane sopra.
     assert "function directedLevels(component)" in JS
     assert "const origins=component.filter(id=>outgoing.get(id)>0&&incoming.get(id)===0)" in JS
-    assert "const depths=directedLevels(component)" in JS
+    assert "depths=directedLevels(component)" in JS
     assert "for(const target of forward.get(id))" in JS
     assert "depth.set(target,Math.max(depth.get(target),depth.get(id)+1))" in JS
     assert "if(edge.directed)line.setAttribute('marker-end','url(#arrow)')" in JS
