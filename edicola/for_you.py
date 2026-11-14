@@ -46,7 +46,7 @@ def _editorial_noise(text: str) -> bool:
 
 def _informative(sentence: str) -> bool:
     """Un elenco di pochi nomi non è un'anteprima giornalistica."""
-    return len(re.findall(r"[^\W_]+(?:['’][^\W_]+)?", sentence)) >= 7
+    return len(re.findall(r"[^\W_]+(?:['’][^\W_]+)?", sentence)) >= 5
 
 
 def _sentences(text: str) -> list[str]:
