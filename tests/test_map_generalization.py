@@ -329,3 +329,41 @@ def test_clause_extraction_never_converts_attribution_or_negation_into_action():
     assert generic_action(
         "Per queste ragioni, il Comitato non ha presentato un nuovo progetto."
     ) is None
+
+
+
+def test_explicit_event_venue_is_a_directional_relation_with_original_quote():
+    from edicola.map_facts import complete_verified_relations
+    quote = (
+        "È fallito il tentativo di conciliazione che si è svolto il 3 novembre "
+        "al Ministero del Lavoro sulla controversia relativa ai contratti."
+    )
+    source = Source("S1", "chunk", "giornale.pdf", 1, quote, .12)
+    data = complete_verified_relations(
+        {"nodes": [], "edges": []}, [source],
+        "Tentativo di conciliazione, contratti e Ministero del Lavoro",
+        article_titles={"S1": {"title": "Il tentativo di conciliazione sui contratti"}},
+    )
+    labels = {node["id"]: node for node in data["nodes"]}
+    matching = [e for e in data["edges"]
+                if e["kind"] == "documented" and e["label"] == "si è svolto"
+                and labels[e["from_id"]]["label"] == "tentativo di conciliazione"
+                and labels[e["to_id"]]["label"] == "Ministero del Lavoro"]
+    assert len(matching) == 1
+    assert labels[matching[0]["from_id"]]["kind"] == "event"
+    assert labels[matching[0]["to_id"]]["kind"] == "place"
+    assert matching[0]["evidence"] == [{"source_id": "S1", "quote": quote}]
+
+
+@pytest.mark.parametrize("quote", [
+    "Il convegno non si è svolto il 3 novembre al Palazzo Civico.",
+    "Il convegno si sarebbe svolto il 3 novembre al Palazzo Civico.",
+    "Il convegno si è svolto il 3 novembre al Palazzo Civico?",
+])
+def test_unconfirmed_or_negated_event_venue_is_not_a_fact(quote):
+    from edicola.map_facts import complete_verified_relations
+    source = Source("S1", "chunk", "giornale.pdf", 1, quote, .12)
+    data = complete_verified_relations(
+        {"nodes": [], "edges": []}, [source], "Convegno e Palazzo Civico"
+    )
+    assert not data["edges"]

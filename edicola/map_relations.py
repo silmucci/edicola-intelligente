@@ -3,7 +3,7 @@
 import re
 
 
-VERSION = "concept-map-v34"
+VERSION = "concept-map-v35"
 # Solo elementi grammaticali trasparenti; niente wildcard che scavalchino altri attori.
 ADVERB = r"(?:oggi|ieri|anche|già|poi|ufficialmente|formalmente|direttamente|definitivamente)"
 AUXILIARY = r"(?:ha|hanno|aveva|avevano|è|sono|era|erano|stato|stata|stati|state)"
@@ -35,6 +35,29 @@ def normalized(text):
     return " ".join(text.casefold().split())
 
 
+
+def _documented_venue(left: str, relation: str, right: str, quote: str) -> bool:
+    """Valida una relazione evento-luogo con tutti gli elementi letterali.
+
+    Richiede un evento nominale seguito dal verbo di svolgimento e da una
+    preposizione locativa; un riferimento temporale opzionale non cambia
+    chi agisce o dove accade l'evento.
+    """
+    if not re.fullmatch(r"(?:si è svolt[oaie]|ha avuto luogo)", relation):
+        return False
+    pattern = (
+        r"(?<!\w)" + re.escape(left)
+        + r"\s+(?:che\s+)?" + re.escape(relation)
+        + r"(?:\s+(?:il|lo)\s+\d{1,2}\s+[\w’'-]+(?:\s+\d{4})?)?"
+        + r"\s+(?:al|allo|alla|all['’]|nel|nella|presso(?:\s+(?:il|la|lo))?)\s+"
+        + re.escape(right) + r"(?!\w)"
+    )
+    for match in re.finditer(pattern, quote):
+        start = max(quote.rfind(p, 0, match.start()) for p in (".", ";", "!", "?")) + 1
+        if "?" not in quote[start:] and not UNCERTAIN.search(quote[start:match.end()]):
+            return True
+    return False
+
 def documented_relation(left, relation, right, quote, *, _aliases=True):
     """Soggetto-predicato-oggetto nella stessa proposizione, con modificatori limitati.
 
@@ -54,6 +77,8 @@ def documented_relation(left, relation, right, quote, *, _aliases=True):
     if (len(relation) > 80 or len(relation.split()) > 8
             or re.search(r"[.;!?,]|\b(che|mentre|quando|perché|sebbene)\b", relation)):
         return False
+    if _documented_venue(left, relation, right, quote):
+        return True
     # Nessuna distanza arbitraria tra estremi: non scavalcare subordinate o altri attori.
     # Un testo citato integralmente può essere oggetto di un'attribuzione;
     # una parola isolata dentro la dichiarazione non diventa quell'oggetto.

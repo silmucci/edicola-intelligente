@@ -189,6 +189,24 @@ def generic_action(passage: str):
     return None
 
 
+
+# Relazioni evento-luogo, espresse nel testo con verbo e preposizione:
+# "il convegno che si è svolto il 3 novembre al Palazzo Civico".
+# Non identifica o completa luoghi che l'articolo non nomina.
+VENUE_PATTERN = re.compile(
+    r"(?<!\w)(?:il|la|lo|l['’])\s*"
+    r"(?P<actor>[\wÀ-ÿ’'-]+(?:\s+[\wÀ-ÿ’'-]+){0,6})"
+    r"\s+(?:che\s+)?"
+    r"(?P<verb>si\s+è\s+svolt[oaie]|ha\s+avuto\s+luogo)"
+    r"(?:\s+(?:il|lo)\s+\d{1,2}\s+[\w’'-]+(?:\s+\d{4})?)?"
+    r"\s+(?:al|allo|alla|all['’]|nel|nella|presso(?:\s+(?:il|la|lo))?)\s+"
+    r"(?P<object>(?-i:[A-ZÀ-ÖØ-Þ])[\w’'-]+"
+    r"(?:\s+(?:(?:del|della|dei|delle|di|degli)\s+)?"
+    r"(?-i:[A-ZÀ-ÖØ-Þ])[\w’'-]+){0,4})",
+    re.I,
+)
+
+
 def original_sentences(text: str):
     """Ricompone le righe tipografiche senza attraversare i paragrafi.
 
@@ -239,13 +257,15 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
             # rubriche, prova una tripla soggetto-verbo-oggetto conservativa.
             matches = (list(ACTION_PATTERN.finditer(passage))
                        + list(FUNDS_PATTERN.finditer(passage))
-                       + list(PASSIVE_PATTERN.finditer(passage)))
+                       + list(PASSIVE_PATTERN.finditer(passage))
+                       + list(VENUE_PATTERN.finditer(passage)))
             generic = generic_action(passage) if not matches else None
             for match in (matches if matches else [None] if generic else []):
                 actor, verb, object_name = (
                     (match.group(key).strip() for key in ("actor", "verb", "object"))
                     if match is not None else generic)
                 passive = match is not None and match.re is PASSIVE_PATTERN
+                venue = match is not None and match.re is VENUE_PATTERN
                 if passive:
                     # La frase cita il provvedimento (soggetto grammaticale)
                     # e poi l'istituzione agente. Non invertire il predicato.
@@ -264,7 +284,9 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
                     r"\b(?:ministro|ministra|senatore|senatrice|sindaco|sindaca|"
                     r"presidente|deputato|deputata)\s+" + re.escape(actor) + r"\b",
                     match.group(0), re.I) if match is not None else None)
-                if match is None:
+                if venue:
+                    actor_kind = "event"
+                elif match is None:
                     if re.search(r"\b(?:senato|camera|parlamento|governo|comune|regione|"
                                  r"ministero|commissione|sindacat|confartigianato|"
                                  r"associazione|comitato|azienda|impresa|società|"
@@ -286,7 +308,9 @@ def complete_salient_facts(raw: dict, sources: list, topic: str, *,
                 measure = re.match(
                     r"(?:finanziamento|stanziamento|investimento|intervento|misura)\b",
                     object_name, re.I)
-                if passive:
+                if venue:
+                    object_kind = "place"
+                elif passive:
                     object_kind = "organization"
                 elif measure or (match is not None and match.re is FUNDS_PATTERN):
                     object_kind = "measure"
