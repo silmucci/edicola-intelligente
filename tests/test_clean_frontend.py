@@ -31,7 +31,7 @@ def test_six_full_cards_keep_descriptions_and_accessibility():
     assert "aria-current" in CARD_JS
     assert "setTriggerValue('selected'" in CARD_JS
     assert [p["id"] for p in PRODUCTS if p["id"] != "profile"] == [
-        "archive", "for_you", "chat", "briefing", "podcast", "explore"
+        "for_you", "archive", "chat", "briefing", "podcast", "explore"
     ]
 
 
