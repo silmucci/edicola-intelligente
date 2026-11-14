@@ -279,3 +279,43 @@ def test_documented_decision_does_not_hide_verified_developments():
     out = story_graph(graph, "Ritorno del nucleare: decisioni e tecnologie", sources=[source])
     assert {edge["kind"] for edge in out["edges"]} == {"documented", "contextual"}
     assert {node["id"] for node in out["nodes"]} == {"N1", "N2", "N3", "N4"}
+
+
+
+def test_one_word_generic_topic_does_not_create_spurious_story_bridge():
+    from edicola.map_story import informative_theme
+    quote = "La discussione sul bilancio comunale ha coinvolto i consiglieri."
+    for word in ("comunale", "bilancio"):
+        assert not informative_theme({
+            "kind": "thematic", "label": "associazione tematica",
+            "topic": word, "evidence": [{"source_id": "S1", "quote": quote}],
+        })
+    assert informative_theme({
+        "kind": "thematic", "label": "associazione tematica",
+        "topic": "bilancio consolidato", "evidence": [{"source_id": "S1", "quote": quote}],
+    })
+    assert informative_theme({
+        "kind": "thematic", "label": "associazione tematica",
+        "topic": "PonteVerde",
+        "evidence": [{"source_id": "S1", "quote": "Il progetto PonteVerde è stato presentato."}],
+    })
+
+
+def test_story_graph_omits_unsupported_single_word_thematic_bridge():
+    proof = [{"source_id": "S1", "quote": "Si discute del bilancio comunale."},
+             {"source_id": "S2", "quote": "Un deputato commenta il bilancio."}]
+    data = {
+        "nodes": [
+            {"id": "N1", "kind": "proposal", "label": "disegno di legge", "source_ids": ["S1"]},
+            {"id": "N2", "kind": "person", "label": "Un deputato", "source_ids": ["S2"]},
+        ],
+        "edges": [{
+            "from_id": "N1", "to_id": "N2", "kind": "thematic",
+            "label": "associazione tematica", "topic": "bilancio",
+            "source_ids": ["S1", "S2"], "evidence": proof,
+        }],
+    }
+    sources = [Source("S1", "c1", "a.pdf", 1, proof[0]["quote"], .1),
+               Source("S2", "c2", "b.pdf", 2, proof[1]["quote"], .1)]
+    assert story_graph(data, "bilancio comunale", sources=sources) == {
+        "nodes": [], "edges": []}

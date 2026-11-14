@@ -133,3 +133,37 @@ def test_multiple_articles_about_same_theme_remain_separate_without_evidence_of_
         assert len(edge["source_ids"]) == 1
         assert edge["source_ids"][0] in nodes[edge["from_id"]]["source_ids"]
         assert edge["source_ids"][0] in nodes[edge["to_id"]]["source_ids"]
+
+
+
+def test_topic_nucleus_excludes_weakly_related_stories_without_domain_blacklists():
+    topic = ("Quali sono i principali sviluppi sulla sicurezza sul lavoro? "
+             "Collega incidenti, dati sulle vittime e interventi.")
+    on_topic = Source("S1", "c1", "a.pdf", 1,
+        "Il rapporto sui morti sul lavoro registra nuovi dati e richieste "
+        "di prevenzione per le aziende italiane.", .1)
+    unrelated = Source("S2", "c2", "b.pdf", 2,
+        "I soccorritori hanno ricostruito la dinamica dello scontro stradale "
+        "che ha provocato un incidente con diversi feriti.", .2)
+    articles = {
+        "S1": {"title": "Morti sul lavoro: nuovi dati e vittime"},
+        "S2": {"title": "Incidente stradale: diversi feriti nello scontro"},
+    }
+    out = verified_news_relations({"nodes": [], "edges": []},
+                                  [on_topic, unrelated], articles, topic)
+    assert out["edges"]
+    assert all(edge["source_ids"] == ["S1"] for edge in out["edges"])
+    assert all("stradale" not in node["label"].casefold() for node in out["nodes"])
+
+
+def test_nucleus_preserves_related_weather_story_using_two_core_terms():
+    topic = "Emergenza idrogeologica in Abruzzo"
+    source = Source("S1", "c1", "a.pdf", 1,
+        "Nelle zone interne dell'Abruzzo permane una criticità ordinaria "
+        "per rischio idrogeologico, secondo la protezione civile.", .1)
+    out = verified_news_relations(
+        {"nodes": [], "edges": []}, [source],
+        {"S1": {"title": "Maltempo in Abruzzo: rischio nei bacini"}},
+        topic)
+    assert out["edges"]
+    assert "Maltempo" in out["nodes"][0]["label"]

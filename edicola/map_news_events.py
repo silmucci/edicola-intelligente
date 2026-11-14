@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections import defaultdict
 import re
 
-from edicola.knowledge_relevance import Topic, terms
+from edicola.knowledge_relevance import Topic, terms, INTENT
 from edicola.map_facts import generic_action
 
 _CONTENT = re.compile(
@@ -73,6 +73,40 @@ def _unique_title(articles, source):
     return " ".join(article["title"].split()).strip()
 
 
+
+def _query_nucleus(topic: str) -> set[str]:
+    """Termini centrali della domanda prima degli approfondimenti richiesti.
+
+    La parte prima del primo ':' o '?' identifica spesso il soggetto di
+    una richiesta articolata; il resto specifica dettagli da esplorare.
+    """
+    headline = re.split(r"[:?]", topic, maxsplit=1)[0]
+    return terms(headline) - INTENT
+
+
+def _primary_topic_support(topic: str, title: str, passages: list[str]) -> bool:
+    """Non promuovere a vicenda un aggancio lessicale accidentale.
+
+    Conta i termini del nucleo in titolo e frasi selezionate. Per nuclei
+    brevi è ammessa una locuzione esatta di due parole con uno dei termini
+    centrali, ricavata dalla domanda senza dizionari di settore.
+    """
+    nucleus = _query_nucleus(topic)
+    if not nucleus:
+        return True
+    material = " ".join((title, *passages))
+    if len(nucleus & terms(material)) >= min(2, len(nucleus)):
+        return True
+    if len(nucleus) != 2:
+        return False
+    head = re.split(r"[:?]", topic, maxsplit=1)[0]
+    tokens = re.findall(r"[^\W_]+(?:['’][^\W_]+)?", head.casefold())
+    material_clean = " ".join(re.findall(r"[^\W_]+(?:['’][^\W_]+)?", material.casefold()))
+    pairs = [" ".join(tokens[i:i+2]) for i in range(len(tokens)-1)]
+    return any(pair in material_clean and bool(terms(pair) & nucleus)
+               for pair in pairs)
+
+
 def _source_records(sources, articles, topic, *, max_stories):
     matcher = Topic(topic)
     stories = defaultdict(list)
@@ -114,7 +148,8 @@ def _source_records(sources, articles, topic, *, max_stories):
             picked.append((score, source, passage))
             if len(picked) == 3:
                 break
-        if picked:
+        if picked and _primary_topic_support(
+                topic, title, [passage for _score, _source, passage in picked]):
             ranked.append((max(item[0] for item in picked), key, title, picked))
     ranked.sort(key=lambda row: (-row[0], row[1]))
     return ranked[:max_stories]

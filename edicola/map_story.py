@@ -5,6 +5,7 @@ fattuali; articoli e menzioni restano navigabili, ma non sostituiscono
 gli avvenimenti. Non aggiunge mai archi o fatti.
 """
 from collections import Counter
+import re
 
 from edicola.knowledge_relevance import terms
 
@@ -12,6 +13,29 @@ from edicola.knowledge_relevance import terms
 CORE_KINDS = {"event", "measure", "proposal"}
 SOURCE_KINDS = {"article", "source"}
 EDGE_VALUE = {"documented": 7, "contextual": 5, "thematic": 4, "mention": 1}
+
+
+
+def informative_theme(edge: dict) -> bool:
+    """Un tema di una parola non può essere un semplice settore o aggettivo.
+
+    Denominazioni specifiche composte sono ammesse. Un nome singolo passa
+    solo se appare come nome distintivo CamelCase o sigla nella prova.
+    """
+    label = (edge.get("topic") or edge.get("label") or "").strip()
+    distinct = terms(label)
+    if len(distinct) >= 2:
+        return True
+    if len(distinct) != 1:
+        return False
+    for item in edge.get("evidence", []):
+        quote = item.get("quote", "") if isinstance(item, dict) else ""
+        for token in re.findall(r"\b[A-ZÀ-ÖØ-Þ][\w'-]+\b", quote):
+            if (terms(token) == distinct and (
+                    re.search(r"[a-zà-öø-ÿ][A-ZÀ-ÖØ-Þ]", token)
+                    or (len(token) >= 3 and token.isupper()))):
+                return True
+    return False
 
 
 def story_graph(data: dict, topic: str, *, limit: int = 14, sources=()) -> dict:
@@ -131,7 +155,7 @@ def story_graph(data: dict, topic: str, *, limit: int = 14, sources=()) -> dict:
         if source_files and len({source_files.get(sid, sid) for sid in source_ids}) < 2:
             continue
         name = (edge.get("topic") or edge["label"]).strip().casefold()
-        if not name or name in used_themes:
+        if not informative_theme(edge) or not name or name in used_themes:
             continue
         left, right = edge["from_id"], edge["to_id"]
         if root(left) == root(right):
