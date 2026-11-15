@@ -10,7 +10,7 @@ from edicola.embeddings import DIMENSIONS, MODEL, EmbeddingError, GeminiEmbedder
 from edicola.vectorstore import open_collection, stored_records
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass

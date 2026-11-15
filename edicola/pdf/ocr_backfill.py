@@ -19,7 +19,7 @@ from edicola.maintenance_store import maintenance_lock
 from edicola.ocr import OCR_METHOD, needs_ocr, recognize_page, tesseract_available
 from edicola.storage import load_result, open_registry
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _eligible(page: dict) -> bool:

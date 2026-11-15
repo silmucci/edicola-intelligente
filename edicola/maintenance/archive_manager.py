@@ -201,7 +201,7 @@ def interactive(root, read=input, write=print):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--status", action="store_true")
     actions.add_argument("--prepare", action="store_true")

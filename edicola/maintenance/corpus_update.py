@@ -137,7 +137,7 @@ def inspect_corpus(root, *, refresh=False):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--refresh", action="store_true", help="Acquisisce e prepara localmente, con backup preventivo; nessuna API.")
     parser.add_argument("--report", type=Path, help="Scrive un report privato JSON sotto data/corpus_updates.")
     args = parser.parse_args(argv)

@@ -31,7 +31,7 @@ def connect_database():
         import psycopg
         certificate = config.get("sslrootcert", "system")
         if certificate != "system":
-            certificate = str((Path(__file__).resolve().parents[1] / certificate).resolve())
+            certificate = str((Path(__file__).resolve().parents[2] / certificate).resolve())
         return psycopg.connect(host=config["host"], dbname=config["dbname"], user=config["user"],
                                password=config["password"], port=int(config.get("port", 5432)),
                                sslmode="verify-full", sslrootcert=certificate,

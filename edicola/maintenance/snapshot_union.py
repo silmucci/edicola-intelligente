@@ -296,7 +296,7 @@ def main(argv=None):
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="Verifica il piano senza scrivere nulla.")
     mode.add_argument("--apply", action="store_true", help="Unisce con backup, senza API Gemini.")
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     args = parser.parse_args(argv)
     try:
         report = apply_union(args.root) if args.apply else plan_union(args.root)

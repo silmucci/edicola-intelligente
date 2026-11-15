@@ -21,7 +21,7 @@ from edicola.article_structure import infer_article_annotations
 from edicola.embeddings import api_key
 from edicola.ingestion import extract_pdf
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 PROMPT = """Analizza soltanto la struttura editoriale di questa pagina di quotidiano.
 Restituisci SOLO JSON con una lista 'articles'. Per ogni articolo usa:
 title (testo esatto del titolo visibile), section (se visibile),

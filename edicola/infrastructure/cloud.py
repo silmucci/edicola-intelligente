@@ -173,7 +173,7 @@ def prepare_cloud(root):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--export", type=Path, help="Nuova cartella destinazione; nessuna pubblicazione")
     action.add_argument("--validate", type=Path, help="Verifica uno snapshot locale senza sostituire quello pubblicato")

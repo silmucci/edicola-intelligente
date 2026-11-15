@@ -117,7 +117,7 @@ class LimitedClient:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--authorize-external", action="store_true")
     parser.add_argument("--max-api-calls", type=int, default=0)
     args = parser.parse_args(argv)

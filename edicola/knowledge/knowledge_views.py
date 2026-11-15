@@ -23,7 +23,7 @@ def compact_sources(ids, sources, archive, key, *, articles=None):
     from edicola.experience_ui import readable
     selected = [s for s in sources if s.id in ids]
     if selected:
-        root = archive.root if archive else Path(__file__).resolve().parents[1]
+        root = archive.root if archive else Path(__file__).resolve().parents[2]
         editions = source_editions(root, selected)
         seen = set()
         with st.container(horizontal=True, gap="small"):
@@ -50,7 +50,7 @@ def compact_sources(ids, sources, archive, key, *, articles=None):
 
 
 def render_knowledge(result, archive=None):
-    technical = diagnostics_enabled(archive.root if archive else Path(__file__).resolve().parents[1])
+    technical = diagnostics_enabled(archive.root if archive else Path(__file__).resolve().parents[2])
     data = result.data or {}
     articles = getattr(result, "source_articles", None) or {}
     useful = (data.get("events") or data.get("undated_events")) if result.kind == "timeline" else data.get("nodes")
@@ -178,7 +178,7 @@ def render_map(result, archive, technical):
 
 def render_timeline(events, sources, archive, *, articles=None):
     """Asse continuo: eventi datati o notizie ordinate per edizione verificata."""
-    root = archive.root if archive else Path(__file__).resolve().parents[1]
+    root = archive.root if archive else Path(__file__).resolve().parents[2]
     editions = source_editions(root, sources)
     months = ("gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre")
     payload, references = [], []

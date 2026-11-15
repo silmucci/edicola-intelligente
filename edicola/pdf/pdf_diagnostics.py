@@ -12,7 +12,7 @@ from pathlib import Path
 from edicola.article_structure import infer_article_annotations
 from edicola.ingestion import extract_pdf
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def locate_pdf(root: Path, name: str) -> Path:

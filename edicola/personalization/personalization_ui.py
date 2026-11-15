@@ -39,7 +39,7 @@ def show_product(result, archive=None):
             st.markdown(readable(citation_text(section["text"], result.used_source_ids)))
     from pathlib import Path
     from edicola.reading_ui import chat_markdown
-    root = archive.root if archive else Path(__file__).resolve().parents[1]
+    root = archive.root if archive else Path(__file__).resolve().parents[2]
     render_sources(result, index=0, last=True, root=root, context=archive,
                    formatter=chat_markdown, namespace="personal_brief")
 

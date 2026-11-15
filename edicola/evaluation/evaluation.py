@@ -9,6 +9,7 @@ from collections import Counter
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from importlib.metadata import version
+from importlib.util import find_spec
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -71,7 +72,7 @@ def provenance():
     modules = ("search.py", "rag.py", "embeddings.py", "evaluation.py", "evaluation_data.py", "evaluation_metrics.py", "evaluation_report.py", "personalization.py", "editorial_selection.py", "profiles.py", "archive.py", "vectorstore.py", "indexing.py")
     return {"utc": datetime.now(timezone.utc).isoformat(), "python": platform.python_version(),
         "packages": {p: version(p) for p in ("google-genai", "chromadb", "streamlit", "altair")},
-        "code_sha256": digest({p: (Path(__file__).parent / p).read_text(encoding="utf-8") for p in modules})}
+        "code_sha256": digest({p: Path(find_spec(f"edicola.{p[:-3]}").origin).read_text(encoding="utf-8") for p in modules})}
 
 
 def benchmark(root, dataset, frozen, *, mode, k, limit, repeats=1, authorize_external=False, client=None):

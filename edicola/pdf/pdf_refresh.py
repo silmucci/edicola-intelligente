@@ -15,7 +15,7 @@ from pathlib import Path
 from edicola.chunking import prepare_documents, clean_text
 from edicola.ingestion import extract_pdf, ingest_directory
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def refresh(root: Path, names: list[str], *, apply=False):
