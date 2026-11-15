@@ -115,6 +115,17 @@ class PostgresPersonalStore:
     def ensure_profile(db, owner):
         db.execute("INSERT INTO edicola_private.profiles(owner_id) VALUES (%s) ON CONFLICT(owner_id) DO NOTHING", (owner,))
 
+    def first_access_pending(self):
+        """Nessun profilo persistente: mostra il benvenuto una sola volta per account."""
+        with self.transaction(operation="first_access_check") as (db, owner):
+            return db.execute("SELECT 1 FROM edicola_private.profiles WHERE owner_id=%s",
+                              (owner,)).fetchone() is None
+
+    def skip_first_access(self):
+        """Una scelta esplicita e persistente; conserva eventuali dati già presenti."""
+        with self.transaction(operation="first_access_skip") as (db, owner):
+            self.ensure_profile(db, owner)
+
     def load_profile(self):
         with self.transaction(operation="profile_read") as (db, owner):
             row = db.execute("SELECT interests, minutes, preferred_format, feedback FROM edicola_private.profiles WHERE owner_id=%s", (owner,)).fetchone()

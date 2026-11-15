@@ -26,6 +26,7 @@ from edicola.settings import setting
 from edicola.experience_ui import render_for_you
 from edicola.identity import synchronize_identity
 from edicola.header_ui import render_header
+from edicola.account_ui import render_first_access
 from edicola.product_navigation import render_navigation, active_product
 
 ROOT = Path(__file__).resolve().parent
@@ -98,6 +99,7 @@ if diagnostics_enabled(ROOT):
         right.metric("Pagine complessive", sum(d.total_pages for d in documents))
 context = archive_context(ROOT, documents, prepared)
 render_header(ROOT, context)
+render_first_access()
 section = render_navigation()
 product = active_product(section)
 # Si monta solo la destinazione scelta. Risultati RAM e input conservati dalla

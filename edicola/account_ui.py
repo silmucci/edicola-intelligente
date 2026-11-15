@@ -21,6 +21,7 @@ from edicola.consent import perform
 from edicola.api_guard import PermissionDenied
 from edicola.design import friendly_error, section_intro, product_notice
 from edicola.chat_sources import document_label, citation_text
+from edicola.profiles import Profile
 
 
 def personal_context():
@@ -29,6 +30,82 @@ def personal_context():
         raise PersonalStoreError("Accedi con Google per utilizzare il tuo profilo personale.")
     store = PostgresPersonalStore(identity)
     return store, store.load_profile()
+
+
+FIRST_ACCESS_REMINDER = (
+    "Non hai ancora configurato i tuoi interessi. Puoi aggiungerli o modificarli "
+    "in qualsiasi momento da Il mio profilo → Preferenze."
+)
+
+
+@st.dialog("Benvenuto nell'Edicola")
+def first_access_dialog(store, owner_id):
+    """Configurazione facoltativa: nessuna generazione AI e nessun consenso implicito."""
+    from edicola.experience_ui import INTERESTS
+
+    st.write("Quali notizie ti piacerebbe seguire? Scegli i tuoi argomenti "
+             "e il modo in cui preferisci leggere gli approfondimenti.")
+    selected = st.pills("I tuoi interessi", INTERESTS, selection_mode="multi",
+                        key="account_first_access_interests")
+    extra = st.text_input("Aggiungi un altro argomento (facoltativo)",
+                          key="account_first_access_custom", max_chars=100,
+                          placeholder="Ad esempio: Cinema").strip()
+    interests = list(selected or [])
+    if extra and extra.casefold() not in {name.casefold() for name in interests}:
+        interests.append(extra)
+    too_many = len(interests) > 10
+    if too_many:
+        st.caption("Puoi scegliere fino a 10 interessi, incluso quello personalizzato.")
+
+    minutes = st.segmented_control("Tempo di lettura", [2, 5, 10], default=5,
+                                    format_func=lambda value: f"{value} min",
+                                    key="account_first_access_minutes")
+    preferred = st.segmented_control("Formato preferito", ["testo", "visuale", "audio"],
+                                      default="testo", key="account_first_access_format")
+    st.caption("La scelta è facoltativa. Se salti, puoi aggiungere o modificare "
+               "i tuoi interessi in qualsiasi momento da Il mio profilo → Preferenze.")
+    with st.container(horizontal=True, gap="small"):
+        save = st.button("Salva e continua", type="primary",
+                         key="account_first_access_save", disabled=too_many)
+        skip = st.button("Salta per ora", key="account_first_access_skip")
+    if not (save or skip):
+        return
+    try:
+        if skip:
+            store.skip_first_access()
+        else:
+            store.save_preferences(Profile(user_id=owner_id, interests=interests,
+                                           minutes=minutes or 5, format=preferred or "testo"))
+    except (PersonalStoreError, ValueError):
+        st.error("Non è stato possibile salvare la scelta. Riprova: le preferenze non sono state confermate.")
+        return
+
+    st.session_state["account_first_access_done"] = True
+    if skip:
+        st.session_state["account_first_access_reminder"] = True
+    st.session_state["nav_section"] = "Per te"
+    st.rerun()
+
+
+def render_first_access():
+    """Mostra il benvenuto ai nuovi account; la presenza del profilo è il marcatore persistente."""
+    person = current_identity()
+    if person is None:
+        return
+    if st.session_state.pop("account_first_access_reminder", False):
+        st.info(FIRST_ACCESS_REMINDER)
+    if st.session_state.get("account_first_access_done"):
+        return
+    store = PostgresPersonalStore(person)
+    try:
+        pending = store.first_access_pending()
+    except PersonalStoreError:
+        # L'archivio rimane accessibile se il database personale non risponde.
+        return
+    if pending:
+        first_access_dialog(store, person.owner_id)
+    else:
+        st.session_state["account_first_access_done"] = True
 
 
 def privacy_notice():
