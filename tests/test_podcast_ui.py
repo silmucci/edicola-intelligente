@@ -142,3 +142,22 @@ def test_unreadable_episode_catalog_keeps_the_last_session_audio(standalone):
         app.run()
         assert not app.exception and len(app.get('audio')) == 1
         generate.assert_not_called()
+
+
+def test_podcast_school_topic_ignores_old_briefing_filters(tmp_path):
+    """Una ricerca su scuola non viene limitata dai vecchi filtri del Briefing."""
+    from edicola.podcast_text import PodcastError
+
+    with patch("edicola.podcast_ui.generate_standalone_podcast",
+               side_effect=PodcastError("Fonti non sufficienti")) as generate:
+        app = AppTest.from_string(ui_script(tmp_path)).run()
+        grant(app)
+        app.session_state["editorial_review_keyword"] = "sicurezza sul lavoro"
+        app.session_state["editorial_review_files"] = ("edizione-estranea.pdf",)
+        app.session_state["editorial_review_latest"] = True
+        app.text_input(key="podcast_topic").set_value("scuola").run()
+        app.button(key="podcast_submit").click().run()
+        assert not app.exception
+        assert generate.call_count == 1
+        assert generate.call_args.kwargs["topic"] == "scuola"
+        assert "selection" not in generate.call_args.kwargs
