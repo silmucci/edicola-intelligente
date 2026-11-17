@@ -124,8 +124,8 @@ INSTRUCTION += COMPARISON_INSTRUCTION
 DEEP_INTRO = "Benvenuti. In questo episodio approfondiamo le vicende raccontate dalle edizioni disponibili."
 DEEP_MAX_WORDS = 690
 DEEP_MAX_CHARS = 6900
-DEEP_SOURCE_CHARS = 19000
-DEEP_PROMPT_CHARS = 27000
+DEEP_SOURCE_CHARS = 12000
+DEEP_PROMPT_CHARS = 18000
 
 
 @dataclass
@@ -321,12 +321,12 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
             if not key_value:
                 raise PodcastError("Il servizio di preparazione non è disponibile.")
             client = genai.Client(api_key=key_value, vertexai=False, http_options=types.HttpOptions(
-                timeout=30000, retry_options=types.HttpRetryOptions(attempts=1)))
+                timeout=90000, retry_options=types.HttpRetryOptions(attempts=1)))
         contents = prompt(sources)
         response = run_text_request(
             lambda active: request_news_json(
                 client, active, contents, sources, instruction=INSTRUCTION,
-                max_output_tokens=8192, request_id=key[:12], phase="podcast_script"),
+                max_output_tokens=6144, request_id=key[:12], phase="podcast_script"),
             model, fallbacks=alternative_models("PODCAST_SCRIPT", model, root=root),
             request_id=key[:12], phase="podcast_script", quota_fallback=True)
         if not response.candidates or response.candidates[0].finish_reason != types.FinishReason.STOP:
