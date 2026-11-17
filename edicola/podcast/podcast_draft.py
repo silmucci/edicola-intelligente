@@ -470,13 +470,24 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
         atomic_write(path, json.dumps(saved, ensure_ascii=False).encode())
         return EpisodeDraft(key, saved["title"], saved["created_at"], script, sources, model, identity,
                             topic, VERSION, article_details)
-    except PodcastError:
+    except (PermissionDenied, PodcastError):
         raise
     except Exception as exc:
+        status = getattr(exc, "code", None)
         logging.getLogger(__name__).warning(
             "phase=podcast_script event=error type=%s http_status=%s",
-            type(exc).__name__, getattr(exc, "code", "-"))
-        raise PodcastError("Non è stato possibile preparare il copione. Riprova manualmente.") from None
+            type(exc).__name__, status if status is not None else "-")
+        if status in {500, 502, 503, 504}:
+            raise PodcastError(
+                "Il servizio di generazione non ha completato il copione. Riprova più tardi.",
+                reason="generation_unavailable") from None
+        if status == 429:
+            raise PodcastError(
+                "Il limite di utilizzo per la generazione del podcast è stato raggiunto.",
+                reason="generation_quota") from None
+        raise PodcastError(
+            "Non è stato possibile preparare il copione. Riprova manualmente.",
+            reason="generation_error") from None
     finally:
         lock.unlink(missing_ok=True)
         if own and client is not None:
@@ -522,8 +533,11 @@ def select_chunks(root, catalog, config, topic, key_value, embedder):
             if not any(c.metadata["filename"] == chunk.metadata["filename"] and near_duplicate(c.text, chunk.text) for c in selected):
                 selected.append(chunk)
         return selected
+    except PermissionDenied:
+        raise
     except Exception:
-        raise PodcastError("La ricerca delle fonti per questo argomento non è disponibile. Riprova manualmente.") from None
+        raise PodcastError("La ricerca delle fonti per questo argomento non è disponibile. Riprova manualmente.",
+                           reason="search_unavailable") from None
     finally:
         if own and embedder is not None:
             try:
