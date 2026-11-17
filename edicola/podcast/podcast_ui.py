@@ -66,8 +66,17 @@ def run_episode(root, voice, *, retry_key=None, topic=""):
         st.error("Il testo del podcast è pronto, ma l'audio non è disponibile.")
         st.caption("Puoi utilizzare «Riprova solo l’audio» senza rigenerare il testo.")
     except PodcastError as exc:
-        if "fonti" in str(exc).lower() or "affidabile" in str(exc).lower():
-            st.info("Non ci sono notizie sufficienti per questo argomento. Prova un tema più generale.")
+        reason = getattr(exc, "reason", "")
+        if reason == "no_sources":
+            st.info("Non ho trovato notizie pertinenti per questo argomento nell'archivio.")
+        elif reason == "model_abstention":
+            st.info("Ho trovato delle notizie, ma non ci sono informazioni sufficienti per preparare un podcast verificabile.")
+        elif reason in {"invalid_evidence", "invalid_script"}:
+            st.info("Ho trovato delle notizie, ma il copione non ha superato la verifica delle fonti.")
+        elif reason in {"generation_unavailable", "generation_quota", "search_unavailable"}:
+            st.error(str(exc))
+        elif "fonti" in str(exc).lower() or "affidabile" in str(exc).lower():
+            st.info("Le informazioni disponibili non sono sufficienti per un episodio verificabile.")
         else:
             st.error(friendly_error(exc))
     except (PermissionDenied, PersonalStoreError) as exc:
