@@ -1,6 +1,5 @@
 """Podcast autonomi su invio esplicito; gli episodi storici restano ascoltabili."""
 import os
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 import streamlit as st
@@ -13,7 +12,6 @@ from edicola.design import friendly_error, section_intro
 from edicola.personal_store import PersonalStoreError
 from edicola.account_recovery import offer_guest_access
 from edicola.podcast import VOICES
-from edicola.press_review import ReviewSelection
 from edicola.podcast_text import PodcastError
 from edicola.standalone_podcast import generate_standalone_podcast, list_episodes, PodcastAudioError
 from edicola.chat_sources import document_label
@@ -52,25 +50,14 @@ def authorize_episode(action, submitted, payload):
     return authorize_action(other, action, True, payload)
 
 
-def active_briefing_filters():
-    """Usa solo filtri già impostati esplicitamente nella pagina Briefing."""
-    state = st.session_state
-    selection = ReviewSelection(
-        keyword=state.get("editorial_review_keyword", "").strip(),
-        filenames=tuple(sorted(state.get("editorial_review_files", ()))),
-        scope=state.get("editorial_review_scope", ""),
-        latest=state.get("editorial_review_latest", False))
-    return selection if (selection.keyword or selection.filenames or selection.scope or selection.latest) else None
-
-
-def run_episode(root, voice, *, retry_key=None, topic="", selection=None):
+def run_episode(root, voice, *, retry_key=None, topic=""):
     owner = consent.actor()
     try:
         with st.spinner("Preparo l’audio…" if retry_key else "Preparo il podcast dalle notizie disponibili…"):
             episode = generate_standalone_podcast(root=root, voice=voice, authorize_text=True, authorize_audio=True,
                 text_check=lambda: consent.actor() == owner and consent.allowed("text"),
                 audio_check=lambda: consent.actor() == owner and consent.allowed("audio"), retry_key=retry_key,
-                topic=topic, selection=selection)
+                topic=topic)
         st.session_state["podcast_episode"] = episode
         st.session_state["podcast_episode_choice"] = episode.key
         st.session_state.pop("podcast_failed_draft", None)
@@ -89,9 +76,6 @@ def run_episode(root, voice, *, retry_key=None, topic="", selection=None):
 
 def render_podcast_ui(root: Path, archive=None):
     section_intro("Podcast", "Ascolta le notizie che ti interessano.")
-    selection = active_briefing_filters()
-    if selection:
-        st.caption("Sono attivi i filtri delle fonti scelti nel Briefing.")
     topic = st.text_input("Di cosa vuoi ascoltare le notizie?", key="podcast_topic", max_chars=500,
         placeholder="Es. sanità abruzzese, economia, tribunali, caro carburante...",
         help="Facoltativo: lascia vuoto per ascoltare una selezione generale delle notizie.")
@@ -100,9 +84,8 @@ def render_podcast_ui(root: Path, archive=None):
     with st.popover("Voce", icon=":material/record_voice_over:"):
         voice = st.selectbox("Voce del podcast", VOICES, index=VOICES.index(default) if default in VOICES else 0, key="podcast_voice")
     submitted = st.button("Genera podcast", key="podcast_submit", type="primary")
-    if authorize_episode("podcast_generate", submitted, {"voice": voice, "topic": topic,
-                                                          "selection": asdict(selection) if selection else None}):
-        run_episode(root, voice, topic=topic, selection=selection)
+    if authorize_episode("podcast_generate", submitted, {"voice": voice, "topic": topic}):
+        run_episode(root, voice, topic=topic)
     draft = st.session_state.get("podcast_failed_draft")
     if draft:
         with st.expander("Copione pronto", expanded=True):
