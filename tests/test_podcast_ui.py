@@ -222,7 +222,7 @@ def test_podcast_shows_safe_failure_message_instead_of_generic_failure(tmp_path)
         grant(app)
         app.button(key="podcast_submit").click().run()
         assert not app.exception
-        assert any("preparare il copione" in error.message for error in app.error)
-        assert not any("Non siamo riusciti a completare" in error.message for error in app.error)
+        assert any("preparare il copione" in error.value for error in app.error)
+        assert not any("Non siamo riusciti a completare" in error.value for error in app.error)
 
 
