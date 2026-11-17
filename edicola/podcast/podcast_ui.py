@@ -103,9 +103,13 @@ def run_episode(root, voice, *, retry_key=None, topic=""):
         elif "fonti" in str(exc).lower() or "affidabile" in str(exc).lower():
             st.info("Il podcast non è stato preparato perché le fonti del copione non erano verificabili.")
         else:
-            st.error(friendly_error(exc))
-    except (PermissionDenied, PersonalStoreError) as exc:
-        st.error(friendly_error(exc))
+            # I messaggi PodcastError sono già pubblici e privi di dati delle fonti:
+            # non nascondere la fase esatta dietro l'errore generico dell'app.
+            st.error(str(exc) or "La preparazione del podcast non è riuscita.")
+    except PermissionDenied as exc:
+        st.error(str(exc) or "L'autorizzazione richiesta non è disponibile.")
+    except PersonalStoreError:
+        st.error("Le autorizzazioni dell'account non sono disponibili. Nessun contenuto è stato inviato.")
 
 
 def render_podcast_ui(root: Path, archive=None):
