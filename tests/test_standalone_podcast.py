@@ -435,3 +435,19 @@ def test_podcast_script_fallback_never_changes_authorization(standalone, monkeyp
         generate(standalone)
     assert standalone.text.models.generate_content.call_count == 1
     standalone.audio.models.generate_content.assert_not_called()
+
+
+def test_podcast_text_generation_uses_bounded_budget_and_timeout(standalone):
+    """Solo il Podcast invia meno testo e concede tempo sufficiente a Gemini."""
+    from edicola.podcast_draft import DEEP_SOURCE_CHARS, DEEP_PROMPT_CHARS
+
+    assert DEEP_SOURCE_CHARS == 12000
+    assert DEEP_PROMPT_CHARS == 18000
+    with patch("edicola.podcast_draft.genai.Client", return_value=standalone.text) as make_client:
+        episode = generate_standalone_podcast(
+            root=standalone.root, tts_client=standalone.audio,
+            authorize_text=True, authorize_audio=True)
+    assert episode.audio_path.exists()
+    assert make_client.call_args.kwargs["http_options"].timeout == 90000
+    assert standalone.text.models.generate_content.call_args.kwargs["config"].max_output_tokens == 6144
+    assert standalone.audio.models.generate_content.call_count == 1
