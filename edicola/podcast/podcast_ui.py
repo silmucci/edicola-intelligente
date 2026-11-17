@@ -50,6 +50,30 @@ def authorize_episode(action, submitted, payload):
     return authorize_action(other, action, True, payload)
 
 
+def audio_failure_notice(error):
+    """Descrizione di un guasto TTS senza esporre dati delle fonti o risposte API."""
+    message = str(error).lower()
+    if "http 400" in message or "non compatibile" in message:
+        return "Gemini TTS ha rifiutato la richiesta: controllare modello e SDK."
+    if "http 401" in message or "chiave gemini non valida" in message:
+        return "La chiave Gemini non è valida per la sintesi vocale."
+    if "http 403" in message or "non consentito" in message:
+        return "L'accesso al modello vocale Gemini non è autorizzato."
+    if "http 404" in message or "modello tts non disponibile" in message:
+        return "Il modello vocale configurato non è disponibile per questa chiave."
+    if "http 429" in message or "quota" in message or "limite tts" in message:
+        return "Il limite di utilizzo di Gemini TTS è stato raggiunto."
+    if "connessione" in message or "timeout" in message:
+        return "La connessione al servizio vocale è scaduta o non è disponibile."
+    if "troppo breve" in message or "incompleta" in message or "non ha completato" in message:
+        return "Gemini ha restituito un audio incompleto, che non è stato salvato."
+    if "formato audio" in message or "wav" in message or "pcm" in message:
+        return "Il formato audio restituito non ha superato i controlli."
+    if "gia in generazione" in message or "già in generazione" in message:
+        return "È già in corso la preparazione di questo audio."
+    return "La sintesi vocale non è riuscita; il copione è stato conservato."
+
+
 def run_episode(root, voice, *, retry_key=None, topic=""):
     owner = consent.actor()
     try:
@@ -64,6 +88,7 @@ def run_episode(root, voice, *, retry_key=None, topic=""):
     except PodcastAudioError as exc:
         st.session_state["podcast_failed_draft"] = exc.draft
         st.error("Il testo del podcast è pronto, ma l'audio non è disponibile.")
+        st.caption(audio_failure_notice(exc))
         st.caption("Puoi utilizzare «Riprova solo l’audio» senza rigenerare il testo.")
     except PodcastError as exc:
         # La presenza di articoli non implica che Gemini abbia prodotto
