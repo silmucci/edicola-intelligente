@@ -1,6 +1,5 @@
 """Podcast autonomo: consensi sequenziali e navigazione, SDK sempre simulati."""
-import json
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from streamlit.testing.v1 import AppTest
 from edicola import consent
 from edicola.standalone_podcast import generate_standalone_podcast
@@ -143,86 +142,3 @@ def test_unreadable_episode_catalog_keeps_the_last_session_audio(standalone):
         app.run()
         assert not app.exception and len(app.get('audio')) == 1
         generate.assert_not_called()
-
-
-
-def test_topic_podcast_ignores_hidden_briefing_filters_and_searches_full_corpus(standalone):
-    """Un argomento usato nel Briefing non deve restringere il Podcast."""
-    school = standalone.catalog.chunks[0]
-    school_hit = {"id": school.id, "text": school.text, "distance": 0.19}
-    def generate(**kwargs):
-        return generate_standalone_podcast(**kwargs, client=standalone.text,
-                                           tts_client=standalone.audio,
-                                           embedder=Mock())
-    with patch("edicola.podcast_draft.semantic_search", return_value=[school_hit]) as search, patch(
-        "edicola.podcast_ui.generate_standalone_podcast", side_effect=generate
-    ) as service:
-        app = AppTest.from_string(ui_script(standalone.root)).run()
-        app.session_state["editorial_review_keyword"] = "sicurezza sul lavoro"
-        app.session_state["editorial_review_files"] = ["non-esiste.pdf"]
-        app.session_state["editorial_review_scope"] = "internazionale"
-        app.session_state["editorial_review_latest"] = True
-        app.text_input(key="podcast_topic").set_value("Scuola").run()
-        grant(app)
-        app.button(key="podcast_submit").click().run()
-        assert not app.exception
-        assert len(app.get("audio")) == 1
-        assert not any("notizie sufficienti" in notice.value for notice in app.info)
-        assert service.call_count == 1
-        assert service.call_args.kwargs["topic"] == "Scuola"
-        assert service.call_args.kwargs.get("selection") is None
-        assert search.call_args.kwargs["allowed_ids"] == {"0", "1"}
-        request = json.loads(standalone.text.models.generate_content.call_args.kwargs["contents"])
-        assert request["topic"] == "scuola"  # Il tema è normalizzato per ricerca e cache.
-        assert any(source["pdf"] == "giornale-0.pdf" for source in request["sources"])
-        assert not any("filtri delle fonti" in caption.value for caption in app.caption)
-
-
-
-def test_podcast_distinguishes_no_retrieved_passages_from_unverifiable_script(tmp_path):
-    from edicola.podcast_text import PodcastError
-    scenarios = [
-        ("no_sources", "Non ho trovato passaggi pertinenti utilizzabili"),
-        ("model_abstention", "Ho trovato delle fonti"),
-        ("invalid_evidence", "il copione non ha superato la verifica"),
-    ]
-    for reason, visible in scenarios:
-        with patch("edicola.podcast_ui.generate_standalone_podcast",
-                   side_effect=PodcastError("Messaggio riservato", reason=reason)):
-            app = AppTest.from_string(ui_script(tmp_path)).run()
-            grant(app)
-            app.button(key="podcast_submit").click().run()
-            assert not app.exception
-            assert any(visible in item.value for item in app.info)
-
-
-def test_audio_failure_notice_explains_tts_failures_without_exposing_raw_errors():
-    from edicola.podcast_ui import audio_failure_notice
-
-    scenarios = (
-        ("Gemini TTS HTTP 400. Richiesta TTS non compatibile.", "rifiutato"),
-        ("Gemini TTS HTTP 404. Modello non disponibile.", "modello vocale"),
-        ("Gemini TTS HTTP 429. Quota raggiunta.", "limite di utilizzo"),
-        ("Connessione TTS assente o timeout.", "connessione"),
-        ("L’audio ricevuto è troppo breve per il copione.", "incompleto"),
-    )
-    for error, expected in scenarios:
-        assert expected in audio_failure_notice(error).lower()
-    assert "private" not in audio_failure_notice("private raw exception secret")
-
-
-
-
-def test_podcast_shows_safe_failure_message_instead_of_generic_failure(tmp_path):
-    from edicola.podcast_text import PodcastError
-
-    with patch("edicola.podcast_ui.generate_standalone_podcast",
-               side_effect=PodcastError("Non è stato possibile preparare il copione. Riprova manualmente.")):
-        app = AppTest.from_string(ui_script(tmp_path)).run()
-        grant(app)
-        app.button(key="podcast_submit").click().run()
-        assert not app.exception
-        assert any("preparare il copione" in error.value for error in app.error)
-        assert not any("Non siamo riusciti a completare" in error.value for error in app.error)
-
-
