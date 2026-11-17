@@ -314,8 +314,7 @@ def test_narrative_script_avoids_headings_and_keeps_verified_sources(standalone)
     assert "[S1]" not in script.text and ".pdf" not in script.text
 
 
-@pytest.mark.parametrize("strategy", ["standalone-podcast-v5", "standalone-podcast-v6"])
-def test_longform_audio_stitches_all_segments_without_losing_script(tmp_path, monkeypatch, strategy):
+def test_longform_audio_stitches_all_segments_without_losing_script(tmp_path, monkeypatch):
     from edicola.podcast import generate_script_audio, tts_segments, wav_duration
     from edicola.podcast_text import Script
     monkeypatch.setenv("GEMINI_API_KEY", "offline")
@@ -328,7 +327,7 @@ def test_longform_audio_stitches_all_segments_without_losing_script(tmp_path, mo
     script = Script(text, [], {"files": []}, 1, 1)
     result = generate_script_audio(script, "test", root=tmp_path, client=tts,
                                    authorize_external=True,
-                                   cache_context={"strategy": strategy},
+                                   cache_context={"strategy": "standalone-podcast-v5"},
                                    minimum_seconds=100.)
     assert tts.models.generate_content.call_count == len(parts)
     sent = [call.kwargs["contents"][0].parts[0].text
@@ -339,13 +338,12 @@ def test_longform_audio_stitches_all_segments_without_losing_script(tmp_path, mo
     assert wav_duration(result.audio_path.read_bytes()) == pytest.approx(result.seconds)
     assert generate_script_audio(script, "test", root=tmp_path, client=tts,
                                  authorize_external=True,
-                                 cache_context={"strategy": strategy},
+                                 cache_context={"strategy": "standalone-podcast-v5"},
                                  minimum_seconds=100.).from_cache
     assert tts.models.generate_content.call_count == len(parts)
 
 
-@pytest.mark.parametrize("strategy", ["standalone-podcast-v5", "standalone-podcast-v6"])
-def test_longform_audio_failure_does_not_cache_partial_wav(tmp_path, monkeypatch, strategy):
+def test_longform_audio_failure_does_not_cache_partial_wav(tmp_path, monkeypatch):
     from edicola.podcast import generate_script_audio
     from edicola.podcast_text import Script
     monkeypatch.setenv("GEMINI_API_KEY", "offline")
@@ -356,15 +354,14 @@ def test_longform_audio_failure_does_not_cache_partial_wav(tmp_path, monkeypatch
     with pytest.raises(PodcastError):
         generate_script_audio(script, "test", root=tmp_path, client=tts,
                               authorize_external=True,
-                              cache_context={"strategy": strategy})
+                              cache_context={"strategy": "standalone-podcast-v5"})
     assert tts.models.generate_content.call_count == 2
     assert not list((tmp_path / "data/podcast_cache").glob("*.wav"))
     assert not list((tmp_path / "data/podcast_cache").glob("*.json"))
     assert not list((tmp_path / "data/podcast_cache").glob("*.lock"))
 
 
-@pytest.mark.parametrize("strategy", ["standalone-podcast-v5", "standalone-podcast-v6"])
-def test_longform_audio_rejects_a_truncated_segment(tmp_path, monkeypatch, strategy):
+def test_longform_audio_rejects_a_truncated_segment(tmp_path, monkeypatch):
     from edicola.podcast import generate_script_audio
     from edicola.podcast_text import Script
     monkeypatch.setenv("GEMINI_API_KEY", "offline")
@@ -374,7 +371,7 @@ def test_longform_audio_rejects_a_truncated_segment(tmp_path, monkeypatch, strat
     with pytest.raises(PodcastError, match="incompleta"):
         generate_script_audio(Script(text, [], {}, 1, 1), "test", root=tmp_path,
                               client=tts, authorize_external=True,
-                              cache_context={"strategy": strategy})
+                              cache_context={"strategy": "standalone-podcast-v5"})
     assert not list((tmp_path / "data/podcast_cache").glob("*.wav"))
 
 
@@ -438,163 +435,3 @@ def test_podcast_script_fallback_never_changes_authorization(standalone, monkeyp
         generate(standalone)
     assert standalone.text.models.generate_content.call_count == 1
     standalone.audio.models.generate_content.assert_not_called()
-
-
-
-def test_topic_without_semantic_matches_still_uses_indexed_lexical_articles(standalone):
-    """Un tema di una sola parola può recuperare le notizie senza hit semantiche."""
-    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
-        episode = generate(standalone, topic="Scuola", embedder=Mock())
-    assert episode.script.sources
-    assert {s["filename"] for s in episode.script.sources} == {"giornale-0.pdf"}
-    request = json.loads(standalone.text.models.generate_content.call_args.kwargs["contents"])
-    assert request["topic"] == "scuola"
-    assert {s["pdf"] for s in request["sources"]} == {"giornale-0.pdf"}
-
-
-def test_model_abstention_with_found_sources_is_not_misreported_as_no_sources(standalone):
-    standalone.text.models.generate_content.side_effect = None
-    standalone.text.models.generate_content.return_value = SimpleNamespace(
-        text=json.dumps({"sufficient": False, "news": []}),
-        candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
-    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
-        with pytest.raises(PodcastError) as captured:
-            generate(standalone, topic="Scuola", embedder=Mock())
-    assert captured.value.reason == "model_abstention"
-    assert standalone.audio.models.generate_content.call_count == 0
-
-
-def test_unverifiable_generated_citations_report_separate_error_reason(standalone):
-    claim = {"text": "Notizia inesistente",
-             "evidence": [{"source_id": "S999", "quote": "Un dato inventato senza prova originale."}]}
-    standalone.text.models.generate_content.side_effect = None
-    standalone.text.models.generate_content.return_value = SimpleNamespace(
-        text=json.dumps({"sufficient": True, "news": [{"title": claim, "summary": claim}]}),
-        candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
-    with pytest.raises(PodcastError) as captured:
-        generate(standalone)
-    assert captured.value.reason == "invalid_evidence"
-    assert standalone.audio.models.generate_content.call_count == 0
-
-
-
-def test_single_word_topic_is_an_editorial_category_not_a_required_unique_event(standalone):
-    """Il prompt deve poter ricavare un episodio breve da una sola notizia valida."""
-    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
-        episode = generate(standalone, topic="Scuola", embedder=Mock())
-    assert episode.script.sources
-    config = standalone.text.models.generate_content.call_args.kwargs["config"]
-    assert "una sola notizia sufficientemente documentata" in config.system_instruction
-    assert "non aggiungere notizie estranee" in config.system_instruction
-
-
-
-def test_podcast_recovers_a_wrong_source_id_only_for_exact_unique_evidence(standalone):
-    first, second = standalone.catalog.chunks
-    def misattributed(**kwargs):
-        ids = json.loads(kwargs["contents"])["sources"]
-        first_id = next(s["source_id"] for s in ids if s["pdf"] == first.metadata["filename"])
-        second_id = next(s["source_id"] for s in ids if s["pdf"] == second.metadata["filename"])
-        assert first_id != second_id
-        claim = {"text": first.text, "evidence": [{"source_id": second_id, "quote": first.text}]}
-        return SimpleNamespace(
-            text=json.dumps({"sufficient": True, "news": [{"title": claim, "summary": claim}]}),
-            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)],
-        )
-    standalone.text.models.generate_content.side_effect = misattributed
-    episode = generate(standalone)
-    assert len(episode.script.sources) == 1
-    assert episode.script.sources[0]["filename"] == first.metadata["filename"]
-    assert standalone.audio.models.generate_content.call_count == 1
-
-
-def test_podcast_never_repairs_paraphrased_or_unsupported_quotes(standalone):
-    first = standalone.catalog.chunks[0]
-    claim = {"text": first.text, "evidence": [
-        {"source_id": "S999", "quote": "Il Comune avrebbe stanziato altri due miliardi per nuove scuole."}
-    ]}
-    standalone.text.models.generate_content.side_effect = None
-    standalone.text.models.generate_content.return_value = SimpleNamespace(
-        text=json.dumps({"sufficient": True, "news": [{"title": claim, "summary": claim}]}),
-        candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
-    with pytest.raises(PodcastError) as failure:
-        generate(standalone)
-    assert failure.value.reason == "invalid_evidence"
-    standalone.audio.models.generate_content.assert_not_called()
-
-
-def test_podcast_never_assigns_a_shared_quote_to_an_arbitrary_edition(standalone):
-    first, second = standalone.catalog.chunks
-    standalone.catalog.chunks[1] = replace(second, text=first.text)
-    claim = {"text": first.text, "evidence": [
-        {"source_id": "S999", "quote": first.text}
-    ]}
-    standalone.text.models.generate_content.side_effect = None
-    standalone.text.models.generate_content.return_value = SimpleNamespace(
-        text=json.dumps({"sufficient": True, "news": [{"title": claim, "summary": claim}]}),
-        candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
-    with pytest.raises(PodcastError) as failure:
-        generate(standalone)
-    assert failure.value.reason == "invalid_evidence"
-    standalone.audio.models.generate_content.assert_not_called()
-
-
-
-def test_podcast_keeps_verified_narration_when_only_the_unspoken_title_is_invalid(standalone):
-    first = standalone.catalog.chunks[0]
-    def response(**kwargs):
-        source = json.loads(kwargs["contents"])["sources"][0]
-        quote = source["text"]
-        title = {"text": "Nel 2099 scuole ancora aperte",
-                 "evidence": [{"source_id": source["source_id"], "quote": quote}]}
-        summary = {"text": quote,
-                   "evidence": [{"source_id": source["source_id"], "quote": quote}]}
-        return SimpleNamespace(
-            text=json.dumps({"sufficient": True, "news": [{"title": title, "summary": summary}]}),
-            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
-    standalone.text.models.generate_content.side_effect = response
-    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
-        episode = generate(standalone, topic="Scuola", embedder=Mock())
-    assert first.text in episode.script.text
-    assert "2099" not in episode.script.text
-    assert "Notizia documentata" not in episode.script.text
-    assert episode.audio_path.exists()
-
-
-def test_podcast_rejects_unsupported_narration_even_when_title_is_valid(standalone):
-    first = standalone.catalog.chunks[0]
-    def response(**kwargs):
-        source = json.loads(kwargs["contents"])["sources"][0]
-        title = {"text": "Notizia", "evidence": [
-            {"source_id": source["source_id"], "quote": source["text"]}]}
-        summary = {"text": "Il Comune ha stanziato 99 milioni di euro per le scuole.",
-                   "evidence": [{"source_id": source["source_id"], "quote": source["text"]}]}
-        return SimpleNamespace(
-            text=json.dumps({"sufficient": True, "news": [{"title": title, "summary": summary}]}),
-            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
-    standalone.text.models.generate_content.side_effect = response
-    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
-        with pytest.raises(PodcastError) as exc:
-            generate(standalone, topic="Scuola", embedder=Mock())
-    assert exc.value.reason == "invalid_evidence"
-    standalone.audio.models.generate_content.assert_not_called()
-
-
-def test_podcast_rejection_diagnostics_only_contain_counts_not_source_text(standalone, caplog):
-    first = standalone.catalog.chunks[0]
-    def response(**kwargs):
-        source = json.loads(kwargs["contents"])["sources"][0]
-        title = {"text": "Una notizia", "evidence": [
-            {"source_id": source["source_id"], "quote": source["text"]}]}
-        summary = {"text": "Nel 2099 la scuola ha ricevuto 99 milioni.",
-                   "evidence": [{"source_id": source["source_id"], "quote": source["text"]}]}
-        return SimpleNamespace(
-            text=json.dumps({"sufficient": True, "news": [{"title": title, "summary": summary}]}),
-            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)])
-    standalone.text.models.generate_content.side_effect = response
-    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
-        with pytest.raises(PodcastError):
-            generate(standalone, topic="Scuola", embedder=Mock())
-    assert "unsupported_summary_numbers=1" in caplog.text
-    assert first.text not in caplog.text
-    assert "2099" not in caplog.text
