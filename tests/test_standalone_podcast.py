@@ -492,3 +492,31 @@ def test_single_word_topic_prefers_verified_stories_over_padding(standalone):
     prompt = standalone.text.models.generate_content.call_args.kwargs["config"].system_instruction
     assert "una sola notizia sufficientemente documentata" in prompt
     assert "non aggiungere notizie estranee" in prompt
+
+
+def test_broad_topic_uses_long_narrative_guidance_without_extra_api_calls(standalone):
+    """Con molte fonti, scuola deve chiedere dettagli e durata, non un elenco breve."""
+    from edicola.podcast_draft import INSTRUCTION, DEEP_NARRATION_INSTRUCTION, SHORT_TOPIC_INSTRUCTION
+    assert "500-650 parole PARLATE" in DEEP_NARRATION_INSTRUCTION
+    assert "Non limitarti automaticamente" in SHORT_TOPIC_INSTRUCTION
+    assert "non aggiungere" in SHORT_TOPIC_INSTRUCTION
+    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
+        episode = generate(standalone, topic="Scuola", embedder=Mock())
+    assert episode.audio_path.exists()
+    instruction = standalone.text.models.generate_content.call_args.kwargs["config"].system_instruction
+    assert instruction.startswith(INSTRUCTION)
+    assert "500-650 parole PARLATE" in instruction
+    assert "NON il nome di un singolo evento" in instruction
+    assert "Non limitarti automaticamente" in instruction
+    assert standalone.text.models.generate_content.call_count == 1
+    assert standalone.audio.models.generate_content.call_count == 1
+
+
+def test_detailed_podcast_instruction_does_not_prevent_short_verified_source(standalone):
+    """Se il corpus del test ha una sola notizia pertinente, non inventare altre notizie."""
+    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
+        episode = generate(standalone, topic="scuola", embedder=Mock())
+    assert episode.script.selected_sections == 1
+    assert "4 milioni" in episode.script.text
+    assert "trasporto pubblico" not in episode.script.text
+    assert episode.audio_path.exists()
