@@ -314,7 +314,8 @@ def test_narrative_script_avoids_headings_and_keeps_verified_sources(standalone)
     assert "[S1]" not in script.text and ".pdf" not in script.text
 
 
-def test_longform_audio_stitches_all_segments_without_losing_script(tmp_path, monkeypatch):
+@pytest.mark.parametrize("strategy", ["standalone-podcast-v5", "standalone-podcast-v6"])
+def test_longform_audio_stitches_all_segments_without_losing_script(tmp_path, monkeypatch, strategy):
     from edicola.podcast import generate_script_audio, tts_segments, wav_duration
     from edicola.podcast_text import Script
     monkeypatch.setenv("GEMINI_API_KEY", "offline")
@@ -327,7 +328,7 @@ def test_longform_audio_stitches_all_segments_without_losing_script(tmp_path, mo
     script = Script(text, [], {"files": []}, 1, 1)
     result = generate_script_audio(script, "test", root=tmp_path, client=tts,
                                    authorize_external=True,
-                                   cache_context={"strategy": "standalone-podcast-v5"},
+                                   cache_context={"strategy": strategy},
                                    minimum_seconds=100.)
     assert tts.models.generate_content.call_count == len(parts)
     sent = [call.kwargs["contents"][0].parts[0].text
@@ -338,12 +339,13 @@ def test_longform_audio_stitches_all_segments_without_losing_script(tmp_path, mo
     assert wav_duration(result.audio_path.read_bytes()) == pytest.approx(result.seconds)
     assert generate_script_audio(script, "test", root=tmp_path, client=tts,
                                  authorize_external=True,
-                                 cache_context={"strategy": "standalone-podcast-v5"},
+                                 cache_context={"strategy": strategy},
                                  minimum_seconds=100.).from_cache
     assert tts.models.generate_content.call_count == len(parts)
 
 
-def test_longform_audio_failure_does_not_cache_partial_wav(tmp_path, monkeypatch):
+@pytest.mark.parametrize("strategy", ["standalone-podcast-v5", "standalone-podcast-v6"])
+def test_longform_audio_failure_does_not_cache_partial_wav(tmp_path, monkeypatch, strategy):
     from edicola.podcast import generate_script_audio
     from edicola.podcast_text import Script
     monkeypatch.setenv("GEMINI_API_KEY", "offline")
@@ -354,14 +356,15 @@ def test_longform_audio_failure_does_not_cache_partial_wav(tmp_path, monkeypatch
     with pytest.raises(PodcastError):
         generate_script_audio(script, "test", root=tmp_path, client=tts,
                               authorize_external=True,
-                              cache_context={"strategy": "standalone-podcast-v5"})
+                              cache_context={"strategy": strategy})
     assert tts.models.generate_content.call_count == 2
     assert not list((tmp_path / "data/podcast_cache").glob("*.wav"))
     assert not list((tmp_path / "data/podcast_cache").glob("*.json"))
     assert not list((tmp_path / "data/podcast_cache").glob("*.lock"))
 
 
-def test_longform_audio_rejects_a_truncated_segment(tmp_path, monkeypatch):
+@pytest.mark.parametrize("strategy", ["standalone-podcast-v5", "standalone-podcast-v6"])
+def test_longform_audio_rejects_a_truncated_segment(tmp_path, monkeypatch, strategy):
     from edicola.podcast import generate_script_audio
     from edicola.podcast_text import Script
     monkeypatch.setenv("GEMINI_API_KEY", "offline")
@@ -371,7 +374,7 @@ def test_longform_audio_rejects_a_truncated_segment(tmp_path, monkeypatch):
     with pytest.raises(PodcastError, match="incompleta"):
         generate_script_audio(Script(text, [], {}, 1, 1), "test", root=tmp_path,
                               client=tts, authorize_external=True,
-                              cache_context={"strategy": "standalone-podcast-v5"})
+                              cache_context={"strategy": strategy})
     assert not list((tmp_path / "data/podcast_cache").glob("*.wav"))
 
 
@@ -451,3 +454,41 @@ def test_podcast_text_generation_uses_bounded_budget_and_timeout(standalone):
     assert make_client.call_args.kwargs["http_options"].timeout == 90000
     assert standalone.text.models.generate_content.call_args.kwargs["config"].max_output_tokens == 6144
     assert standalone.audio.models.generate_content.call_count == 1
+
+
+@pytest.mark.parametrize("topic, passage", [
+    ("Scuola", "Il Comune ha stanziato quattro milioni per le scuole pubbliche."),
+    ("Lavoro", "La Regione ha approvato misure per la sicurezza sul lavoro."),
+    ("Sanità", "La ASL ha presentato un piano per migliorare la sanità regionale."),
+])
+def test_general_topics_use_original_articles_when_semantic_search_is_unavailable(
+        standalone, topic, passage, caplog):
+    """Il retrieval lessicale locale tiene funzionanti i temi generali senza inventare notizie."""
+    old = standalone.catalog.chunks[0]
+    standalone.catalog.chunks[0] = replace(old, text=passage)
+    with patch("edicola.podcast_draft.semantic_search", side_effect=TimeoutError("embedding unavailable")):
+        episode = generate(standalone, topic=topic, embedder=Mock())
+    assert episode.script.sources
+    assert passage in episode.script.text
+    assert episode.audio_path.exists()
+    assert "fallback=local_lexical" in caplog.text
+    request = json.loads(standalone.text.models.generate_content.call_args.kwargs["contents"])
+    assert request["topic"] == topic.casefold()
+    assert any(source["text"] == passage for source in request["sources"])
+
+
+def test_general_topic_does_not_invent_news_if_no_sources_match(standalone):
+    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
+        with pytest.raises(PodcastError):
+            generate(standalone, topic="nucleare", embedder=Mock())
+    standalone.text.models.generate_content.assert_not_called()
+    standalone.audio.models.generate_content.assert_not_called()
+
+
+def test_single_word_topic_prefers_verified_stories_over_padding(standalone):
+    with patch("edicola.podcast_draft.semantic_search", return_value=[]):
+        episode = generate(standalone, topic="Scuola", embedder=Mock())
+    assert episode.audio_path.exists()
+    prompt = standalone.text.models.generate_content.call_args.kwargs["config"].system_instruction
+    assert "una sola notizia sufficientemente documentata" in prompt
+    assert "non aggiungere notizie estranee" in prompt
