@@ -121,19 +121,34 @@ parole complessive (circa 4-5 minuti). Se sono scarse, resta breve.
 Non diluire il testo per raggiungere la durata; evita ripetizioni,
 riempitivi, saluti e conclusioni, gestiti dall'app."""
 INSTRUCTION += COMPARISON_INSTRUCTION
+# Supplementi di generazione versionati nella chiave cache: il prompt v6
+# storico resta immutato, così gli episodi già salvati restano leggibili.
+DEEP_NARRATION_INSTRUCTION = """
+Le parole del podcast sono quelle dei summary, NON i titoli, le citazioni
+e i metadati. Prima individua le vicende distinte documentate nei passaggi
+inclusi. Se le fonti contengono abbastanza fatti, sviluppa 4-7 notizie
+pertinenti con 75-120 parole di narrazione ciascuna, per un totale di
+500-650 parole PARLATE (circa 4-5 minuti). Evita notiziari telegrafici
+di 2-3 frasi per notizia quando il materiale è ricco. Aggiungi contesto,
+protagonisti, fatti, posizioni e conseguenze solo dove le citazioni lo
+dimostrano: ogni dato, numero e data nel summary deve avere prove.
+Non allungare artificialmente una sola notizia e non introdurre eventi
+estranei al tema. Se esistono poche notizie davvero verificabili, produci
+un episodio più breve senza riempitivi, e comunque sufficient=true.
+"""
 SHORT_TOPIC_INSTRUCTION = """
-Un topic espresso con una sola parola è un argomento di ricerca, non
-necessariamente il nome di un unico evento. Approfondisci una o più notizie
-distinte pertinenti e verificabili anche da edizioni differenti. Se esiste
-una sola notizia sufficientemente documentata, genera un episodio breve
-con sufficient=true; non aggiungere notizie estranee per raggiungere
-la durata e non inventare prove o nessi.
-Se il materiale è limitato, preferisci 1-4 notizie con 2-4 frasi ciascuna,
-anziché forzare un copione lungo. Prima scegli da ogni fonte pertinente
-citazioni contigue originali di 30-180 caratteri. Copiale esattamente
-in evidence, mantenendo il corretto source_id. Poi scrivi soltanto
-affermazioni sostenute da quelle citazioni, compresi i numeri.
-Non ricostruire cifre o date non presenti nelle citazioni riportate.
+Un topic di una sola parola, per esempio scuola, lavoro o sanità, è una
+categoria di notizie, NON il nome di un singolo evento. Cerca tutte le
+vicende pertinenti e distinte nei passaggi disponibili, anche di
+edizioni diverse: istruzione, edifici scolastici e studenti possono
+appartenere allo stesso tema scuola, ma sono notizie differenti.
+Se ci sono abbastanza prove, sviluppa le notizie nel dettaglio per
+raggiungere 500-650 parole parlate. Non limitarti automaticamente a
+1-4 notizie o 2-4 frasi per notizia. Se è documentata una sola vicenda,
+genera invece un episodio breve con sufficient=true: non aggiungere
+notizie estranee per raggiungere la durata e non inventare prove o nessi.
+Per ogni affermazione copia citazioni contigue originali di 30-180
+caratteri, con source_id esatto, e non ricostruire numeri e date.
 """
 
 DEEP_INTRO = "Benvenuti. In questo episodio approfondiamo le vicende raccontate dalle edizioni disponibili."
@@ -384,7 +399,7 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
         return load_draft(root, retry_key, catalog)
     topic = normalize_topic(topic)
     short_topic = bool(topic) and len(topic.split()) == 1
-    generation_instruction = INSTRUCTION + (SHORT_TOPIC_INSTRUCTION if short_topic else "")
+    generation_instruction = INSTRUCTION + DEEP_NARRATION_INSTRUCTION + (SHORT_TOPIC_INSTRUCTION if short_topic else "")
     if selection is not None:
         from edicola.press_review import filter_catalog
         catalog = filter_catalog(catalog, selection)
@@ -397,7 +412,8 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
                     "podcast_prompt_chars": DEEP_PROMPT_CHARS, "query_embedding": [EMBEDDING_MODEL, FORMAT_VERSION] if topic else None,
                     "ranking": RANKING_VERSION if topic else None,
                     "topic_context_order": "relevance-v2" if topic else None,
-                    "short_topic_guidance": "v2" if short_topic else None,
+                    "short_topic_guidance": "v3" if short_topic else None,
+                    "podcast_generation_guidance": "detailed-v1",
                     "verbatim_source_alignment": "v1",
                     "narration_first_validation": "v1"}
     identity = digest({"coverage": catalog.coverage, "chunks": [
@@ -459,6 +475,14 @@ def prepare_draft(root, *, client=None, retry_key=None, topic="", embedder=None,
         coverage = selection_coverage(catalog.coverage, candidates, sources)
         script = script_from_response(response.text or "", sources, coverage, topic,
                                       max_words=DEEP_MAX_WORDS, max_chars=DEEP_MAX_CHARS, narrative=True)
+        spoken_words = len(script.text.split())
+        logging.getLogger(__name__).info(
+            "phase=podcast_script event=script_ready spoken_words=%d stories=%d sources=%d",
+            spoken_words, script.selected_sections, len(script.sources))
+        if spoken_words < 350 and len(sources) >= 8:
+            logging.getLogger(__name__).warning(
+                "phase=podcast_script event=under_target spoken_words=%d available_passages=%d",
+                spoken_words, len(sources))
         current = {c.id: c for c in catalog.chunks}
         saved = {"key": key, "version": VERSION, "title": "Le notizie dell’Edicola", "created_at": datetime.now(timezone.utc).isoformat(),
                  "model": model, "source_identity": identity, "config": cache_config, "raw": response.text, "sources": [asdict(s) for s in sources],
