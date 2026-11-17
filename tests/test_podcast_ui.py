@@ -211,3 +211,18 @@ def test_audio_failure_notice_explains_tts_failures_without_exposing_raw_errors(
     assert "private" not in audio_failure_notice("private raw exception secret")
 
 
+
+
+def test_podcast_shows_safe_failure_message_instead_of_generic_failure(tmp_path):
+    from edicola.podcast_text import PodcastError
+
+    with patch("edicola.podcast_ui.generate_standalone_podcast",
+               side_effect=PodcastError("Non è stato possibile preparare il copione. Riprova manualmente.")):
+        app = AppTest.from_string(ui_script(tmp_path)).run()
+        grant(app)
+        app.button(key="podcast_submit").click().run()
+        assert not app.exception
+        assert any("preparare il copione" in error.message for error in app.error)
+        assert not any("Non siamo riusciti a completare" in error.message for error in app.error)
+
+
