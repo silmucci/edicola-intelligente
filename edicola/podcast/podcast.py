@@ -247,8 +247,7 @@ def generate_script_audio(script: Script, product_key: str, *, voice=None, autho
             data = cached_audio()  # Un altro processo potrebbe averlo appena completato.
             from_cache = data is not None
             if data is None:
-                longform = (isinstance(cache_context, dict) and cache_context.get("strategy") in {
-                    "standalone-podcast-v5", "standalone-podcast-v6"})
+                longform = isinstance(cache_context, dict) and cache_context.get("strategy") == "standalone-podcast-v5"
                 if client is None:
                     if not key:
                         raise PodcastError("Configurare GEMINI_API_KEY in .env per la sintesi TTS.")
