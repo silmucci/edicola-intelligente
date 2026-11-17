@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from google import genai
 from google.genai import types
 
-from edicola.api_guard import require_permission
+from edicola.api_guard import PermissionDenied, require_permission
 from edicola.ai_models import run_text_request, product_model, alternative_models
 from edicola.briefing import briefing_schema, validate_briefing, request_news_json
 from edicola.context_selection import fit_context, included_coverage, selection_coverage, COMPARISON_INSTRUCTION
@@ -494,10 +494,20 @@ def select_chunks(root, catalog, config, topic, key_value, embedder):
     own = embedder is None
     try:
         require_permission("text")
-        embedder = embedder or GeminiEmbedder(key_value, max_attempts=1)
-        hits = semantic_search(topic, root=root, authorize_external=True, embedder=embedder,
-            corpus_wide=True, allowed_ids={c.id for c in catalog.chunks},
-            filenames={c.metadata["filename"] for c in catalog.chunks})
+        # Se il servizio degli embedding non risponde, la ricerca lessicale
+        # sull'archivio già indicizzato resta disponibile e non inventa fonti.
+        hits = []
+        try:
+            embedder = embedder or GeminiEmbedder(key_value, max_attempts=1)
+            hits = semantic_search(topic, root=root, authorize_external=True, embedder=embedder,
+                corpus_wide=True, allowed_ids={c.id for c in catalog.chunks},
+                filenames={c.metadata["filename"] for c in catalog.chunks})
+        except PermissionDenied:
+            raise
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "phase=podcast_sources event=semantic_unavailable fallback=local_lexical type=%s",
+                type(exc).__name__)
         # Integra le corrispondenze testuali con le evidenze semantiche forti.
         # Un testo pertinente può usare sinonimi invece delle parole esatte del tema.
         from edicola.editorial_selection import near_duplicate
