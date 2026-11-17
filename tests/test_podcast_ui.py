@@ -161,3 +161,26 @@ def test_podcast_school_topic_ignores_old_briefing_filters(tmp_path):
         assert generate.call_count == 1
         assert generate.call_args.kwargs["topic"] == "scuola"
         assert "selection" not in generate.call_args.kwargs
+
+
+def test_podcast_reports_source_and_service_failures_separately(tmp_path):
+    """Non scambiare un servizio indisponibile con l'assenza di notizie."""
+    from edicola.podcast_text import PodcastError
+
+    scenarios = [
+        ("no_sources", "Non ho trovato notizie pertinenti", "info"),
+        ("model_abstention", "Ho trovato delle notizie", "info"),
+        ("invalid_evidence", "non ha superato la verifica", "info"),
+        ("generation_unavailable", "non ha completato il copione", "error"),
+    ]
+    for reason, expected, group in scenarios:
+        with patch("edicola.podcast_ui.generate_standalone_podcast",
+                   side_effect=PodcastError(
+                       "Il servizio di generazione non ha completato il copione. Riprova più tardi.",
+                       reason=reason)):
+            app = AppTest.from_string(ui_script(tmp_path)).run()
+            grant(app)
+            app.button(key="podcast_submit").click().run()
+            assert not app.exception
+            visible = app.info if group == "info" else app.error
+            assert any(expected in item.value for item in visible)
