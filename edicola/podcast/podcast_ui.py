@@ -1,5 +1,6 @@
 """Podcast autonomi su invio esplicito; gli episodi storici restano ascoltabili."""
 import os
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 import streamlit as st
@@ -12,6 +13,7 @@ from edicola.design import friendly_error, section_intro
 from edicola.personal_store import PersonalStoreError
 from edicola.account_recovery import offer_guest_access
 from edicola.podcast import VOICES
+from edicola.press_review import ReviewSelection
 from edicola.podcast_text import PodcastError
 from edicola.standalone_podcast import generate_standalone_podcast, list_episodes, PodcastAudioError
 from edicola.chat_sources import document_label
@@ -50,70 +52,46 @@ def authorize_episode(action, submitted, payload):
     return authorize_action(other, action, True, payload)
 
 
-def audio_failure_notice(error):
-    """Descrizione di un guasto TTS senza esporre dati delle fonti o risposte API."""
-    message = str(error).lower()
-    if "http 400" in message or "non compatibile" in message:
-        return "Gemini TTS ha rifiutato la richiesta: controllare modello e SDK."
-    if "http 401" in message or "chiave gemini non valida" in message:
-        return "La chiave Gemini non è valida per la sintesi vocale."
-    if "http 403" in message or "non consentito" in message:
-        return "L'accesso al modello vocale Gemini non è autorizzato."
-    if "http 404" in message or "modello tts non disponibile" in message:
-        return "Il modello vocale configurato non è disponibile per questa chiave."
-    if "http 429" in message or "quota" in message or "limite tts" in message:
-        return "Il limite di utilizzo di Gemini TTS è stato raggiunto."
-    if "connessione" in message or "timeout" in message:
-        return "La connessione al servizio vocale è scaduta o non è disponibile."
-    if "troppo breve" in message or "incompleta" in message or "non ha completato" in message:
-        return "Gemini ha restituito un audio incompleto, che non è stato salvato."
-    if "formato audio" in message or "wav" in message or "pcm" in message:
-        return "Il formato audio restituito non ha superato i controlli."
-    if "gia in generazione" in message or "già in generazione" in message:
-        return "È già in corso la preparazione di questo audio."
-    return "La sintesi vocale non è riuscita; il copione è stato conservato."
+def active_briefing_filters():
+    """Usa solo filtri già impostati esplicitamente nella pagina Briefing."""
+    state = st.session_state
+    selection = ReviewSelection(
+        keyword=state.get("editorial_review_keyword", "").strip(),
+        filenames=tuple(sorted(state.get("editorial_review_files", ()))),
+        scope=state.get("editorial_review_scope", ""),
+        latest=state.get("editorial_review_latest", False))
+    return selection if (selection.keyword or selection.filenames or selection.scope or selection.latest) else None
 
 
-def run_episode(root, voice, *, retry_key=None, topic=""):
+def run_episode(root, voice, *, retry_key=None, topic="", selection=None):
     owner = consent.actor()
     try:
         with st.spinner("Preparo l’audio…" if retry_key else "Preparo il podcast dalle notizie disponibili…"):
             episode = generate_standalone_podcast(root=root, voice=voice, authorize_text=True, authorize_audio=True,
                 text_check=lambda: consent.actor() == owner and consent.allowed("text"),
                 audio_check=lambda: consent.actor() == owner and consent.allowed("audio"), retry_key=retry_key,
-                topic=topic)
+                topic=topic, selection=selection)
         st.session_state["podcast_episode"] = episode
         st.session_state["podcast_episode_choice"] = episode.key
         st.session_state.pop("podcast_failed_draft", None)
     except PodcastAudioError as exc:
         st.session_state["podcast_failed_draft"] = exc.draft
         st.error("Il testo del podcast è pronto, ma l'audio non è disponibile.")
-        st.caption(audio_failure_notice(exc))
         st.caption("Puoi utilizzare «Riprova solo l’audio» senza rigenerare il testo.")
     except PodcastError as exc:
-        # La presenza di articoli non implica che Gemini abbia prodotto
-        # un copione con prove valide: non presentare i due esiti come uguali.
-        reason = getattr(exc, "reason", "")
-        if reason == "no_sources":
-            st.info("Non ho trovato passaggi pertinenti utilizzabili per questo tema nell'archivio indicizzato.")
-        elif reason == "model_abstention":
-            st.info("Ho trovato delle fonti, ma non è stato possibile ricavarne un podcast documentato.")
-        elif reason in {"invalid_evidence", "invalid_script"}:
-            st.info("Ho trovato delle fonti, ma il copione non ha superato la verifica delle informazioni e delle citazioni.")
-        elif "fonti" in str(exc).lower() or "affidabile" in str(exc).lower():
-            st.info("Il podcast non è stato preparato perché le fonti del copione non erano verificabili.")
+        if "fonti" in str(exc).lower() or "affidabile" in str(exc).lower():
+            st.info("Non ci sono notizie sufficienti per questo argomento. Prova un tema più generale.")
         else:
-            # I messaggi PodcastError sono già pubblici e privi di dati delle fonti:
-            # non nascondere la fase esatta dietro l'errore generico dell'app.
-            st.error(str(exc) or "La preparazione del podcast non è riuscita.")
-    except PermissionDenied as exc:
-        st.error(str(exc) or "L'autorizzazione richiesta non è disponibile.")
-    except PersonalStoreError:
-        st.error("Le autorizzazioni dell'account non sono disponibili. Nessun contenuto è stato inviato.")
+            st.error(friendly_error(exc))
+    except (PermissionDenied, PersonalStoreError) as exc:
+        st.error(friendly_error(exc))
 
 
 def render_podcast_ui(root: Path, archive=None):
     section_intro("Podcast", "Ascolta le notizie che ti interessano.")
+    selection = active_briefing_filters()
+    if selection:
+        st.caption("Sono attivi i filtri delle fonti scelti nel Briefing.")
     topic = st.text_input("Di cosa vuoi ascoltare le notizie?", key="podcast_topic", max_chars=500,
         placeholder="Es. sanità abruzzese, economia, tribunali, caro carburante...",
         help="Facoltativo: lascia vuoto per ascoltare una selezione generale delle notizie.")
@@ -122,8 +100,9 @@ def render_podcast_ui(root: Path, archive=None):
     with st.popover("Voce", icon=":material/record_voice_over:"):
         voice = st.selectbox("Voce del podcast", VOICES, index=VOICES.index(default) if default in VOICES else 0, key="podcast_voice")
     submitted = st.button("Genera podcast", key="podcast_submit", type="primary")
-    if authorize_episode("podcast_generate", submitted, {"voice": voice, "topic": topic}):
-        run_episode(root, voice, topic=topic)
+    if authorize_episode("podcast_generate", submitted, {"voice": voice, "topic": topic,
+                                                          "selection": asdict(selection) if selection else None}):
+        run_episode(root, voice, topic=topic, selection=selection)
     draft = st.session_state.get("podcast_failed_draft")
     if draft:
         with st.expander("Copione pronto", expanded=True):
