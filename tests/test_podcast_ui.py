@@ -194,3 +194,20 @@ def test_podcast_distinguishes_no_retrieved_passages_from_unverifiable_script(tm
             app.button(key="podcast_submit").click().run()
             assert not app.exception
             assert any(visible in item.value for item in app.info)
+
+
+def test_audio_failure_notice_explains_tts_failures_without_exposing_raw_errors():
+    from edicola.podcast_ui import audio_failure_notice
+
+    scenarios = (
+        ("Gemini TTS HTTP 400. Richiesta TTS non compatibile.", "rifiutato"),
+        ("Gemini TTS HTTP 404. Modello non disponibile.", "modello vocale"),
+        ("Gemini TTS HTTP 429. Quota raggiunta.", "limite di utilizzo"),
+        ("Connessione TTS assente o timeout.", "connessione"),
+        ("L’audio ricevuto è troppo breve per il copione.", "incompleto"),
+    )
+    for error, expected in scenarios:
+        assert expected in audio_failure_notice(error).lower()
+    assert "private" not in audio_failure_notice("private raw exception secret")
+
+
