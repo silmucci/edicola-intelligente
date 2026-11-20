@@ -506,6 +506,12 @@ def main(argv=None):
         rows = [future.result() for future in futures]
     rows.sort(key=lambda r: r["request_id"])
     summary = summarize(rows, rates, args.phase_seconds)
+    if args.burst:
+        summary["note"] += (
+            " Modalita burst: tutte le richieste programmate arrivano allo stesso "
+            "istante; target_rpm identifica solo il livello nominale usato per "
+            "preparare il piano, NON un flusso uniforme per minuto."
+        )
     save_outputs(output, rows, summary, {
         "started_utc": start_wall, "rates": rates,
         "phase_seconds": args.phase_seconds, "mix": weights,
