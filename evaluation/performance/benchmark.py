@@ -21,6 +21,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+# Il file può essere invocato direttamente dal terminale del Codespace:
+# in quel caso Python aggiunge evaluation/performance, non la radice del repo.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 TOPICS = {
     "chat": [
         "Quali aumenti degli abbonamenti TUA L'Aquila–Roma sono riportati?",
@@ -153,7 +158,7 @@ class AttemptBudget:
             self.used += 1
 
 
-def _metered_clients(key, events, budget):
+def _metered_clients(key, events, budget, *, needs_tts=False):
     """Conta invocazioni SDK reali, inclusi tentativi aggiuntivi e fallback."""
     from google import genai
     from google.genai import errors, types
@@ -200,7 +205,7 @@ def _metered_clients(key, events, budget):
         def close(self):
             self.original.close()
 
-    return Client("generation", 30_000), Client("tts", 120_000)
+    return Client("generation", 30_000), (Client("tts", 120_000) if needs_tts else None)
 
 
 def perform_one(task, root, run_start_perf, budget):
@@ -220,10 +225,10 @@ def perform_one(task, root, run_start_perf, budget):
     clients = []
     try:
         key = api_key(root)
-        text_client, tts_client = _metered_clients(key, events, budget)
-        clients = [text_client, tts_client]
-        embedder = GeminiEmbedder(key, client=text_client)
         kind, prompt = task["class"], task["prompt"]
+        text_client, tts_client = _metered_clients(key, events, budget, needs_tts=(kind == "podcast"))
+        clients = [client for client in (text_client, tts_client) if client is not None]
+        embedder = GeminiEmbedder(key, client=text_client) if kind in {"chat", "timeline", "map", "podcast"} else None
         # Il comando --authorize-external è l'autorizzazione esplicita CLI.
         with permission_scope(lambda: True, "text"):
             if kind == "chat":
@@ -259,7 +264,12 @@ def perform_one(task, root, run_start_perf, budget):
     statuses = Counter(str(e["http_status"]) for e in events if e["http_status"] is not None)
     sufficient = getattr(result, "sufficient", None)
     if task["class"] in {"timeline", "map"} and result is not None:
-        sufficient = bool(getattr(result, "sources", [])) and bool(getattr(result, "data", {}))
+        data = getattr(result, "data", {})
+        sufficient = bool(getattr(result, "sources", [])) and bool(
+            data.get("nodes") or data.get("events") or data.get("undated_events")
+        )
+    if task["class"] == "podcast" and result is not None:
+        sufficient = bool(getattr(result, "seconds", 0) > 0)
     return {
         **task,
         "outcome": outcome, "error_kind": error_kind,
