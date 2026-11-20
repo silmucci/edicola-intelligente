@@ -427,7 +427,7 @@ def save_outputs(output, rows, summary, metadata):
         "massima vanno verificati con repliche e carichi più lunghi.",
         "",
     ])
-    (output / "report_tesi.md").write_text("\\n".join(lines), encoding="utf-8")
+    (output / "report_tesi.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def main(argv=None):
