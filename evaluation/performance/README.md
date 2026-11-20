@@ -94,6 +94,8 @@ evaluation/results/performance-AAAAmmgg-HHMMSS/
     requests.csv
     summary.json
     api_attempts.json
+    metrics.csv
+    report_tesi.md
 ```
 
 - `requests.csv`: classe, fase, arrivo programmato, attesa in coda,
@@ -104,6 +106,9 @@ evaluation/results/performance-AAAAmmgg-HHMMSS/
 - `api_attempts.json`: tentativi SDK osservati **inclusi retry e fallback**,
   operazione, modello, tempo, codice HTTP se disponibile; nessuna chiave
   o payload di giornali.
+- `metrics.csv`: metriche aggregate per classe/fase, pronte per grafici e tabelle.
+- `report_tesi.md`: tabelle riassuntive e limiti metodologici da rivedere
+  e adattare prima dell'inserimento in tesi.
 
 La latenza `end_to_end_s` include il ritardo tra arrivo programmato
 e completamento del backend, dunque anche un'eventuale coda interna al test.
