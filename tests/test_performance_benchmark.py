@@ -1,5 +1,8 @@
 """Test offline del benchmark: nessuna API, nessun archivio reale."""
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -79,3 +82,12 @@ def test_percentile_and_summary():
     assert summary["total"]["http_429_attempts"] == 1
     assert summary["by_phase"]["1"]["observed_completions_per_min"] == 1
     assert summary["by_phase"]["2"]["failed"] == 1
+
+def test_cli_script_direct_from_codespaces_root():
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "evaluation/performance/benchmark.py", "--preview",
+         "--rates", "1", "--max-requests", "1"],
+        cwd=root, capture_output=True, text=True, timeout=15, check=False)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["estimated_requests"] == 1
