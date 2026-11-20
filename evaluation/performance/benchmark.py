@@ -350,8 +350,84 @@ def save_outputs(output, rows, summary, metadata):
         json.dump({"metadata": metadata, "metrics": summary}, stream,
                   ensure_ascii=False, indent=2)
     with (output / "api_attempts.json").open("w", encoding="utf-8") as stream:
-        json.dump([{ "request_id": r["request_id"], "events": r["api_events"]}
+        json.dump([{"request_id": r["request_id"], "events": r["api_events"]}
                    for r in rows], stream, ensure_ascii=False, indent=2)
+
+    # Tabelle già aggregabili in tesi senza copiare domande né contenuti dei PDF.
+    columns = ["gruppo", "elemento", "arrivi_target_rpm", "richieste", "successi",
+               "errori", "tasso_successo", "cache_hit", "tentativi_api",
+               "http_429", "latenza_media_s", "latenza_p50_s", "latenza_p95_s",
+               "throughput_rpm"]
+    summaries = []
+    for name, stats in summary["by_class"].items():
+        summaries.append(("classe", name, "", stats, ""))
+    for phase, stats in summary["by_phase"].items():
+        summaries.append(("fase", phase, stats["target_rpm"], stats,
+                          stats["observed_completions_per_min"]))
+    with (output / "metrics.csv").open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(columns)
+        for group, name, target, stats, throughput in summaries:
+            writer.writerow([group, name, target, stats["scheduled"],
+                             stats["successful"], stats["failed"],
+                             stats["success_rate"], stats["cache_hits"],
+                             stats["api_attempts"], stats["http_429_attempts"],
+                             stats["latency_mean_s"], stats["latency_p50_s"],
+                             stats["latency_p95_s"], throughput])
+
+    def fmt(value):
+        return "n.d." if value is None else str(value)
+
+    lines = [
+        "# Risultati del benchmark backend",
+        "",
+        f"Data e ora (UTC): {metadata['started_utc']}",
+        f"Corpus: {metadata['environment']['pdf_count']} PDF, "
+        f"{metadata['environment']['active_chunks']} chunk attivi, "
+        f"{metadata['environment']['chroma_vectors']} vettori Chroma.",
+        f"Concorrenza massima: {metadata['max_in_flight']}. "
+        f"Tentativi SDK realmente avviati: {metadata['actual_api_claims']}.",
+        "",
+        "## Latenza per classe di richiesta",
+        "",
+        "| Classe | Richieste | Successo | Media (s) | P50 (s) | P95 (s) | Cache hit |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for name, stats in summary["by_class"].items():
+        lines.append(
+            f"| {name} | {stats['scheduled']} | {fmt(stats['success_rate'])} | "
+            f"{fmt(stats['latency_mean_s'])} | {fmt(stats['latency_p50_s'])} | "
+            f"{fmt(stats['latency_p95_s'])} | {stats['cache_hits']} |"
+        )
+    lines.extend([
+        "",
+        "## Evoluzione al crescere dell'intensità",
+        "",
+        "| Fase | Arrivi programmati/min | Richieste | Successo | P95 (s) | Completamenti/min | HTTP 429 |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ])
+    for phase, stats in summary["by_phase"].items():
+        lines.append(
+            f"| {phase} | {stats['target_rpm']} | {stats['scheduled']} | "
+            f"{fmt(stats['success_rate'])} | {fmt(stats['latency_p95_s'])} | "
+            f"{fmt(stats['observed_completions_per_min'])} | "
+            f"{stats['http_429_attempts']} |"
+        )
+    lines.extend([
+        "",
+        "## Avvertenze per la tesi",
+        "",
+        "Questi risultati misurano le funzioni backend nel Codespace, non Streamlit Cloud "
+        "né l'interfaccia e la rete del browser.",
+        "Le richieste riuscite possono essere servite dalla cache. Per giudicare "
+        "una nuova generazione distinguere i cache hit dalle risposte nuove.",
+        "I tempi includono la coda del generatore di carico, le API esterne e i "
+        "retry. Gli errori HTTP 429 possono dipendere dalle quote dei servizi esterni.",
+        "Una prova con pochi campioni è esplorativa: P95, throughput e capacità "
+        "massima vanno verificati con repliche e carichi più lunghi.",
+        "",
+    ])
+    (output / "report_tesi.md").write_text("\\n".join(lines), encoding="utf-8")
 
 
 def main(argv=None):
