@@ -167,8 +167,8 @@ def _metered_clients(key, events, budget):
             start = time.perf_counter()
             event = {"operation": "embedding" if method == "embed_content" else self.purpose,
                      "model": kwargs.get("model", ""), "outcome": "ok", "http_status": None}
+            budget.claim()
             try:
-                budget.claim()
                 return getattr(self.real, method)(**kwargs)
             except errors.APIError as exc:
                 event["outcome"], event["http_status"] = "api_error", exc.code
@@ -375,6 +375,8 @@ def main(argv=None):
         print(json.dumps({"estimated_requests": len(plan), "phase_seconds": args.phase_seconds,
                           "plan": plan}, ensure_ascii=False, indent=2))
         return 0
+    if args.run and not args.authorize_external:
+        parser.error("--run richiede --authorize-external: invia domande/passaggi alle API Gemini.")
     try:
         environment = check_environment(args.root)
     except (RuntimeError, OSError, ValueError) as exc:
@@ -382,8 +384,6 @@ def main(argv=None):
     if args.check:
         print(json.dumps({"status": "ready", **environment}, indent=2))
         return 0
-    if not args.authorize_external:
-        parser.error("--run richiede --authorize-external: invia domande/passaggi alle API Gemini.")
     output = args.out or (args.root / "evaluation/results" /
                           ("performance-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")))
     if output.exists():
