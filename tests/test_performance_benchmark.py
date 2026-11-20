@@ -121,3 +121,28 @@ def test_export_creates_tables_and_report_without_api(tmp_path):
     assert "## Evoluzione al crescere" in report
     assert "| chat | 1 | 1.0 |" in report
     assert report.count("\\n") == 0
+
+def test_burst_preview_schedules_concurrent_requests_without_api():
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "evaluation/performance/benchmark.py", "--preview",
+         "--include-podcast", "--mix", "podcast:1,chat:2",
+         "--rates", "6", "--max-requests", "3",
+         "--burst", "--podcast-topic",
+         "trasporti regionali e mobilita dei pendolari in Abruzzo"],
+        cwd=root, capture_output=True, text=True, timeout=15, check=False)
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(result.stdout)["plan"]
+    assert [row["class"] for row in plan] == ["chat", "podcast", "chat"]
+    assert [row["scheduled_offset_s"] for row in plan] == [0.0, 0.0, 0.0]
+    assert plan[1]["prompt"] == "trasporti regionali e mobilita dei pendolari in Abruzzo"
+
+
+def test_burst_requires_single_phase():
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "evaluation/performance/benchmark.py", "--preview",
+         "--rates", "1,2", "--burst"],
+        cwd=root, capture_output=True, text=True, timeout=15, check=False)
+    assert result.returncode != 0
+    assert "--burst richiede una sola fase" in result.stderr

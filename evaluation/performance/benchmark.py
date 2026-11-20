@@ -438,6 +438,10 @@ def main(argv=None):
     action.add_argument("--run", action="store_true", help="Esegue carico reale autorizzato.")
     parser.add_argument("--authorize-external", action="store_true")
     parser.add_argument("--include-podcast", action="store_true", help="Abilita TTS reale, potenzialmente costoso.")
+    parser.add_argument("--podcast-topic", default=None,
+                        help="Tema Podcast specifico (utile per un episodio non già in cache).")
+    parser.add_argument("--burst", action="store_true",
+                        help="Avvia le richieste della fase insieme per misurare la concorrenza reale.")
     parser.add_argument("--rates", default="1,2,3", help="Richieste al minuto per fase (max 6).")
     parser.add_argument("--phase-seconds", type=int, default=60)
     parser.add_argument("--max-requests", type=int, default=6)
@@ -454,7 +458,19 @@ def main(argv=None):
         rates = parse_rates(args.rates)
         weights = parse_mix(args.mix, args.include_podcast)
         workload = load_questions(args.root)
+        if args.podcast_topic is not None:
+            topic = args.podcast_topic.strip()
+            if not 3 <= len(topic) <= 120:
+                raise ValueError("Il tema Podcast deve avere tra 3 e 120 caratteri.")
+            if "podcast" not in weights:
+                raise ValueError("--podcast-topic richiede podcast nel mix.")
+            workload["podcast"] = [topic]
         plan = make_plan(rates, args.phase_seconds, args.max_requests, weights, workload)
+        if args.burst:
+            if len(rates) != 1:
+                raise ValueError("--burst richiede una sola fase (--rates con un solo numero).")
+            for task in plan:
+                task["scheduled_offset_s"] = 0.0
     except ValueError as exc:
         parser.error(str(exc))
     if args.preview:
@@ -474,7 +490,8 @@ def main(argv=None):
                           ("performance-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")))
     if output.exists():
         parser.error("La cartella di output esiste già: usare una nuova destinazione.")
-    print(f"Esecuzione autorizzata: {len(plan)} richieste, massimo {args.max_in_flight} concorrenti.",
+    print(f"Esecuzione autorizzata: {len(plan)} richieste, massimo {args.max_in_flight} concorrenti." +
+          (" Modalità burst: arrivi simultanei." if args.burst else ""),
           flush=True)
     start_perf = time.perf_counter()
     start_wall = datetime.now(timezone.utc).isoformat()
@@ -489,12 +506,19 @@ def main(argv=None):
         rows = [future.result() for future in futures]
     rows.sort(key=lambda r: r["request_id"])
     summary = summarize(rows, rates, args.phase_seconds)
+    if args.burst:
+        summary["note"] += (
+            " Modalita burst: tutte le richieste programmate arrivano allo stesso "
+            "istante; target_rpm identifica solo il livello nominale usato per "
+            "preparare il piano, NON un flusso uniforme per minuto."
+        )
     save_outputs(output, rows, summary, {
         "started_utc": start_wall, "rates": rates,
         "phase_seconds": args.phase_seconds, "mix": weights,
         "max_in_flight": args.max_in_flight, "max_api_attempts": args.max_api_attempts,
         "actual_api_claims": budget.used, "environment": environment,
         "backend_only": True, "live_api": True,
+        "burst": args.burst, "podcast_custom_topic": args.podcast_topic is not None,
     })
     print(json.dumps({"output": str(output), "metrics": summary},
                      ensure_ascii=False, indent=2))

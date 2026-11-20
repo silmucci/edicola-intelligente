@@ -154,3 +154,37 @@ Nel capitolo *Risultati sperimentali*, aggiungere:
 
 La valutazione di correttezza del RAG (Precision, MRR, giudizio LLM)
 resta una parte sperimentale **indipendente** da questi tempi e carichi.
+
+## Prova di concorrenza Chat AI + Podcast (senza cancellare cache)
+
+La normale schedulazione a 6 richieste/minuto distanzia gli arrivi di
+10 secondi: se le generazioni durano meno, non misura richieste
+simultanee. L'opzione `--burst` programma invece tutte le richieste
+dell'unica fase allo stesso istante; `--max-in-flight 2` consente di
+elaborarne due contemporaneamente e lascia in coda la terza.
+
+Prima controllare offline il piano (nessuna API):
+
+```bash
+python evaluation/performance/benchmark.py --preview \
+  --include-podcast --mix podcast:1,chat:2 \
+  --rates 6 --max-requests 3 --burst \
+  --podcast-topic "trasporti regionali e mobilita dei pendolari in Abruzzo"
+```
+
+La sequenza prevista è Chat AI, Podcast, Chat AI, tutti con arrivo
+programmato a 0 secondi. Scegliere per `--podcast-topic` un argomento
+editoriale pertinente all'archivio e **non usato in prove precedenti**:
+la cache è intenzionalmente preservata e il programma non forza una
+nuova generazione se l'episodio esiste già.
+
+Solo dopo avere verificato piano, quote e autorizzazioni, eseguire la
+prova reale con gli stessi argomenti più `--run --authorize-external`,
+`--max-api-attempts 16` e `--max-in-flight 2`. Il limite copre
+tentativi SDK, inclusi TTS e retry, ma non rappresenta un tetto
+economico o di token.
+
+**Non interpretare come generazione concorrente** un episodio con
+`cache_hit=true` e `tts_attempts=0`: è una lettura del contenuto
+preesistente. La prova simultanea misura soltanto il backend nello
+stesso Codespace, non la capacità di carico del deployment Streamlit.
