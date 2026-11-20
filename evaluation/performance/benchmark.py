@@ -14,6 +14,7 @@ import os
 import statistics
 import sys
 import time
+from threading import Lock
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -137,7 +138,22 @@ def check_environment(root):
             "pdf_count": len(list((data / "incoming").glob("*.pdf")))}
 
 
-def _metered_clients(key, events):
+class AttemptBudget:
+    """Tetto condiviso tra thread, inclusi retry e modelli di fallback."""
+
+    def __init__(self, limit):
+        self.limit = limit
+        self.used = 0
+        self.lock = Lock()
+
+    def claim(self):
+        with self.lock:
+            if self.used >= self.limit:
+                raise RuntimeError("Limite massimo di invocazioni SDK raggiunto.")
+            self.used += 1
+
+
+def _metered_clients(key, events, budget):
     """Conta invocazioni SDK reali, inclusi tentativi aggiuntivi e fallback."""
     from google import genai
     from google.genai import errors, types
@@ -152,6 +168,7 @@ def _metered_clients(key, events):
             event = {"operation": "embedding" if method == "embed_content" else self.purpose,
                      "model": kwargs.get("model", ""), "outcome": "ok", "http_status": None}
             try:
+                budget.claim()
                 return getattr(self.real, method)(**kwargs)
             except errors.APIError as exc:
                 event["outcome"], event["http_status"] = "api_error", exc.code
@@ -186,7 +203,7 @@ def _metered_clients(key, events):
     return Client("generation", 30_000), Client("tts", 120_000)
 
 
-def perform_one(task, root, run_start_perf, run_start_wall):
+def perform_one(task, root, run_start_perf, budget):
     """Usa le vere funzioni backend e un client SDK misurato per ogni invio."""
     from edicola.api_guard import permission_scope
     from edicola.embeddings import GeminiEmbedder, api_key
@@ -203,7 +220,7 @@ def perform_one(task, root, run_start_perf, run_start_wall):
     clients = []
     try:
         key = api_key(root)
-        text_client, tts_client = _metered_clients(key, events)
+        text_client, tts_client = _metered_clients(key, events, budget)
         clients = [text_client, tts_client]
         embedder = GeminiEmbedder(key, client=text_client)
         kind, prompt = task["class"], task["prompt"]
@@ -339,12 +356,14 @@ def main(argv=None):
     parser.add_argument("--phase-seconds", type=int, default=60)
     parser.add_argument("--max-requests", type=int, default=6)
     parser.add_argument("--max-in-flight", type=int, default=2)
+    parser.add_argument("--max-api-attempts", type=int, default=24,
+                        help="Tetto totale di invocazioni SDK, inclusi retry e fallback.")
     parser.add_argument("--mix", default="chat:2,briefing:1,timeline:1,map:1")
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
-    if not 1 <= args.max_requests <= 30 or not 1 <= args.max_in_flight <= 3:
-        parser.error("Limiti: 1–30 richieste e 1–3 operazioni concorrenti.")
+    if not 1 <= args.max_requests <= 30 or not 1 <= args.max_in_flight <= 3 or not 1 <= args.max_api_attempts <= 100:
+        parser.error("Limiti: 1–30 richieste, 1–3 concorrenti e 1–100 invocazioni SDK.")
     try:
         rates = parse_rates(args.rates)
         weights = parse_mix(args.mix, args.include_podcast)
@@ -365,28 +384,30 @@ def main(argv=None):
         return 0
     if not args.authorize_external:
         parser.error("--run richiede --authorize-external: invia domande/passaggi alle API Gemini.")
-    output = args.out or (args.root / "evaluation/results/performance-" +
-                          datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"))
+    output = args.out or (args.root / "evaluation/results" /
+                          ("performance-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")))
     if output.exists():
         parser.error("La cartella di output esiste già: usare una nuova destinazione.")
     print(f"Esecuzione autorizzata: {len(plan)} richieste, massimo {args.max_in_flight} concorrenti.",
           flush=True)
     start_perf = time.perf_counter()
     start_wall = datetime.now(timezone.utc).isoformat()
+    budget = AttemptBudget(args.max_api_attempts)
     with ThreadPoolExecutor(max_workers=args.max_in_flight) as executor:
         futures = []
         for task in plan:
             delay = task["scheduled_offset_s"] - (time.perf_counter() - start_perf)
             if delay > 0:
                 time.sleep(delay)
-            futures.append(executor.submit(perform_one, task, args.root, start_perf, start_wall))
+            futures.append(executor.submit(perform_one, task, args.root, start_perf, budget))
         rows = [future.result() for future in futures]
     rows.sort(key=lambda r: r["request_id"])
     summary = summarize(rows, rates, args.phase_seconds)
     save_outputs(output, rows, summary, {
         "started_utc": start_wall, "rates": rates,
         "phase_seconds": args.phase_seconds, "mix": weights,
-        "max_in_flight": args.max_in_flight, "environment": environment,
+        "max_in_flight": args.max_in_flight, "max_api_attempts": args.max_api_attempts,
+        "actual_api_claims": budget.used, "environment": environment,
         "backend_only": True, "live_api": True,
     })
     print(json.dumps({"output": str(output), "metrics": summary},
