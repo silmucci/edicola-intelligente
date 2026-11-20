@@ -8,7 +8,7 @@ import pytest
 
 from evaluation.performance.benchmark import (
     AttemptBudget, TOPICS, main, make_plan, parse_mix, parse_rates,
-    percentile, summarize,
+    percentile, save_outputs, summarize,
 )
 
 
@@ -91,3 +91,33 @@ def test_cli_script_direct_from_codespaces_root():
         cwd=root, capture_output=True, text=True, timeout=15, check=False)
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["estimated_requests"] == 1
+
+def test_export_creates_tables_and_report_without_api(tmp_path):
+    rows = [{
+        "request_id": "R001", "class": "chat", "phase": 1,
+        "target_rpm": 1, "prompt": "Domanda di prova",
+        "scheduled_offset_s": 0, "outcome": "ok", "error_kind": None,
+        "cache_hit": False, "content_available": True,
+        "actual_start_offset_s": 0.01, "completion_offset_s": 1.2,
+        "queue_delay_s": 0.01, "processing_s": 1.19,
+        "end_to_end_s": 1.2, "api_attempts": 2,
+        "embedding_attempts": 1, "generation_attempts": 1,
+        "tts_attempts": 0, "http_429_attempts": 0, "api_errors": 0,
+        "api_events": [],
+    }]
+    stats = summarize(rows, [1], 60)
+    output = tmp_path / "performance-output"
+    metadata = {"started_utc": "2026-11-20T12:00:00+00:00",
+                "environment": {"pdf_count": 22,
+                                "active_chunks": 2606, "chroma_vectors": 2367},
+                "max_in_flight": 1, "actual_api_claims": 2}
+    save_outputs(output, rows, stats, metadata)
+    assert (output / "requests.csv").is_file()
+    assert (output / "metrics.csv").is_file()
+    assert (output / "summary.json").is_file()
+    assert (output / "api_attempts.json").is_file()
+    report = (output / "report_tesi.md").read_text(encoding="utf-8")
+    assert "## Latenza per classe" in report
+    assert "## Evoluzione al crescere" in report
+    assert "| chat | 1 | 1.0 |" in report
+    assert report.count("\\n") == 0
