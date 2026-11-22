@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import math
 import os
 import platform
 import time
@@ -69,6 +70,18 @@ class MeasuredModels:
         return self.call("generate_content", "generation", kwargs)
 
 
+def evaluation_gemini_pause_seconds() -> float:
+    """Pausa interdomanda riservata al benchmark Gemini; nessun effetto sull'app."""
+    raw = os.environ.get("EVALUATION_GEMINI_PAUSA_SECONDI", "10").strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError("EVALUATION_GEMINI_PAUSA_SECONDI deve essere un numero finito >= 0.") from None
+    if not math.isfinite(value) or value < 0:
+        raise ValueError("EVALUATION_GEMINI_PAUSA_SECONDI deve essere un numero finito >= 0.")
+    return value
+
+
 def provenance():
     modules = ("search.py", "rag.py", "embeddings.py", "evaluation.py", "evaluation_data.py", "evaluation_metrics.py", "evaluation_report.py", "personalization.py", "editorial_selection.py", "profiles.py", "archive.py", "vectorstore.py", "indexing.py")
     return {"utc": datetime.now(timezone.utc).isoformat(), "python": platform.python_version(),
@@ -76,7 +89,8 @@ def provenance():
         "code_sha256": digest({p: Path(find_spec(f"edicola.{p[:-3]}").origin).read_text(encoding="utf-8") for p in modules})}
 
 
-def benchmark(root, dataset, frozen, *, mode, k, limit, repeats=1, authorize_external=False, client=None):
+def benchmark(root, dataset, frozen, *, mode, k, limit, repeats=1, authorize_external=False, client=None,
+              inter_question_sleep=None):
     if not authorize_external:
         raise ValueError("Benchmark reale: occorre --authorize-external per inviare domande e, nel RAG, passaggi a Gemini.")
     validate_dataset(dataset, frozen)
@@ -84,6 +98,10 @@ def benchmark(root, dataset, frozen, *, mode, k, limit, repeats=1, authorize_ext
         raise ValueError("Modalità o K non validi.")
     if type(limit) is not int or not 1 <= limit <= 100 or type(repeats) is not int or not 1 <= repeats <= 10:
         raise ValueError("Specificare un limite 1–100 e ripetizioni 1–10.")
+    pause_seconds = evaluation_gemini_pause_seconds()
+    sleeper = time.sleep if inter_question_sleep is None else inter_question_sleep
+    if not callable(sleeper):
+        raise ValueError("La funzione di attesa del benchmark non è valida.")
     current = snapshot(read_catalog(root), frozen["origin"])
     if current["snapshot_id"] != frozen["snapshot_id"]:
         raise ValueError("Archivio cambiato/non aggiornato: esportare un nuovo snapshot e rivedere le annotazioni prima delle API.")
@@ -96,8 +114,11 @@ def benchmark(root, dataset, frozen, *, mode, k, limit, repeats=1, authorize_ext
         client = genai.Client(api_key=key, vertexai=False, http_options=types.HttpOptions(
             timeout=30000, retry_options=types.HttpRetryOptions(attempts=1)))
     records = []
+    selected_questions = dataset["questions"][:limit]
+    total_samples = len(selected_questions) * repeats
+    completed_samples = 0
     try:
-        for q in dataset["questions"][:limit]:
+        for q in selected_questions:
             for repetition in range(1, repeats + 1):
                 events = []
                 proxy = SimpleNamespace(models=MeasuredModels(client, events))
@@ -169,6 +190,9 @@ def benchmark(root, dataset, frozen, *, mode, k, limit, repeats=1, authorize_ext
                 finally:
                     record["total_seconds"] = time.perf_counter() - start
                     records.append(record)
+                    completed_samples += 1
+                    if pause_seconds > 0 and completed_samples < total_samples:
+                        sleeper(pause_seconds)
     finally:
         if own_client and client is not None:
             try:
@@ -178,6 +202,7 @@ def benchmark(root, dataset, frozen, *, mode, k, limit, repeats=1, authorize_ext
     return {"schema_version": 1, "origin": frozen["origin"], "mode": mode, "top_k": k,
         "snapshot_id": frozen["snapshot_id"], "dataset_id": digest(dataset), "provenance": provenance(),
         "configuration": {"embedding_model": MODEL, "dimensions": DIMENSIONS, "generation_model": model if mode == "rag" else None,
+            "inter_question_pause_seconds": pause_seconds,
             "sdk_attempts": 1, "application_attempts_max_per_phase": 3, "limit": limit, "repeats": repeats,
             "sampling": "primi N nel dataset, ordine originale", "generation_cache": "non utilizzata",
             "local_cache": "non controllata; registrare condizioni cold/warm nel protocollo", "ui_included": False, "retrieval_strategy": "corpus_wide_ranked_top_k",

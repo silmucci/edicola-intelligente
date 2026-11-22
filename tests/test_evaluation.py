@@ -63,6 +63,7 @@ def mock_client():
 def run_mock(tmp_path, study, **kwargs):
     catalog, frozen, dataset = study
     client = kwargs.pop("client", mock_client())
+    sleeper = kwargs.pop("inter_question_sleep", lambda _seconds: None)
     def search(_question, **options):
         assert options["corpus_wide"] is True
         assert options["preserve_relevance_order"] is True
@@ -70,7 +71,8 @@ def run_mock(tmp_path, study, **kwargs):
         # La ricerca estesa restituisce più di K candidati; il benchmark misura i primi K.
         return [hit(c) for c in catalog.chunks]
     with patch("edicola.evaluation.read_catalog", return_value=catalog), patch("edicola.evaluation.semantic_search", side_effect=search):
-        return benchmark(tmp_path, dataset, frozen, mode="rag", k=3, limit=1, client=client, authorize_external=True, **kwargs)
+        return benchmark(tmp_path, dataset, frozen, mode="rag", k=3, limit=1, client=client,
+                         authorize_external=True, inter_question_sleep=sleeper, **kwargs)
 
 
 def test_metric_definitions_short_results_and_corpus_coverage(study):
@@ -141,6 +143,39 @@ def test_benchmark_measures_separate_phases_model_and_actual_calls(tmp_path, stu
     assert record["total_seconds"] >= record["retrieval_seconds"] + record["generation_seconds"]
     assert all(e["http_status"] is None for e in record["api_events"])  # Nessun 200 inventato.
     assert "test-key-never-log" not in json.dumps(run)
+
+
+def test_benchmark_default_pause_is_between_repetitions_not_after_last(tmp_path, study, monkeypatch):
+    monkeypatch.delenv("EVALUATION_GEMINI_PAUSA_SECONDI", raising=False)
+    waits = []
+    run = run_mock(tmp_path, study, repeats=2, inter_question_sleep=waits.append)
+    assert run["configuration"]["inter_question_pause_seconds"] == 10
+    assert waits == [10]
+    assert len(run["records"]) == 2
+    for record in run["records"]:
+        assert record["retrieval_seconds"] is not None
+        assert record["generation_seconds"] is not None
+        assert record["total_seconds"] >= record["retrieval_seconds"] + record["generation_seconds"]
+
+
+def test_benchmark_configures_pause_without_after_last(tmp_path, study, monkeypatch):
+    monkeypatch.setenv("EVALUATION_GEMINI_PAUSA_SECONDI", "2.5")
+    waits = []
+    run = run_mock(tmp_path, study, repeats=3, inter_question_sleep=waits.append)
+    assert run["configuration"]["inter_question_pause_seconds"] == 2.5
+    assert waits == [2.5, 2.5]
+
+
+@pytest.mark.parametrize("value", ["-1", "nan", "infinito"])
+def test_benchmark_rejects_invalid_pause_before_api(tmp_path, study, monkeypatch, value):
+    monkeypatch.setenv("EVALUATION_GEMINI_PAUSA_SECONDI", value)
+    client = mock_client()
+    with patch("edicola.evaluation.read_catalog", return_value=study[0]):
+        with pytest.raises(ValueError, match="EVALUATION_GEMINI_PAUSA_SECONDI"):
+            benchmark(tmp_path, study[2], study[1], mode="rag", k=3, limit=1,
+                      client=client, authorize_external=True)
+    client.models.embed_content.assert_not_called()
+    client.models.generate_content.assert_not_called()
 
 
 def test_retry_attempts_http_errors_and_failed_latency_are_counted(tmp_path, study):
