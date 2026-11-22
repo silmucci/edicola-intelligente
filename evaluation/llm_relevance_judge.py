@@ -125,50 +125,22 @@ class GroqJudge:
             float(os.getenv("GROQ_PAUSA_SECONDI", "30"))
         )
 
-        for tentativo in range(2):
-            trascorso = time.monotonic() - getattr(
-                self, "_ultima_chiamata", 0.0
-            )
+        trascorso = time.monotonic() - getattr(
+            self, "_ultima_chiamata", 0.0
+        )
 
-            if trascorso < pausa:
-                attesa = pausa - trascorso
-                print(f"Pausa Groq: {attesa:.0f} secondi")
-                time.sleep(attesa)
+        if trascorso < pausa:
+            attesa = pausa - trascorso
+            print(f"Pausa Groq: {attesa:.0f} secondi")
+            time.sleep(attesa)
 
-            self._ultima_chiamata = time.monotonic()
-            risposta = self.client.post(url, **kwargs)
+        self._ultima_chiamata = time.monotonic()
+        risposta = self.client.post(url, **kwargs)
 
-            if risposta.status_code != 429:
-                return risposta
+        if risposta.status_code == 429:
+            print("Limite Groq raggiunto: nessuna nuova richiesta.")
 
-            rimaste = risposta.headers.get(
-                "x-ratelimit-remaining-requests"
-            )
-
-            if rimaste == "0":
-                print("Quota giornaliera Groq esaurita.")
-                return risposta
-
-            try:
-                retry = float(
-                    risposta.headers.get("retry-after", "")
-                )
-            except (ValueError, TypeError):
-                retry = None
-
-            if (
-                tentativo == 0
-                and retry is not None
-                and 0 <= retry <= 180
-            ):
-                print(
-                    f"Limite Groq: pausa di {retry + 1:.0f} secondi"
-                )
-                time.sleep(retry + 1)
-                continue
-
-            print("Limite Groq ancora attivo.")
-            return risposta
+        return risposta
 
     def generate(self, instruction, prompt, schema, name, max_tokens):
         response = self._post_con_pausa(
@@ -549,6 +521,11 @@ def main():
         action="store_true",
         help="Valuta solo le risposte RAG"
     )
+    parser.add_argument(
+        "--solo-mancanti",
+        action="store_true",
+        help="Valuta solo domande senza risultati già registrati"
+    )
 
     args = parser.parse_args()
 
@@ -643,6 +620,11 @@ def main():
                     f"[{index}/{len(todo)}] {rid}: "
                     "rilevanza già giudicata"
                 )
+            elif args.solo_mancanti and rid in results["records"]:
+                print(
+                    f"[{index}/{len(todo)}] {rid}: "
+                    "risultato rilevanza già registrato"
+                )
 
             elif rec.get("retrieval_status") != "ok" or not hits:
                 results["records"][rid] = {
@@ -725,12 +707,14 @@ def main():
                     if status == 429:
                         rate_limited = True
                         print("Limite Groq raggiunto: risultati salvati.")
-                        break
 
             results["updated_utc"] = (
                 datetime.now(timezone.utc).isoformat()
             )
             save_json(out, results)
+
+            if rate_limited:
+                break
 
         if args.valuta_risposte and not rate_limited:
             from edicola.evaluation_judge import (
@@ -756,6 +740,13 @@ def main():
                     print(
                         f"[{index}/{len(todo)}] {rid}: "
                         "risposta già giudicata"
+                    )
+                    continue
+
+                if args.solo_mancanti and rid in results["answer_records"]:
+                    print(
+                        f"[{index}/{len(todo)}] {rid}: "
+                        "risultato risposta già registrato"
                     )
                     continue
 
@@ -848,13 +839,16 @@ def main():
                                 f"HTTP={status})"
                             )
                             if status == 429:
+                                rate_limited = True
                                 print("Limite Groq raggiunto: risultati salvati.")
-                                break
 
                 results["updated_utc"] = (
                     datetime.now(timezone.utc).isoformat()
                 )
                 save_json(out, results)
+
+                if rate_limited:
+                    break
 
     finally:
         client.close()
