@@ -17,6 +17,7 @@ from edicola.embeddings import api_key
 from edicola.editorial_selection import read_catalog
 from edicola.evaluation_data import digest, validate_dataset, validate_snapshot
 from edicola.evaluation_metrics import rag_assessment, score_run, sources_from_hits
+from edicola.rag import quote_is_contiguous
 from edicola.settings import setting
 
 JUDGE_VERSION = "llm-judge-v1"
@@ -38,8 +39,15 @@ Assegna separatamente un voto intero 0..4 o NA a:
 per qualità progressiva, senza premiare lunghezza o quantità di fonti.
 NA solo se il criterio non è valutabile, con motivazione.
 Per faithfulness e citation_correctness, ogni voto non-NA deve riportare
-source_id di una fonte fornita e quote letterale contigua presente nel testo
-di quella fonte. Se nessuna prova è disponibile, assegna NA e motivalo.
+source_id della fonte esatta e quote con una sequenza CONTIGUA e LETTERALE
+presa integralmente dal campo text di quella fonte. Copia esattamente le parole,
+i caratteri, la punteggiatura, gli apostrofi e la grafia originale.
+Non correggere refusi, non separare o unire parole, non sostituire termini,
+non parafrasare e non usare una citazione simile o semanticamente equivalente.
+Prima di assegnare il voto, verifica che la quote normalizzata dagli spazi sia
+contenuta nel campo text del source_id scelto. Gli spazi e gli a capo possono
+variare, ma parole e caratteri non possono essere modificati. Se nessuna prova è disponibile,
+assegna NA e lascia source_id="" e quote="".
 Per completeness e answer_relevance la citazione può essere vuota.
 Ogni reason deve motivare il giudizio concretamente e in <= 400 caratteri.
 Un voto del giudice non sostituisce la valutazione umana né prova la verità
@@ -71,6 +79,15 @@ def judge_prompt(question, sources, answer, points, reference_answer=""):
     }, ensure_ascii=False)
 
 
+class JudgmentValidationError(ValueError):
+    """Errore di validazione con criterio esatto, senza includere prove nel log."""
+
+    def __init__(self, message: str, *, diagnostic: str, criterion: str = ""):
+        super().__init__(message)
+        self.diagnostic = diagnostic
+        self.criterion = criterion
+
+
 def validate_grades(raw, sources):
     """Rifiuta schemi e prove inventate; niente voto parziale su JSON invalido."""
     data = json.loads(raw)
@@ -89,10 +106,18 @@ def validate_grades(raw, sources):
                 not isinstance(reference, str) or not isinstance(quote, str)):
             raise ValueError("Voto o motivazione del giudice non valida.")
         if reference or quote:
-            if not reference or reference not in source_map or not quote or quote not in source_map[reference]:
-                raise ValueError("Citazione del giudice non verificabile.")
+            if not reference or reference not in source_map or not quote or not quote_is_contiguous(source_map[reference], quote):
+                raise JudgmentValidationError(
+                    "Citazione del giudice non verificabile.",
+                    diagnostic="unverifiable_evidence",
+                    criterion=criterion,
+                )
         if criterion in {"faithfulness", "citation_correctness"} and score != "NA" and not quote:
-            raise ValueError("Il giudizio sulle fonti deve avere una prova letterale.")
+            raise JudgmentValidationError(
+                "Il giudizio sulle fonti deve avere una prova letterale.",
+                diagnostic="missing_source_quote",
+                criterion=criterion,
+            )
         grades[criterion] = {
             "score": int(score) if score != "NA" else None,
             "reason": reason.strip(),
@@ -100,6 +125,34 @@ def validate_grades(raw, sources):
             "quote": quote,
         }
     return grades
+
+
+def judgment_error_diagnostic(exc: Exception) -> str:
+    """Codice stabile e privo di contenuto/payload per diagnosticare giudizi invalidi."""
+    if isinstance(exc, JudgmentValidationError):
+        return exc.diagnostic
+    if isinstance(exc, json.JSONDecodeError):
+        return "invalid_json"
+    message = str(exc)
+    if "Struttura del giudizio" in message:
+        return "invalid_structure"
+    if "Criterio del giudice" in message:
+        return "invalid_criterion"
+    if "Voto o motivazione" in message:
+        return "invalid_score_or_reason"
+    if "Citazione del giudice" in message:
+        return "unverifiable_evidence"
+    if "Manca la prova" in message or "deve avere una prova" in message:
+        return "missing_source_quote"
+    if isinstance(exc, (KeyError, IndexError, TypeError, AttributeError)):
+        return "invalid_response_shape"
+    return "invalid_output"
+
+
+def judgment_error_criterion(exc: Exception) -> str:
+    if isinstance(exc, JudgmentValidationError):
+        return exc.criterion
+    return ""
 
 
 def evaluate_run(dataset, frozen, run, *, root, model, limit=20,
@@ -137,7 +190,8 @@ def evaluate_run(dataset, frozen, run, *, root, model, limit=20,
             item_id = f"{rec['question_id']}#{rec['repeat']}"
             q = questions[rec["question_id"]]
             record = {"item_id": item_id, "status": "not_judged", "grades": {},
-                      "seconds": None, "http_status": None}
+                      "seconds": None, "http_status": None,
+                      "attempts": 0, "diagnostic": None, "diagnostic_criterion": ""}
             if q["answerability"] != "answerable" or not q["expected_points"]:
                 record["status"] = "missing_ground_truth"
             elif rec["status"] != "ok":
@@ -156,24 +210,40 @@ def evaluate_run(dataset, frozen, run, *, root, model, limit=20,
                         start = time.perf_counter()
                         try:
                             if provider == "groq":
-                                response = client.post(
-                                    "https://api.groq.com/openai/v1/chat/completions",
-                                    headers={"Authorization": "Bearer " + (key or "injected-test-key"),
-                                             "Content-Type": "application/json"},
-                                    json={"model": model, "messages": [
-                                        {"role": "system", "content": INSTRUCTION},
-                                        {"role": "user", "content": prompt}],
-                                        "response_format": {"type": "json_schema",
-                                            "json_schema": {"name": "rag_judgment", "strict": True,
-                                                            "schema": judge_schema()}},
-                                        "reasoning_effort": "low", "max_completion_tokens": 2048})
-                                response.raise_for_status()
-                                choice = response.json()["choices"][0]
-                                if choice.get("finish_reason") != "stop":
-                                    record["status"] = "incomplete_judgment"
-                                else:
-                                    record["grades"] = validate_grades(choice["message"]["content"], sources)
-                                    record["status"] = "judged"
+                                payload = {"model": model, "messages": [
+                                    {"role": "system", "content": INSTRUCTION},
+                                    {"role": "user", "content": prompt}],
+                                    "response_format": {"type": "json_schema",
+                                        "json_schema": {"name": "rag_judgment", "strict": True,
+                                                        "schema": judge_schema()}},
+                                    "reasoning_effort": "low", "max_completion_tokens": 2048}
+                                for attempt in range(2):
+                                    record["attempts"] = attempt + 1
+                                    try:
+                                        response = client.post(
+                                            "https://api.groq.com/openai/v1/chat/completions",
+                                            headers={"Authorization": "Bearer " + (key or "injected-test-key"),
+                                                     "Content-Type": "application/json"},
+                                            json=payload)
+                                        response.raise_for_status()
+                                        choice = response.json()["choices"][0]
+                                        if choice.get("finish_reason") != "stop":
+                                            record["status"] = "incomplete_judgment"
+                                            break
+                                        record["grades"] = validate_grades(choice["message"]["content"], sources)
+                                        record["status"] = "judged"
+                                        record["diagnostic"] = None
+                                        record["diagnostic_criterion"] = ""
+                                        break
+                                    except (ValueError, TypeError, KeyError, IndexError, AttributeError,
+                                            json.JSONDecodeError) as exc:
+                                        record["diagnostic"] = judgment_error_diagnostic(exc)
+                                        record["diagnostic_criterion"] = judgment_error_criterion(exc)
+                                        record["status"] = "invalid_judgment"
+                                        if attempt == 0:
+                                            continue
+                                if record["status"] == "invalid_judgment":
+                                    record["grades"] = {}
                             else:
                                 response = client.models.generate_content(
                                     model=model, contents=prompt,
@@ -193,8 +263,10 @@ def evaluate_run(dataset, frozen, run, *, root, model, limit=20,
                             record["status"], record["http_status"] = "api_error", exc.code
                         except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
                             record["status"] = "transport_error"
-                        except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+                        except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
                             record["status"] = "invalid_judgment"
+                            record["diagnostic"] = judgment_error_diagnostic(exc)
+                            record["diagnostic_criterion"] = judgment_error_criterion(exc)
                         finally:
                             record["seconds"] = time.perf_counter() - start
             records.append(record)
@@ -252,7 +324,7 @@ def judge_rows(data, dataset, frozen, run):
                 if (not isinstance(reason, str) or not 5 <= len(reason.strip()) <= 400 or
                         not isinstance(source_id, str) or not isinstance(quote, str) or
                         ((source_id or quote) and (source_id not in source_map or
-                                                   not quote or quote not in source_map[source_id])) or
+                                                   not quote or not quote_is_contiguous(source_map[source_id], quote))) or
                         (criterion in {"faithfulness", "citation_correctness"} and score is not None and not quote)):
                     raise ValueError("Motivazione o evidenza importata non valida.")
                 rows.append({"item_id": item, "origin": run["origin"],

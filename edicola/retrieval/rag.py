@@ -78,6 +78,10 @@ non duplicare lo stesso evento e non aggiungere fonti irrilevanti.
 class RagError(RuntimeError):
     """Messaggio sicuro per l'interfaccia, privo degli errori SDK grezzi."""
 
+    def __init__(self, message: str, *, http_status: int | None = None):
+        super().__init__(message)
+        self.http_status = http_status
+
 
 @dataclass(frozen=True)
 class Source:
@@ -99,6 +103,20 @@ class RagResult:
     temporal_notice: str = ""
     source_references: dict = field(default_factory=dict)
     source_articles: dict = field(default_factory=dict)
+    retry_failed_http_status: int | None = None
+
+
+def normalize_contiguous_text(text: str) -> str:
+    """Collassa solo separatori di parola, senza alterare parole o punteggiatura."""
+    return " ".join(text.split())
+
+
+def quote_is_contiguous(source_text: str, quote: str) -> bool:
+    if not isinstance(source_text, str) or not isinstance(quote, str):
+        return False
+    normalized_source = normalize_contiguous_text(source_text)
+    normalized_quote = normalize_contiguous_text(quote)
+    return bool(normalized_quote) and normalized_quote in normalized_source
 
 
 def response_schema(sources: list[Source]) -> dict:
@@ -133,7 +151,8 @@ def chat_response_schema(sources: list[Source]) -> dict:
     return schema
 
 
-def build_prompt(question: str, sources: list[Source], *, editions=None, temporal=None, conversation=None, articles=None) -> str:
+def build_prompt(question: str, sources: list[Source], *, editions=None, temporal=None, conversation=None,
+                 articles=None, literal_quote_retry=False) -> str:
     # JSON impedisce ai testi di chiudere delimitatori e creare nuovi ruoli chat.
     data = {"question": question, "sources": [
         evidence_source_record(source, (articles or {}).get(source.id))
@@ -146,6 +165,14 @@ def build_prompt(question: str, sources: list[Source], *, editions=None, tempora
         data["temporal_context"] = temporal
     if conversation:
         data["conversation_context"] = bounded_context(conversation)
+    if literal_quote_retry:
+        data["citation_retry"] = (
+            "Rigenera la risposta usando esclusivamente questi chunk. "
+            "Ogni quote deve essere una sequenza contigua copiata letteralmente "
+            "dal campo text della fonte indicata. Non normalizzare parole, "
+            "refusi, apostrofi, punteggiatura o grafie. "
+            "Elimina ogni claim privo di tale prova."
+        )
     return json.dumps(data, ensure_ascii=False)
 
 
@@ -156,7 +183,6 @@ def validate_response(raw: str, sources: list[Source]) -> RagResult:
     L'output del modello non viene mai mostrato se i controlli falliscono.
     """
     fallback = RagResult(INSUFFICIENT, sources, [], False)
-    normalize = lambda text: " ".join(text.split())
     available = {source.id: source for source in sources}
     try:
         data = json.loads(raw)
@@ -185,8 +211,8 @@ def validate_response(raw: str, sources: list[Source]) -> RagResult:
                 identity, quote = item["source_id"], item["quote"]
                 if not isinstance(identity, str) or identity not in available or not isinstance(quote, str):
                     return fallback
-                original = normalize(available[identity].text)
-                quote = normalize(quote)
+                original = normalize_contiguous_text(available[identity].text)
+                quote = normalize_contiguous_text(quote)
                 if len(quote) < min(20, len(original)) or not quote or quote not in original:
                     return fallback
                 if identity not in references:
@@ -292,6 +318,30 @@ def _chat_claim_rejection_reason(claim, sources: list[Source]) -> str:
     return "other"
 
 
+def chat_response_rejection_reasons(raw: str, sources: list[Source]) -> tuple[str, ...]:
+    """Cause sicure per decidere un solo retry, senza esporre testo o citazioni."""
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return ("invalid_json",)
+    if not isinstance(data, dict) or set(data) != {"sufficient", "claims"}:
+        return ("invalid_structure",)
+    if data["sufficient"] is not True:
+        return ("model_abstention",)
+    claims = data["claims"]
+    if not isinstance(claims, list):
+        return ("invalid_claims_structure",)
+    reasons = []
+    for claim in claims:
+        if not validate_response(
+                json.dumps({"sufficient": True, "claims": [claim]}, ensure_ascii=False),
+                sources).sufficient:
+            reason = _chat_claim_rejection_reason(claim, sources)
+            if reason not in reasons:
+                reasons.append(reason)
+    return tuple(reasons)
+
+
 def validate_chat_response(raw: str, sources: list[Source], *, request_id="-") -> RagResult:
     """Verifica le evidenze per affermazione, senza pubblicare frasi non provate.
 
@@ -340,7 +390,7 @@ def validate_chat_response(raw: str, sources: list[Source], *, request_id="-") -
 def generate_response(client, model: str, prompt: str, schema: dict, *, sleep=time.sleep,
                       request_id="-", system_instruction=SYSTEM_INSTRUCTION,
                       fallback_model: str | None = None, fallback_models=None,
-                      quota_fallback=False) -> str:
+                      quota_fallback=False, single_attempt=False) -> str:
     """Generazione testuale condivisa: schema e prove invariati fra i modelli."""
     alternates = (tuple(fallback_models) if fallback_models is not None else
                   (fallback_model,) if fallback_model else ())
@@ -356,11 +406,17 @@ def generate_response(client, model: str, prompt: str, schema: dict, *, sleep=ti
                 response_json_schema=schema, tools=[]))
 
     try:
-        response = run_text_request(send, model, fallbacks=alternates, sleep=sleep,
-                                    request_id=request_id, phase="generation",
-                                    quota_fallback=quota_fallback)
+        if single_attempt:
+            response = send(model)
+        else:
+            response = run_text_request(send, model, fallbacks=alternates, sleep=sleep,
+                                        request_id=request_id, phase="generation",
+                                        quota_fallback=quota_fallback)
     except errors.APIError as exc:
-        raise RagError(f"Generazione Gemini: errore HTTP {exc.code}. Verificare chiave, quota e disponibilità del modello.") from None
+        raise RagError(
+            f"Generazione Gemini: errore HTTP {exc.code}. Verificare chiave, quota e disponibilità del modello.",
+            http_status=exc.code if type(exc.code) is int else None,
+        ) from None
     except (httpx.TransportError, ConnectionError, TimeoutError, OSError):
         raise RagError("Generazione Gemini non raggiungibile o timeout di connessione.") from None
     candidates = response.candidates or []
@@ -495,6 +551,30 @@ def ask_question(
                                 system_instruction=CHAT_INSTRUCTION, fallback_models=fallbacks,
                                 quota_fallback=True)
         result = validate_chat_response(raw, sources, request_id=request_id)
+        rejection_reasons = chat_response_rejection_reasons(raw, sources)
+        if "quote_mismatch" in rejection_reasons:
+            logger.info("request_id=%s phase=rag_retry event=quote_mismatch attempts=1", request_id)
+            retry_prompt = build_prompt(question, sources, editions=editions,
+                                        temporal=temporal, conversation=prompt_context,
+                                        articles=article_details, literal_quote_retry=True)
+            try:
+                raw = generate_response(client, model, retry_prompt,
+                                        chat_response_schema(sources), request_id=request_id,
+                                        system_instruction=CHAT_INSTRUCTION,
+                                        single_attempt=True)
+                result = validate_chat_response(raw, sources, request_id=request_id)
+                logger.info("request_id=%s phase=rag_retry event=complete sufficient=%s",
+                            request_id, result.sufficient)
+            except RagError as exc:
+                status = exc.http_status
+                result = RagResult(
+                    INSUFFICIENT, sources, [], False,
+                    retry_failed_http_status=status,
+                )
+                logger.warning(
+                    "request_id=%s phase=rag_retry event=failed http_status=%s",
+                    request_id, status,
+                )
         result = replace(result, source_editions=editions, temporal_notice=temporal_notice(temporal), source_references=references, source_articles=article_details)
         # Il campionamento del contesto non è un errore e non richiede un avviso
         # visibile, soprattutto quando il modello non produce una risposta.

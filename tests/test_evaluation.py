@@ -163,6 +163,37 @@ def test_retry_attempts_http_errors_and_failed_latency_are_counted(tmp_path, stu
     assert "secret-payload" not in json.dumps(run)
 
 
+def test_benchmark_retry_503_preserves_initial_quote_mismatch(tmp_path, study):
+    catalog, _, dataset = study
+    source = sources_from_hits([hit(catalog.chunks[0])])[0]
+    mismatch = json.dumps({"sufficient": True, "claims": [{
+        "text": "Il Comune approva il piano.",
+        "evidence": [{"source_id": source.id,
+                       "quote": "Quattro interventi de euro"}],
+    }]})
+    client = mock_client()
+    client.models.generate_content.side_effect = [
+        SimpleNamespace(
+            text=mismatch,
+            candidates=[SimpleNamespace(finish_reason=types.FinishReason.STOP)],
+        ),
+        errors.APIError(503, {"error": {"code": 503, "message": "private-payload"}}),
+    ]
+
+    run = run_mock(tmp_path, study, client=client)
+    record = run["records"][0]
+    assert record["retrieval_status"] == "ok"
+    assert record["status"] == "ok"
+    assert record["response_state"] == "validation_failed"
+    assert record["raw_response"] == mismatch
+    assert record["retry_error"] == {"phase": "generation", "http_status": 503}
+    assert record["answer"] is not None
+    assert record["answer"] != "Il Comune approva il piano."
+    assert any(event["phase"] == "generation" and event["http_status"] == 503
+               for event in record["api_events"])
+    assert "private-payload" not in json.dumps(run)
+
+
 def test_consent_stale_snapshot_and_limit_checked_before_api(tmp_path, study):
     catalog, frozen, dataset = study
     client = mock_client()
@@ -498,8 +529,57 @@ def test_llm_judge_invalid_source_quote_is_rejected(tmp_path, study):
     judged = evaluate_run(dataset, frozen, run, root=tmp_path, client=client,
                           model="judge-model", authorize_external=True)
     assert judged["records"][0]["status"] == "invalid_judgment"
+    assert judged["records"][0]["diagnostic"] == "unverifiable_evidence"
+    assert judged["records"][0]["diagnostic_criterion"] == "faithfulness"
     assert not judged["records"][0]["grades"]
     assert all(x["value"] is None for x in judge_rows(judged, dataset, frozen, run))
+
+
+@pytest.mark.parametrize("criterion", ["faithfulness", "citation_correctness"])
+def test_llm_judge_diagnoses_unverifiable_evidence_criterion(study, criterion):
+    from edicola.evaluation_judge import (
+        JudgmentValidationError,
+        judgment_error_criterion,
+        judgment_error_diagnostic,
+        validate_grades,
+    )
+
+    _, _, _ = study
+    source = sources_from_hits([{
+        "id": "S1",
+        "text": "Il Comune approva il piano dei trasporti.",
+        "filename": "giornale.pdf",
+        "page": 1,
+        "distance": 0.2,
+    }])[0]
+    grades = judge_payload([source])
+    grades[criterion]["quote"] = "Il Comune approva quattro nuovi autobus."
+    grades[criterion]["source_id"] = "S1"
+
+    with pytest.raises(JudgmentValidationError) as failure:
+        validate_grades(json.dumps(grades), [source])
+    assert judgment_error_diagnostic(failure.value) == "unverifiable_evidence"
+    assert judgment_error_criterion(failure.value) == criterion
+
+    grades[criterion]["quote"] = "Il Comune approva il piano dei trasporti."
+    assert validate_grades(json.dumps(grades), [source])[criterion]["quote"]
+
+
+def test_llm_judge_accepts_same_words_across_wrapped_whitespace(tmp_path, study):
+    from edicola.evaluation_judge import validate_grades
+
+    _, _, _ = study
+    source = sources_from_hits([{"id": "S1", "text": "Il Comune\napprova il piano.",
+                                  "filename": "giornale.pdf", "page": 1,
+                                  "distance": 0.2}])[0]
+    source_text = source.text.replace(" ", "\n", 2)
+    source = type(source)(source.id, source.chunk_id, source.filename, source.page,
+                          source_text, source.distance)
+    grades = judge_payload([source])
+    grades["faithfulness"]["quote"] = "Il Comune approva il piano."
+    grades["citation_correctness"]["quote"] = "Il Comune approva il piano."
+    validated = validate_grades(json.dumps(grades), [source])
+    assert validated["faithfulness"]["quote"] == "Il Comune approva il piano."
 
 
 def test_llm_judge_handles_api_errors_without_exposing_private_payload(tmp_path, study):

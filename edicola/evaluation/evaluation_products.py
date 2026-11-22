@@ -13,6 +13,7 @@ import httpx
 
 from edicola.evaluation_data import CRITERIA, RUBRICS, digest
 from edicola.evaluation_report import render_report
+from edicola.rag import quote_is_contiguous
 from edicola.settings import setting
 
 VERSION = "editorial-judge-v1"
@@ -104,7 +105,7 @@ def validate_grades(raw, item):
                 not isinstance(reason, str) or not 5 <= len(reason.strip()) <= 400 or
                 not isinstance(sid, str) or not isinstance(quote, str)):
             raise ValueError("Voto o motivazione non validi.")
-        if (sid or quote) and (sid not in evidence or not quote or quote not in evidence[sid]):
+        if (sid or quote) and (sid not in evidence or not quote or not quote_is_contiguous(evidence[sid], quote)):
             raise ValueError("Evidenza inventata.")
         if criterion in {"faithfulness", "citation_correctness", "temporal_correctness", "relation_support"} and score != "NA" and not quote:
             raise ValueError("Manca la prova per il giudizio.")
@@ -169,15 +170,43 @@ def evaluate_products(manifest, *, root, model=GROQ_MODEL, authorize_external=Fa
             "criteria": {c: CRITERIA[c] for c in criteria},
             "sources": item["sources"]}, ensure_ascii=False)
         record = {"kind": kind, "item_id": identity, "origin": item["origin"],
-                  "status": "not_judged", "seconds": None, "grades": {}, "http_status": None}
+                  "status": "not_judged", "seconds": None, "grades": {}, "http_status": None,
+                  "attempts": 0, "diagnostic": None}
         if len(INSTRUCTION) + len(prompt) > LIMIT:
             record["status"] = "input_too_large"
         else:
             start = time.perf_counter()
             try:
-                response_text = groq_judgment(model, prompt, criteria, root=root, client=client)
-                record["grades"] = validate_grades(response_text, item)
-                record["status"] = "judged"
+                for attempt in range(2):
+                    record["attempts"] = attempt + 1
+                    try:
+                        response_text = groq_judgment(model, prompt, criteria, root=root, client=client)
+                        record["grades"] = validate_grades(response_text, item)
+                        record["status"] = "judged"
+                        record["diagnostic"] = None
+                        break
+                    except (ValueError, TypeError, KeyError, IndexError, AttributeError,
+                            json.JSONDecodeError) as exc:
+                        record["status"] = "invalid_judgment"
+                        message = str(exc)
+                        if isinstance(exc, json.JSONDecodeError):
+                            record["diagnostic"] = "invalid_json"
+                        elif "Criteri" in message:
+                            record["diagnostic"] = "invalid_criteria"
+                        elif "Voto o motivazione" in message:
+                            record["diagnostic"] = "invalid_score_or_reason"
+                        elif "Evidenza" in message or "inventata" in message:
+                            record["diagnostic"] = "unverifiable_evidence"
+                        elif "Manca la prova" in message:
+                            record["diagnostic"] = "missing_source_quote"
+                        elif isinstance(exc, (KeyError, IndexError, TypeError, AttributeError)):
+                            record["diagnostic"] = "invalid_response_shape"
+                        else:
+                            record["diagnostic"] = "invalid_output"
+                        if attempt == 0:
+                            continue
+                if record["status"] == "invalid_judgment":
+                    record["grades"] = {}
             except httpx.HTTPStatusError as exc:
                 record["status"], record["http_status"] = "api_error", exc.response.status_code
             except (httpx.TransportError, ConnectionError, TimeoutError, OSError):

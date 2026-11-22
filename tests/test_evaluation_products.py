@@ -60,6 +60,19 @@ def test_judge_rejects_missing_permission_and_fabricated_quotes(tmp_path):
     assert validate_manifest(data) == data["products"]
 
 
+def test_judge_accepts_wrapped_quote_without_relaxing_words():
+    data = manifest()
+    product = data["products"][0]
+    product["sources"][0]["text"] = "La città\nha approvato il nuovo progetto dei trasporti."
+    grade = payload("briefing")
+    grade["faithfulness"]["quote"] = "La città ha approvato il nuovo progetto dei trasporti."
+    assert validate_grades(json.dumps(grade), product)["faithfulness"]["quote"] == grade["faithfulness"]["quote"]
+
+    grade["faithfulness"]["quote"] = "La città ha respinto il nuovo progetto dei trasporti."
+    with pytest.raises(ValueError, match="inventata"):
+        validate_grades(json.dumps(grade), product)
+
+
 def test_invalid_judgment_is_unscored(tmp_path):
     data = manifest()
     data["products"] = data["products"][:1]
@@ -153,3 +166,79 @@ def test_groq_rag_judge_uses_ground_truth_and_strict_schema(tmp_path):
     assert result["provider"] == "groq"
     assert result["records"][0]["status"] == "judged"
     assert http_client.post.call_args.kwargs["json"]["response_format"]["json_schema"]["strict"]
+
+
+@pytest.mark.parametrize("criterion", ["faithfulness", "citation_correctness"])
+def test_groq_rag_judge_diagnoses_unverifiable_evidence_criterion(tmp_path, criterion):
+    from test_evaluation import study as synthetic_study, run_mock
+    from edicola.evaluation_judge import CRITERIA as JUDGE_CRITERIA, evaluate_run
+    from edicola.evaluation_metrics import sources_from_hits
+
+    catalog, frozen, dataset = synthetic_study.__wrapped__()
+    run = run_mock(tmp_path, (catalog, frozen, dataset))
+    source = sources_from_hits(run["records"][0]["retrieved"])[0]
+    invalid = {name: {
+        "score": "3",
+        "reason": "Giudizio sintetico documentato.",
+        "source_id": source.id if name in ("faithfulness", "citation_correctness") else "",
+        "quote": source.text if name in ("faithfulness", "citation_correctness") else "",
+    } for name in JUDGE_CRITERIA}
+    invalid[criterion]["quote"] = "Citazione approssimativa non presente nella fonte."
+
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {"choices": [{"finish_reason": "stop",
+                                               "message": {"content": json.dumps(invalid)}}]}
+    http_client = Mock()
+    http_client.post.return_value = response
+
+    result = evaluate_run(dataset, frozen, run, root=tmp_path,
+                          model="openai/gpt-oss-120b", provider="groq",
+                          client=http_client, limit=1, authorize_external=True)
+    assert http_client.post.call_count == 2
+    assert result["records"][0]["status"] == "invalid_judgment"
+    assert result["records"][0]["attempts"] == 2
+    assert result["records"][0]["diagnostic"] == "unverifiable_evidence"
+    assert result["records"][0]["diagnostic_criterion"] == criterion
+
+
+def test_groq_rag_judge_retries_once_and_diagnoses_invalid_json(tmp_path):
+    from test_evaluation import study as synthetic_study, run_mock
+    from edicola.evaluation_judge import evaluate_run, CRITERIA as JUDGE_CRITERIA
+    from edicola.evaluation_metrics import sources_from_hits
+
+    catalog, frozen, dataset = synthetic_study.__wrapped__()
+    run = run_mock(tmp_path, (catalog, frozen, dataset))
+    source = sources_from_hits(run["records"][0]["retrieved"])[0]
+    valid = {name: {"score": "3", "reason": "Giudizio sintetico documentato.",
+                    "source_id": source.id, "quote": source.text}
+             for name in JUDGE_CRITERIA}
+
+    first = Mock()
+    first.raise_for_status.return_value = None
+    first.json.return_value = {"choices": [{"finish_reason": "stop",
+                                            "message": {"content": "non json"}}]}
+    second = Mock()
+    second.raise_for_status.return_value = None
+    second.json.return_value = {"choices": [{"finish_reason": "stop",
+                                             "message": {"content": json.dumps(valid)}}]}
+    http_client = Mock()
+    http_client.post.side_effect = [first, second]
+
+    result = evaluate_run(dataset, frozen, run, root=tmp_path,
+                          model="openai/gpt-oss-120b", provider="groq",
+                          client=http_client, limit=1, authorize_external=True)
+    assert http_client.post.call_count == 2
+    assert result["records"][0]["status"] == "judged"
+    assert result["records"][0]["attempts"] == 2
+    assert result["records"][0]["diagnostic"] is None
+
+    http_client.post.reset_mock()
+    http_client.post.side_effect = [first, first]
+    failed = evaluate_run(dataset, frozen, run, root=tmp_path,
+                          model="openai/gpt-oss-120b", provider="groq",
+                          client=http_client, limit=1, authorize_external=True)
+    assert http_client.post.call_count == 2
+    assert failed["records"][0]["status"] == "invalid_judgment"
+    assert failed["records"][0]["attempts"] == 2
+    assert failed["records"][0]["diagnostic"] == "invalid_json"

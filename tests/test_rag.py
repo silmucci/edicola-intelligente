@@ -11,7 +11,8 @@ from google.genai import errors, types
 from edicola.embeddings import EmbeddingError
 from edicola.rag import (
     DEFAULT_MODEL, INSUFFICIENT, SYSTEM_INSTRUCTION, CHAT_INSTRUCTION, RagError, Source,
-    ask_question, build_prompt, generate_response, response_schema, validate_response, validate_chat_response,
+    ask_question, build_prompt, chat_response_rejection_reasons, generate_response,
+    response_schema, validate_response, validate_chat_response,
 )
 
 
@@ -312,6 +313,55 @@ def test_chat_reports_safe_validation_reason_without_leaking_sources(bad_claim, 
     assert TEXT not in caplog.text
     assert bad_claim["text"] not in caplog.text
     assert "public-request" in caplog.text
+
+
+def test_chat_quote_mismatch_retries_once_with_same_chunks(tmp_path):
+    source_text = "Il documento riporta Q uattro interventi di euro per il progetto."
+    hit = {"id": "chunk-weird", "filename": "quotidiano.pdf", "page": 4,
+           "text": source_text, "distance": 0.2}
+    wrong = json.dumps({"sufficient": True, "claims": [{
+        "text": "Sono previsti quattro interventi.",
+        "evidence": [{"source_id": "S1", "quote": "Quattro interventi de euro"}],
+    }]})
+    literal = json.dumps({"sufficient": True, "claims": [{
+        "text": "Sono previsti quattro interventi.",
+        "evidence": [{"source_id": "S1",
+                       "quote": "Q uattro interventi di euro"}],
+    }]})
+    client = Mock()
+    with patch("edicola.rag.semantic_search", return_value=[hit]), patch(
+            "edicola.rag.generate_response", side_effect=[wrong, literal]) as generate:
+        result = ask_question("Quanti interventi?", root=tmp_path,
+                              authorize_external=True, client=client)
+    assert result.sufficient
+    assert generate.call_count == 2
+    first_prompt = json.loads(generate.call_args_list[0].args[2])
+    retry_prompt = json.loads(generate.call_args_list[1].args[2])
+    assert first_prompt["sources"][0]["text"] == source_text
+    assert retry_prompt["sources"][0]["text"] == source_text
+    assert retry_prompt["citation_retry"]
+    assert chat_response_rejection_reasons(literal, result.sources) == ()
+
+
+def test_chat_quote_mismatch_retry_503_preserves_failed_validation(tmp_path):
+    source_text = "Il documento riporta Q uattro interventi di euro per il progetto."
+    hit = {"id": "chunk-weird", "filename": "quotidiano.pdf", "page": 4,
+           "text": source_text, "distance": 0.2}
+    wrong = json.dumps({"sufficient": True, "claims": [{
+        "text": "Sono previsti quattro interventi.",
+        "evidence": [{"source_id": "S1", "quote": "Quattro interventi de euro"}],
+    }]})
+    client = Mock()
+    with patch("edicola.rag.semantic_search", return_value=[hit]), patch(
+            "edicola.rag.generate_response",
+            side_effect=[wrong, RagError("Generazione Gemini: errore HTTP 503.", http_status=503)]) as generate:
+        result = ask_question("Quanti interventi?", root=tmp_path,
+                              authorize_external=True, client=client)
+    assert generate.call_count == 2
+    assert not result.sufficient
+    assert result.answer == INSUFFICIENT
+    assert result.retry_failed_http_status == 503
+    assert result.used_source_ids == []
 
 
 def test_chat_instruction_requires_literal_source_quote():

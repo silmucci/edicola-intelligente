@@ -29,7 +29,8 @@ from edicola.evaluation_report import REVIEW_FIELDS, read_reviews, render_report
 from edicola.indexing import ROOT
 from edicola.personalization import recommend
 from edicola.profiles import Profile, validate as validate_profile
-from edicola.rag import DEFAULT_MODEL, build_prompt, generate_response, response_schema
+from edicola.rag import (DEFAULT_MODEL, RagError, build_prompt, chat_response_rejection_reasons,
+                         generate_response, response_schema)
 from edicola.search import semantic_search
 
 
@@ -125,6 +126,38 @@ def benchmark(root, dataset, frozen, *, mode, k, limit, repeats=1, authorize_ext
                             record["generation_seconds"] = time.perf_counter() - phase_start
                         phase = "validation"
                         state, checked = rag_assessment(record["raw_response"], sources)
+                        if state == "validation_failed" and "quote_mismatch" in chat_response_rejection_reasons(
+                                record["raw_response"], sources):
+                            phase = "generation"
+                            phase_start = time.perf_counter()
+                            retry_prompt = build_prompt(q["question"], sources, literal_quote_retry=True)
+                            initial_raw = record["raw_response"]
+                            try:
+                                record["raw_response"] = generate_response(
+                                    proxy, model, retry_prompt, response_schema(sources),
+                                    single_attempt=True)
+                            except RagError as exc:
+                                record["raw_response"] = initial_raw
+                                record["retry_error"] = {
+                                    "phase": "generation",
+                                    "http_status": exc.http_status,
+                                }
+                            except errors.APIError as exc:
+                                record["raw_response"] = initial_raw
+                                record["retry_error"] = {
+                                    "phase": "generation",
+                                    "http_status": exc.code if type(exc.code) is int else None,
+                                }
+                            except (httpx.TransportError, ConnectionError, TimeoutError, OSError) as exc:
+                                record["raw_response"] = initial_raw
+                                record["retry_error"] = {
+                                    "phase": "generation",
+                                    "http_status": None,
+                                }
+                            record["generation_seconds"] = (record["generation_seconds"] or 0) + (
+                                time.perf_counter() - phase_start)
+                            phase = "validation"
+                            state, checked = rag_assessment(record["raw_response"], sources)
                         record["response_state"] = state
                         record["answer"] = checked.answer if checked else None
                     record["status"] = "ok"
