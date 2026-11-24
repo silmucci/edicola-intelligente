@@ -482,6 +482,36 @@ def export_results(run, questions, results, output):
     print("JSON risultati:", output)
 
 
+def answer_judge_error_details(exc):
+    from edicola.evaluation_judge import (
+        judgment_error_criterion,
+        judgment_error_diagnostic,
+    )
+
+    status = (
+        exc.response.status_code
+        if isinstance(exc, httpx.HTTPStatusError)
+        else None
+    )
+    if status == 429:
+        diagnostic = "rate_limited"
+    elif status is not None:
+        diagnostic = "http_error"
+    elif isinstance(
+        exc,
+        (httpx.TransportError, ConnectionError, TimeoutError, OSError),
+    ):
+        diagnostic = "transport_error"
+    else:
+        diagnostic = judgment_error_diagnostic(exc)
+    return {
+        "http_status": status,
+        "error_type": type(exc).__name__,
+        "diagnostic": diagnostic,
+        "diagnostic_criterion": judgment_error_criterion(exc),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="LLM-as-a-Judge Groq per Edicola."
@@ -526,11 +556,18 @@ def main():
         action="store_true",
         help="Valuta solo domande senza risultati già registrati"
     )
+    parser.add_argument(
+        "--solo-giudizi-falliti",
+        action="store_true",
+        help="Ritenta solo answer_records con status judge_error"
+    )
 
     args = parser.parse_args()
 
     if args.solo_risposte and not args.valuta_risposte:
         parser.error("--solo-risposte richiede --valuta-risposte")
+    if args.solo_giudizi_falliti and not args.valuta_risposte:
+        parser.error("--solo-giudizi-falliti richiede --valuta-risposte")
 
     if not args.autorizza_api:
         parser.error(
@@ -608,7 +645,10 @@ def main():
     rate_limited = False
 
     try:
-        for index, rec in enumerate([] if args.solo_risposte else todo, 1):
+        retrieval_todo = (
+            [] if args.solo_risposte or args.solo_giudizi_falliti else todo
+        )
+        for index, rec in enumerate(retrieval_todo, 1):
             rid = f'{rec["question_id"]}#{rec["repeat"]}'
             q = questions[rec["question_id"]]
             hits = rec.get("retrieved", [])
@@ -736,14 +776,21 @@ def main():
                     rid, {}
                 )
 
-                if existing.get("status") == "judged":
+                if args.solo_giudizi_falliti:
+                    if existing.get("status") != "judge_error":
+                        continue
+                elif existing.get("status") == "judged":
                     print(
                         f"[{index}/{len(todo)}] {rid}: "
                         "risposta già giudicata"
                     )
                     continue
 
-                if args.solo_mancanti and rid in results["answer_records"]:
+                if (
+                    args.solo_mancanti
+                    and not args.solo_giudizi_falliti
+                    and rid in results["answer_records"]
+                ):
                     print(
                         f"[{index}/{len(todo)}] {rid}: "
                         "risultato risposta già registrato"
@@ -818,20 +865,14 @@ def main():
                             )
 
                         except Exception as exc:
-                            status = (
-                                exc.response.status_code
-                                if isinstance(
-                                    exc, httpx.HTTPStatusError
-                                )
-                                else None
-                            )
-
                             results["answer_records"][rid] = {
                                 "status": "judge_error",
-                                "http_status": status,
-                                "error_type": type(exc).__name__
+                                **answer_judge_error_details(exc),
                             }
 
+                            status = results["answer_records"][rid][
+                                "http_status"
+                            ]
                             print(
                                 f"[{index}/{len(todo)}] "
                                 f"{rid}: errore risposta "

@@ -147,3 +147,172 @@ Test riproducibili senza API:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q tests/test_evaluation.py
 ```
+
+## 9. Riprendere i soli giudizi Groq falliti
+
+Per ripetere esclusivamente i giudizi delle risposte RAG già registrati con
+`status: "judge_error"` (senza ricalcolare la rilevanza dei chunk o modificare
+giudizi validi, astensioni e altri stati), usare `--solo-giudizi-falliti` insieme
+a `--valuta-risposte`. Il file `--out` esistente deve appartenere alla stessa run,
+modello e provider. La ripresa non riprova automaticamente gli errori: ogni
+invocazione è esplicita, richiede `--autorizza-api` e rispetta la pausa Groq
+configurata. Una risposta che non supera parsing o validazione resta `judge_error`.
+
+Esempio per `llm_gt100_parte2_risposte.json`:
+
+```powershell
+python evaluation/llm_relevance_judge.py --run evaluation/results/rag_gt100_parte2_01/run.json --dataset evaluation/work/annotations/dataset_gt100_parte2.json --snapshot evaluation/work/snapshot.json --out evaluation/results/llm_gt100_parte2_risposte.json --limit 50 --valuta-risposte --solo-giudizi-falliti --autorizza-api
+```
+
+Le nuove righe `judge_error` registrano un codice diagnostico stabile e, per
+errori di validazione, il criterio coinvolto; i testi grezzi delle risposte Groq
+e le eccezioni SDK non vengono salvati.
+
+## 10. Esperimento di completezza del prompt RAG
+
+Il benchmark usa `SYSTEM_INSTRUCTION` e invia domanda e fonti con
+`build_prompt`; nello scenario registrato recupera K=3 chunk. Il suo schema
+ammette al massimo 8 claim e `rag_assessment` applica la validazione stretta
+dell'intera risposta. La Chat usa `CHAT_INSTRUCTION`, che aggiunge regole
+temporali, confronti fra fonti e profondita editoriale; ammette fino a 12 claim,
+seleziona fino a 64 candidati e li adatta al budget del contesto. Inoltre
+`validate_chat_response` puo conservare claim validi quando altri sono respinti.
+Quindi una differenza osservata fra benchmark e Chat non identifica da sola un
+effetto del prompt: retrieval, ampiezza del contesto, schema e validazione
+differiscono.
+
+Cause plausibili di incompletezza da distinguere nella revisione sono:
+
+- **Informazione non recuperata o esclusa:** con K=3 un fatto richiesto puo
+  trovarsi in un altro chunk indicizzato, non nei tre inviati. Se manca dal
+  contesto, un prompt piu esplicito non puo documentarlo. Controllare anche
+  estrazione e confini dei chunk prima di attribuire la lacuna alla generazione.
+- **Informazione presente ma non usata:** se il passaggio contiene il fatto e
+  una citazione verificabile ma la risposta omette una parte della domanda, e
+  plausibile una copertura incompleta dei claim. L'istruzione originale chiede
+  una risposta breve e coerente e prove per ogni claim, ma non guida
+  esplicitamente la scomposizione delle domande multi-parte.
+
+La revisione va fatta domanda per domanda, confrontando i punti attesi con i
+chunk effettivamente inviati. Le metriche aggregate, da sole, non dimostrano
+quale delle due cause abbia operato.
+
+L'esperimento isolato `completeness-v1` non modifica `ask_question`, il prompt
+originale, il benchmark standard, la Ground Truth o le run gia salvate. Aggiunge
+solo istruzioni per scomporre la domanda, coprire i fatti pertinenti disponibili,
+non omettere qualificazioni e dichiarare i limiti delle fonti. Riusa per ogni
+domanda gli stessi chunk recuperati, nello stesso ordine; mantiene modello,
+schema di risposta, temperatura e validatore del benchmark. Non esegue retrieval
+o embedding. Invia nuovamente a Gemini domanda e chunk solo con autorizzazione
+esplicita; non invia `expected_points` o `reference_answer`.
+
+La run sperimentale viene salvata in una directory separata che deve non esistere.
+Per ciascuna coppia di run, usare il dataset esatto e collegato agli hash originali:
+
+```bash
+python -m edicola.prompt_experiment \
+  --snapshot evaluation/work/snapshot.json \
+  --dataset evaluation/work/annotations/dataset_gt100_parte2.json \
+  --baseline-run evaluation/results/rag_gt100_parte2_01/run.json \
+  --out evaluation/results/prompt-completeness-gt100-parte2 \
+  --authorize-external
+```
+
+Il comando sopra e un protocollo da eseguire in seguito, non e stato avviato.
+Eseguire una volta per ogni run/coorte, cambiando dataset, baseline e destinazione.
+Nel checkout e disponibile anche la coppia `dataset_gt50_sviluppo.json` /
+`rag_gt50_completo_01/run.json`. Non e invece presente il dataset esatto della
+run `rag_gt100_parte1_v2` (hash `50169bd7...`); il sottoinsieme di
+`dataset_gt100_finale.json` ha un hash diverso, quindi non va usato come
+sostituto. Per una comparazione completa delle 150 domande occorre ripristinare
+quel JSON originale. Non fondere run con dataset diversi e non rietichettare
+annotazioni.
+
+Se una run sperimentale contiene errori di generazione, si possono ritentare
+soltanto quei record indicando la directory gia esistente e `--retry-errors`.
+Prima dell'invio il comando verifica la baseline, il dataset, lo snapshot, il
+prompt, il modello e i chunk conservati nella run. Ogni risposta riuscita viene
+salvata atomicamente; gli errori mantengono il record precedente e i record gia
+riusciti non vengono rigenerati. Non crea una nuova directory.
+
+Per recuperare esclusivamente gli errori della parte 2 (non eseguito):
+
+```bash
+python -m edicola.prompt_experiment \
+  --snapshot evaluation/work/snapshot.json \
+  --dataset evaluation/work/annotations/dataset_gt100_parte2.json \
+  --baseline-run evaluation/results/rag_gt100_parte2_01/run.json \
+  --out evaluation/results/prompt-completeness-gt100-parte2 \
+  --authorize-external \
+  --retry-errors
+```
+
+Le run disponibili hanno 50 record e condividono snapshot, modello
+`gemini-3.5-flash-lite` e K=3, ma dataset diversi per coorte. Il file
+`dataset_gt100_finale.json` non sostituisce il dataset mancante della parte 1:
+il suo hash, anche filtrandolo sui 50 ID della relativa run, non coincide con
+l'hash registrato nel baseline.
+
+Quando si valuteranno i nuovi output, usare file di giudizio distinti anche
+per la baseline, così i risultati storici restano immutati. Esempio futuro
+per la coppia disponibile di parte 2 (non eseguire durante la preparazione):
+
+```bash
+python evaluation/llm_relevance_judge.py \
+  --run evaluation/results/rag_gt100_parte2_01/run.json \
+  --dataset evaluation/work/annotations/dataset_gt100_parte2.json \
+  --snapshot evaluation/work/snapshot.json \
+  --out evaluation/results/prompt-completeness-gt100-parte2-baseline-judge.json \
+  --limit 50 --solo-risposte --valuta-risposte --autorizza-api
+
+python evaluation/llm_relevance_judge.py \
+  --run evaluation/results/prompt-completeness-gt100-parte2/run.json \
+  --dataset evaluation/work/annotations/dataset_gt100_parte2.json \
+  --snapshot evaluation/work/snapshot.json \
+  --out evaluation/results/prompt-completeness-gt100-parte2-experiment-judge.json \
+  --limit 50 --solo-risposte --valuta-risposte --autorizza-api
+```
+
+Il primo comando rivaluta la baseline in un file nuovo; non riutilizzare come
+output il JSON originale. Entrambi usano la configurazione predefinita dello
+stesso giudice Groq. Eseguire i comandi solo dopo approvazione esplicita: sono
+valutazioni reali, non parte dei test mock.
+
+Le chiamate API sono seriali, contate e senza fallback a un altro modello; il
+retry e limitato al singolo tentativo gia previsto per citazioni letterali non
+valide. Il risultato `run.json` conserva `source_run_id`, gli hash di
+snapshot/dataset, il modello e la versione/hash del prompt. I chunk e il loro
+numero effettivo per domanda provengono dal baseline; `retrieval_seconds` resta
+mancante e `generation_seconds` misura solo la generazione sperimentale. Report
+e scheda umana sono separati dai risultati storici.
+
+Per un confronto scientifico:
+
+1. Verificare che gli hash di snapshot e dataset, le domande e l'ordine coincidano;
+   confermare `top_k`, modello Gemini e numero effettivo di chunk per domanda.
+   Gli stessi chunk sono riusati, non solo lo stesso K.
+2. Confrontare le risposte in coppia per domanda. Per la completezza, usare la
+   stessa rubrica e lo stesso valutatore/modello-giudice su entrambe le versioni,
+   con ordine e identita A/B mascherati. Tenere separati i risultati del nuovo
+   giudizio dalle valutazioni storiche.
+3. Riportare la differenza per coppia e la numerosita effettiva; per la scala
+   ordinale 0-4 riportare distribuzione e mediana delle differenze, con intervallo
+   di confidenza bootstrap appaiato o test di Wilcoxon. Le ripetizioni dello
+   stesso quesito non sono nuove domande indipendenti.
+4. Verificare insieme fedelta, accuratezza, correttezza delle citazioni,
+   risposte non rispondibili, astensioni, errori di validazione e tasso di
+   risposte valutabili. Non concludere da una crescita della completezza se
+   peggiorano supporto, citazioni o gestione delle lacune.
+
+I punteggi originali non vanno sostituiti ne' combinati con i nuovi. Per evitare
+un confronto tra giudizi prodotti in momenti o condizioni diverse, applicare la
+stessa rubrica e lo stesso modello-giudice separatamente a entrambe le run, in
+file di output nuovi, e confrontare solo gli `item_id` valutati in entrambe.
+La run sperimentale genera una scheda umana vuota; nessun punteggio o valutazione
+e prodotto automaticamente.
+
+Test offline:
+
+```bash
+python -m pytest -q tests/test_prompt_experiment.py
+```

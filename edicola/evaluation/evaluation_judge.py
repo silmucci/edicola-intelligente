@@ -134,6 +134,10 @@ def judgment_error_diagnostic(exc: Exception) -> str:
     if isinstance(exc, json.JSONDecodeError):
         return "invalid_json"
     message = str(exc)
+    if message == "Giudizio Groq incompleto.":
+        return "incomplete_response"
+    if message == "Groq non ha restituito un JSON.":
+        return "missing_response_content"
     if "Struttura del giudizio" in message:
         return "invalid_structure"
     if "Criterio del giudice" in message:

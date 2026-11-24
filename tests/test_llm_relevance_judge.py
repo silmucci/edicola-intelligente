@@ -221,8 +221,168 @@ def test_answer_http_429_is_saved_before_stopping(tmp_path, monkeypatch):
         "status": "judge_error",
         "http_status": 429,
         "error_type": "HTTPStatusError",
+        "diagnostic": "rate_limited",
+        "diagnostic_criterion": "",
     }
     assert "GT-002#1" not in saved["answer_records"]
+
+
+def test_solo_giudizi_falliti_retries_only_answer_errors_and_preserves_other_results(
+    tmp_path, monkeypatch
+):
+    existing = {
+        "GT-001#1": {"status": "judged", "grades": {"keep": True}},
+        "GT-002#1": {"status": "judge_error", "error_type": "ValueError"},
+        "GT-003#1": {"status": "no_valid_answer", "state": "model_abstention"},
+    }
+    retrieval_records = {
+        "GT-001#1": {"status": "judged", "judgments": [{"chunk_id": "keep"}]},
+    }
+    paths, _ = make_inputs(
+        tmp_path,
+        existing_records=retrieval_records,
+        answer_records=existing,
+        count=3,
+    )
+
+    class ValidAnswerJudge:
+        calls = []
+
+        def generate(self, _instruction, prompt, *_args):
+            request = json.loads(prompt)
+            self.calls.append(request["question"])
+            source = request["retrieved_sources"][0]
+            quote = source["text"]
+            return json.dumps({
+                criterion: {
+                    "score": "4",
+                    "reason": "La valutazione è motivata dalle prove.",
+                    "source_id": source["source_id"],
+                    "quote": quote,
+                }
+                for criterion in (
+                    "faithfulness", "completeness",
+                    "answer_relevance", "citation_correctness",
+                )
+            })
+
+        def close(self):
+            pass
+
+    client = ValidAnswerJudge()
+    with patch(
+        "edicola.evaluation_metrics.rag_assessment",
+        return_value=("answered", SimpleNamespace(answer="Risposta valida.")),
+    ):
+        invoke_main(
+            monkeypatch, paths, client,
+            "--valuta-risposte", "--solo-giudizi-falliti",
+        )
+
+    saved = judge.read_json(paths["out"])
+    assert client.calls == ["Quale piano è approvato?"]
+    assert saved["records"] == retrieval_records
+    assert saved["answer_records"]["GT-001#1"] == existing["GT-001#1"]
+    assert saved["answer_records"]["GT-002#1"]["status"] == "judged"
+    assert saved["answer_records"]["GT-002#1"]["grades"]["faithfulness"]["score"] == 4
+    assert saved["answer_records"]["GT-003#1"] == existing["GT-003#1"]
+
+
+def test_retry_saves_json_parse_diagnostic_without_accepting_invalid_output(
+    tmp_path, monkeypatch
+):
+    existing = {
+        "GT-001#1": {"status": "judge_error", "error_type": "ValueError"},
+        "GT-002#1": {"status": "judged", "grades": {"keep": True}},
+    }
+    paths, _ = make_inputs(tmp_path, answer_records=existing, count=2)
+
+    class InvalidJsonJudge:
+        calls = 0
+
+        def generate(self, *_args):
+            self.calls += 1
+            return "non è JSON"
+
+        def close(self):
+            pass
+
+    client = InvalidJsonJudge()
+    with patch(
+        "edicola.evaluation_metrics.rag_assessment",
+        return_value=("answered", SimpleNamespace(answer="Risposta valida.")),
+    ):
+        invoke_main(
+            monkeypatch, paths, client,
+            "--valuta-risposte", "--solo-giudizi-falliti",
+        )
+
+    saved = judge.read_json(paths["out"])
+    assert client.calls == 1
+    assert saved["answer_records"]["GT-001#1"] == {
+        "status": "judge_error",
+        "http_status": None,
+        "error_type": "JSONDecodeError",
+        "diagnostic": "invalid_json",
+        "diagnostic_criterion": "",
+    }
+    assert saved["answer_records"]["GT-002#1"] == existing["GT-002#1"]
+
+
+def test_retry_keeps_unverifiable_judgment_as_error_with_criterion(
+    tmp_path, monkeypatch
+):
+    paths, _ = make_inputs(
+        tmp_path,
+        answer_records={
+            "GT-001#1": {"status": "judge_error", "error_type": "ValueError"},
+            "GT-002#1": {"status": "judged", "grades": {"keep": True}},
+        },
+        count=2,
+    )
+
+    class InvalidEvidenceJudge:
+        def generate(self, _instruction, prompt, *_args):
+            source = json.loads(prompt)["retrieved_sources"][0]
+            return json.dumps({
+                criterion: {
+                    "score": "4",
+                    "reason": "La valutazione è motivata dalle prove.",
+                    "source_id": source["source_id"],
+                    "quote": "Citazione non contenuta nella fonte."
+                    if criterion == "faithfulness"
+                    else source["text"],
+                }
+                for criterion in (
+                    "faithfulness", "completeness",
+                    "answer_relevance", "citation_correctness",
+                )
+            })
+
+        def close(self):
+            pass
+
+    with patch(
+        "edicola.evaluation_metrics.rag_assessment",
+        return_value=("answered", SimpleNamespace(answer="Risposta valida.")),
+    ):
+        invoke_main(
+            monkeypatch, paths, InvalidEvidenceJudge(),
+            "--valuta-risposte", "--solo-giudizi-falliti",
+        )
+
+    saved = judge.read_json(paths["out"])
+    assert saved["answer_records"]["GT-001#1"] == {
+        "status": "judge_error",
+        "http_status": None,
+        "error_type": "JudgmentValidationError",
+        "diagnostic": "unverifiable_evidence",
+        "diagnostic_criterion": "faithfulness",
+    }
+    assert saved["answer_records"]["GT-002#1"] == {
+        "status": "judged",
+        "grades": {"keep": True},
+    }
 
 
 def test_groq_429_is_not_retried_and_configured_pause_remains(monkeypatch):

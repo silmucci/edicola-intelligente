@@ -600,6 +600,17 @@ def test_llm_judge_diagnoses_unverifiable_evidence_criterion(study, criterion):
     assert validate_grades(json.dumps(grades), [source])[criterion]["quote"]
 
 
+def test_llm_judge_classifies_incomplete_and_missing_groq_content():
+    from edicola.evaluation_judge import judgment_error_diagnostic
+
+    assert judgment_error_diagnostic(ValueError("Giudizio Groq incompleto.")) == (
+        "incomplete_response"
+    )
+    assert judgment_error_diagnostic(ValueError("Groq non ha restituito un JSON.")) == (
+        "missing_response_content"
+    )
+
+
 def test_llm_judge_accepts_same_words_across_wrapped_whitespace(tmp_path, study):
     from edicola.evaluation_judge import validate_grades
 
