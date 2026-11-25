@@ -425,17 +425,37 @@ dell'app. Esegue solo retrieval e mantiene sempre K=3. Le strategie sono:
   Reciprocal Rank Fusion;
 - `hybrid_rrf_dedup`: stessa fusione, saltando quasi-duplicati soltanto
   all'interno della stessa edizione. Chunk da PDF diversi restano distinti.
+- `cross_encoder_rerank`: prende i primi 10 risultati di `semantic_search`
+  corpus-wide e li riordina localmente con il CrossEncoder multilingue
+  `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`, poi restituisce al massimo 3
+  chunk. La ricerca di produzione resta invariata; il modello ONNX viene letto
+  esclusivamente da una directory locale e non viene scaricato dal programma.
+  La strategia e' fissata a 10 candidati e K=3.
 
 Sviluppo: confrontare strategie esclusivamente su GT-001..GT-050; ogni run
 deve ricevere nuovi giudizi Groq. Non riutilizzare quelli storici perché il
 ranking, i candidati o persino gli embedding possono essere diversi:
 
 ```bash
+python -m pip install -r requirements-reranker.txt
+
+hf download cross-encoder/mmarco-mMiniLMv2-L12-H384-v1 \
+  --revision 1427fd652930e4ba29e8149678df786c240d8825 \
+  --local-dir "$HOME/.cache/edicola/models/mmarco-mMiniLMv2-L12-H384-v1" \
+  --include tokenizer.json onnx/model.onnx
+
 python -m edicola.retrieval.experimental run \
   --snapshot evaluation/work/snapshot.json \
   --ground-truth-csv evaluation/data/Ground_Truth_Edicola_150_domande.csv \
   --split development --strategy production_baseline \
   --out evaluation/results/retrieval_experiment_gt150/dev_baseline \
+  --authorize-external
+
+python -m edicola.retrieval.experimental run \
+  --snapshot evaluation/work/snapshot.json \
+  --ground-truth-csv evaluation/data/Ground_Truth_Edicola_150_domande.csv \
+  --split development --strategy cross_encoder_rerank \
+  --out evaluation/results/retrieval_experiment_gt150/dev_cross_encoder \
   --authorize-external
 
 python -m edicola.retrieval.experimental run \
@@ -467,6 +487,23 @@ python evaluation/llm_relevance_judge.py \
   --autorizza-api
 
 python evaluation/llm_relevance_judge.py \
+  --run evaluation/results/retrieval_experiment_gt150/dev_cross_encoder/run.json \
+  --dataset evaluation/results/retrieval_experiment_gt150/dev_cross_encoder/dataset.json \
+  --snapshot evaluation/work/snapshot.json --limit 50 \
+  --out evaluation/results/retrieval_experiment_gt150/dev_cross_encoder/judgments.json \
+  --autorizza-api
+
+python -m edicola.retrieval.experimental compare \
+  --snapshot evaluation/work/snapshot.json \
+  --dataset evaluation/results/retrieval_experiment_gt150/dev_baseline/dataset.json \
+  --baseline-run evaluation/results/retrieval_experiment_gt150/dev_baseline/run.json \
+  --baseline-judgments evaluation/results/retrieval_experiment_gt150/dev_baseline/judgments.json \
+  --reranked-run evaluation/results/retrieval_experiment_gt150/dev_cross_encoder/run.json \
+  --reranked-judgments evaluation/results/retrieval_experiment_gt150/dev_cross_encoder/judgments.json \
+  --split development \
+  --out evaluation/results/retrieval_experiment_gt150/dev_comparison.json
+
+python evaluation/llm_relevance_judge.py \
   --run evaluation/results/retrieval_experiment_gt150/dev_hybrid_rrf_dedup/run.json \
   --dataset evaluation/results/retrieval_experiment_gt150/dev_hybrid_rrf_dedup/dataset.json \
   --snapshot evaluation/work/snapshot.json --limit 50 \
@@ -476,42 +513,81 @@ python evaluation/llm_relevance_judge.py \
 
 Dopo aver congelato una strategia e i suoi parametri, valutare GT-051..GT-150
 una sola volta. Per confronto complessivo autorizzato su tutti i 150 quesiti,
-sostituire `hybrid_rrf` nel seguente esempio con la strategia congelata e
-produrre una nuova run separata con `--split all`. I risultati storici su tutti
+usare la strategia congelata e produrre run nuove e separate con `--split all`
+sia per la baseline sia per il reranker. I risultati storici su tutti
 gli ID sono già stati consultati: il sottoinsieme GT-051..GT-150 resta separato
 dallo sviluppo, ma non è un holdout cieco. I nuovi risultati Groq sono giudicati
-in due blocchi senza sovrascrivere quelli della prima metà:
+in due blocchi senza sovrascrivere le run o i giudizi originali:
 
 ```bash
 python -m edicola.retrieval.experimental run \
   --snapshot evaluation/work/snapshot.json \
   --ground-truth-csv evaluation/data/Ground_Truth_Edicola_150_domande.csv \
-  --split all --strategy hybrid_rrf \
-  --out evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf \
+  --split all --strategy production_baseline \
+  --out evaluation/results/retrieval_experiment_gt150/final_baseline \
   --authorize-external
 
 python evaluation/llm_relevance_judge.py \
-  --run evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf/run.json \
-  --dataset evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf/dataset.json \
+  --run evaluation/results/retrieval_experiment_gt150/final_baseline/run.json \
+  --dataset evaluation/results/retrieval_experiment_gt150/final_baseline/dataset.json \
   --snapshot evaluation/work/snapshot.json --start 0 --limit 100 \
-  --out evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf/judgments.json \
+  --out evaluation/results/retrieval_experiment_gt150/final_baseline/judgments.json \
   --autorizza-api
 
 python evaluation/llm_relevance_judge.py \
-  --run evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf/run.json \
-  --dataset evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf/dataset.json \
+  --run evaluation/results/retrieval_experiment_gt150/final_baseline/run.json \
+  --dataset evaluation/results/retrieval_experiment_gt150/final_baseline/dataset.json \
   --snapshot evaluation/work/snapshot.json --start 100 --limit 100 \
   --solo-mancanti \
-  --out evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf/judgments.json \
+  --out evaluation/results/retrieval_experiment_gt150/final_baseline/judgments.json \
   --autorizza-api
+
+python -m edicola.retrieval.experimental run \
+  --snapshot evaluation/work/snapshot.json \
+  --ground-truth-csv evaluation/data/Ground_Truth_Edicola_150_domande.csv \
+  --split all --strategy cross_encoder_rerank \
+  --reranker-model "$HOME/.cache/edicola/models/mmarco-mMiniLMv2-L12-H384-v1" \
+  --out evaluation/results/retrieval_experiment_gt150/final_cross_encoder \
+  --authorize-external
+
+python evaluation/llm_relevance_judge.py \
+  --run evaluation/results/retrieval_experiment_gt150/final_cross_encoder/run.json \
+  --dataset evaluation/results/retrieval_experiment_gt150/final_cross_encoder/dataset.json \
+  --snapshot evaluation/work/snapshot.json --start 0 --limit 100 \
+  --out evaluation/results/retrieval_experiment_gt150/final_cross_encoder/judgments.json \
+  --autorizza-api
+
+python evaluation/llm_relevance_judge.py \
+  --run evaluation/results/retrieval_experiment_gt150/final_cross_encoder/run.json \
+  --dataset evaluation/results/retrieval_experiment_gt150/final_cross_encoder/dataset.json \
+  --snapshot evaluation/work/snapshot.json --start 100 --limit 100 \
+  --solo-mancanti \
+  --out evaluation/results/retrieval_experiment_gt150/final_cross_encoder/judgments.json \
+  --autorizza-api
+
+python -m edicola.retrieval.experimental compare \
+  --snapshot evaluation/work/snapshot.json \
+  --dataset evaluation/results/retrieval_experiment_gt150/final_baseline/dataset.json \
+  --baseline-run evaluation/results/retrieval_experiment_gt150/final_baseline/run.json \
+  --baseline-judgments evaluation/results/retrieval_experiment_gt150/final_baseline/judgments.json \
+  --reranked-run evaluation/results/retrieval_experiment_gt150/final_cross_encoder/run.json \
+  --reranked-judgments evaluation/results/retrieval_experiment_gt150/final_cross_encoder/judgments.json \
+  --split all \
+  --out evaluation/results/retrieval_experiment_gt150/final_comparison.json
 ```
 
 Ogni invio a Gemini/Groq resta subordinato alla relativa autorizzazione
-esplicita. La run di retrieval non invia fonti per generare risposte, non usa
+esplicita. Il download del modello e' un passaggio separato; l'esperimento
+richiede il modello gia' presente in locale e usa ONNX Runtime su CPU, senza
+scaricare pesi. La run di retrieval non invia fonti per generare risposte, non usa
 modelli per PDF e non modifica corpus, indice, run originali, Ground Truth o
 giudizi precedenti. Il dataset accanto alla run è un adattamento tecnico delle
 sole domande CSV: non contiene etichette di rilevanza; i nuovi giudizi vengono
-salvati in un file distinto. I test sintetici non attestano un aumento reale:
+salvati in file distinti sia per baseline sia per reranker. Il confronto verifica
+gli hash di dataset, snapshot, run e giudizi prima di calcolare Precision@3 e
+MRR@3; espone separatamente sviluppo e holdout. Il reranking non garantisce un
+miglioramento: solo i nuovi giudizi Groq potranno misurare l'effetto sul corpus.
+I test sintetici non attestano un aumento reale:
 
 ```bash
 python -m pytest -q tests/test_retrieval_experiment.py

@@ -36,10 +36,21 @@ from edicola.retrieval.embeddings import (
     question_prompt,
 )
 from edicola.retrieval.search import semantic_search
+from edicola.retrieval.reranker import (
+    MODEL_ID as RERANKER_MODEL_ID,
+    MODEL_MAX_LENGTH as RERANKER_MODEL_MAX_LENGTH,
+    MODEL_REVISION as RERANKER_MODEL_REVISION,
+    RERANK_CANDIDATES,
+    LocalOnnxCrossEncoder,
+)
 
 
 RANKING_STRATEGIES = ("cosine_all", "hybrid_rrf", "hybrid_rrf_dedup")
-STRATEGIES = ("production_baseline", *RANKING_STRATEGIES)
+STRATEGIES = (
+    "production_baseline",
+    *RANKING_STRATEGIES,
+    "cross_encoder_rerank",
+)
 RRF_CONSTANT = 60
 DEFAULT_POOL_SIZE = 50
 _TOKEN_RE = re.compile(r"[^\W_]+", flags=re.UNICODE)
@@ -162,9 +173,10 @@ def rank_candidates(
     strategy: str,
     top_k: int = 3,
     pool_size: int = DEFAULT_POOL_SIZE,
+    reranker_scores: list[float] | None = None,
 ) -> list[dict]:
     """Reranking deterministico; conserva i chunk originali senza modificarli."""
-    if strategy not in RANKING_STRATEGIES or top_k != 3:
+    if strategy not in (*RANKING_STRATEGIES, "cross_encoder_rerank") or top_k != 3:
         raise ValueError("Strategia non valida: la valutazione finale richiede K=3.")
     if type(pool_size) is not int or pool_size < top_k:
         raise ValueError("Il candidate pool deve essere un intero >= 3.")
@@ -189,6 +201,33 @@ def rank_candidates(
     semantic = sorted(
         candidates, key=lambda hit: (hit["distance"], hit["id"])
     )
+    if strategy == "cross_encoder_rerank":
+        if pool_size != RERANK_CANDIDATES or len(candidates) > RERANK_CANDIDATES:
+            raise ValueError("Il CrossEncoder usa esattamente un pool massimo di 10.")
+        if not isinstance(reranker_scores, list) or len(reranker_scores) != len(candidates):
+            raise ValueError("Manca un punteggio reranker per ogni candidato.")
+        if any(
+            type(score) not in (int, float) or not math.isfinite(score)
+            for score in reranker_scores
+        ):
+            raise ValueError("Punteggi reranker non validi.")
+        scores = {
+            hit["id"]: float(score)
+            for hit, score in zip(candidates, reranker_scores, strict=True)
+        }
+        original_order = {
+            hit["id"]: rank for rank, hit in enumerate(candidates)
+        }
+        return sorted(
+            candidates,
+            key=lambda hit: (
+                -scores[hit["id"]],
+                original_order[hit["id"]],
+                hit["id"],
+            ),
+        )[:top_k]
+    if reranker_scores is not None:
+        raise ValueError("Punteggi CrossEncoder passati a una strategia diversa.")
     if strategy == "cosine_all":
         return semantic[:top_k]
 
@@ -315,7 +354,8 @@ def run_retrieval_experiment(
     question_ids: list[str],
     embedder_factory,
     authorize_external: bool,
-    pool_size: int = DEFAULT_POOL_SIZE,
+    pool_size: int | None = None,
+    reranker=None,
     root: Path = Path.cwd(),
     clock=time.perf_counter,
 ) -> dict:
@@ -327,6 +367,12 @@ def run_retrieval_experiment(
     current_snapshot = snapshot(catalog, frozen["origin"])
     if current_snapshot["snapshot_id"] != frozen["snapshot_id"]:
         raise ValueError("Archivio/chunk/vectori diversi dallo snapshot congelato.")
+    if pool_size is None:
+        pool_size = (
+            RERANK_CANDIDATES
+            if strategy == "cross_encoder_rerank"
+            else DEFAULT_POOL_SIZE
+        )
     if (
         strategy not in STRATEGIES
         or type(pool_size) is not int
@@ -335,6 +381,13 @@ def run_retrieval_experiment(
         or len(set(question_ids)) != len(question_ids)
     ):
         raise ValueError("Parametri sperimentali non validi.")
+    if strategy == "cross_encoder_rerank":
+        if pool_size != RERANK_CANDIDATES or reranker is None:
+            raise ValueError(
+                "Il CrossEncoder richiede un pool di 10 e un reranker locale."
+            )
+    elif reranker is not None:
+        raise ValueError("Il reranker è ammesso solo nella strategia CrossEncoder.")
     questions = {item["id"]: item for item in dataset["questions"]}
     if not set(question_ids) <= questions.keys():
         raise ValueError("Lo split contiene ID assenti dalla Ground Truth.")
@@ -377,6 +430,34 @@ def run_retrieval_experiment(
                     preserve_relevance_order=True,
                 )
                 hits = candidates[:3]
+            elif strategy == "cross_encoder_rerank":
+                candidates = semantic_search(
+                    question["question"],
+                    authorize_external=True,
+                    root=root,
+                    embedder=embedder,
+                    top_k=3,
+                    corpus_wide=True,
+                    preserve_relevance_order=True,
+                )
+                candidate_pool = candidates[:RERANK_CANDIDATES]
+                reranker_scores = reranker.predict_scores(
+                    question["question"], candidate_pool
+                )
+                hits = rank_candidates(
+                    question["question"],
+                    candidate_pool,
+                    strategy=strategy,
+                    top_k=3,
+                    pool_size=pool_size,
+                    reranker_scores=reranker_scores,
+                )
+                record["rerank_candidates"] = [
+                    {"chunk_id": hit["id"], "score": float(score)}
+                    for hit, score in zip(
+                        candidate_pool, reranker_scores, strict=True
+                    )
+                ]
             else:
                 vector = embedder.embed(question_prompt(question["question"]))
                 candidates = candidates_from_vectors(
@@ -418,6 +499,15 @@ def run_retrieval_experiment(
             "retrieval_module_sha256": digest(
                 Path(__file__).read_text(encoding="utf-8")
             ),
+            "reranker_module_sha256": (
+                digest(
+                    Path(__file__)
+                    .with_name("reranker.py")
+                    .read_text(encoding="utf-8")
+                )
+                if strategy == "cross_encoder_rerank"
+                else None
+            ),
         },
         "configuration": {
             "retrieval_strategy": f"experimental_{strategy}_v1",
@@ -427,15 +517,23 @@ def run_retrieval_experiment(
             "candidate_source": (
                 "semantic_search production corpus-wide"
                 if strategy == "production_baseline"
-                else "tutti i chunk correnti con vettori nello snapshot"
+                else (
+                    "primi 10 candidati di semantic_search production corpus-wide"
+                    if strategy == "cross_encoder_rerank"
+                    else "tutti i chunk correnti con vettori nello snapshot"
+                )
             ),
             "rank_fusion": (
                 "semantic_search production corpus-wide"
                 if strategy == "production_baseline"
                 else (
-                    "RRF semantic+BM25, k=60"
-                    if strategy != "cosine_all"
-                    else "cosine distance"
+                    "CrossEncoder mmarco-mMiniLMv2-L12-H384-v1"
+                    if strategy == "cross_encoder_rerank"
+                    else (
+                        "cosine distance"
+                        if strategy == "cosine_all"
+                        else "RRF semantic+BM25, k=60"
+                    )
                 )
             ),
             "deduplication": (
@@ -446,6 +544,17 @@ def run_retrieval_experiment(
             "generation": "non eseguita",
             "external_authorization": True,
             "question_ids": question_ids,
+            "reranker": (
+                {
+                    "model_id": RERANKER_MODEL_ID,
+                    "revision": RERANKER_MODEL_REVISION,
+                    "runtime": "onnxruntime CPUExecutionProvider",
+                    "max_length": RERANKER_MODEL_MAX_LENGTH,
+                    "candidate_count": RERANK_CANDIDATES,
+                }
+                if strategy == "cross_encoder_rerank"
+                else None
+            ),
         },
         "records": records,
     }
@@ -725,6 +834,160 @@ def write_offline_analysis(root: Path, output: Path) -> Path:
     return output
 
 
+def compare_retrieval_runs(
+    dataset,
+    frozen,
+    baseline,
+    baseline_judgments,
+    reranked,
+    reranked_judgments,
+    *,
+    split: str = "all",
+) -> dict:
+    """Confronta due run K=3 usando solo giudizi Groq collegati ai rispettivi hash."""
+    from edicola.evaluation_metrics import score_run
+    from evaluation.llm_relevance_judge import (
+        calculate_metrics,
+        validate_relevance,
+    )
+
+    validate_dataset(dataset, frozen)
+    catalog = validate_snapshot(frozen)
+    dataset_ids = [question["id"] for question in dataset["questions"]]
+    if dataset_ids != [f"GT-{number:03d}" for number in range(1, 151)]:
+        raise ValueError("Il confronto richiede la Ground Truth ordinata GT-001..GT-150.")
+    if split not in {"development", "holdout", "all"}:
+        raise ValueError("Split di confronto non valido.")
+    expected_ids = question_ids_for_split(split)
+
+    runs = (baseline, reranked)
+    judges = (baseline_judgments, reranked_judgments)
+    for run, judge in zip(runs, judges, strict=True):
+        score_run(dataset, frozen, run, catalog)
+        if run.get("mode") != "retrieval" or run.get("top_k") != 3:
+            raise ValueError("Il confronto richiede run retrieval con K=3.")
+        if (
+            judge.get("provider") != "groq"
+            or judge.get("run_sha256") != digest(run)
+            or judge.get("snapshot_id") != frozen["snapshot_id"]
+            or not isinstance(judge.get("records"), dict)
+        ):
+            raise ValueError("Giudizi Groq non collegati alla run e allo snapshot.")
+        records = run.get("records")
+        if (
+            not isinstance(records, list)
+            or [record.get("question_id") for record in records] != expected_ids
+            or any(record.get("repeat") != 1 for record in records)
+        ):
+            raise ValueError("Run non completa, ordinata o con domande duplicate.")
+
+    per_method = []
+    for run, judge in zip(runs, judges, strict=True):
+        judged_rows = {}
+        for record in run["records"]:
+            qid = record["question_id"]
+            if record.get("retrieval_status") != "ok":
+                raise ValueError(f"{qid}: retrieval fallito, confronto non completo.")
+            hits = record["retrieved"]
+            judgment = judge["records"].get(f"{qid}#1", {})
+            if not hits:
+                if judgment.get("status") != "retrieval_missing":
+                    raise ValueError(f"{qid}: giudizio vuoto incoerente con la run.")
+                judged_rows[qid] = (None, None, [])
+                continue
+            if judgment.get("status") != "judged":
+                raise ValueError(f"{qid}: giudizio Groq nuovo mancante.")
+            checked = validate_relevance(
+                json.dumps(
+                    {"judgments": judgment.get("judgments")},
+                    ensure_ascii=False,
+                ),
+                hits,
+            )
+            labels = [item["label"] for item in checked]
+            precision, mrr = calculate_metrics(labels, 3)
+            judged_rows[qid] = (precision, mrr, labels)
+        per_method.append(judged_rows)
+
+    def metric_summary(qids, metric_index):
+        summaries = []
+        for rows in per_method:
+            values = [
+                rows[qid][metric_index]
+                for qid in qids
+                if rows[qid][metric_index] is not None
+            ]
+            summaries.append(
+                {
+                    "mean": statistics.mean(values) if values else None,
+                    "n": len(values),
+                    "denominator": len(qids),
+                }
+            )
+        baseline_mean, reranked_mean = (
+            summaries[0]["mean"],
+            summaries[1]["mean"],
+        )
+        return {
+            "baseline": summaries[0],
+            "reranked": summaries[1],
+            "delta_reranked_minus_baseline": (
+                reranked_mean - baseline_mean
+                if baseline_mean is not None and reranked_mean is not None
+                else None
+            ),
+        }
+
+    groups = (
+        {
+            "development_GT-001..050": expected_ids,
+        }
+        if split == "development"
+        else (
+            {"holdout_GT-051..150": expected_ids}
+            if split == "holdout"
+            else {
+                "development_GT-001..050": expected_ids[:50],
+                "holdout_GT-051..150": expected_ids[50:],
+                "all_GT-001..150": expected_ids,
+            }
+        )
+    )
+    return {
+        "schema_version": 1,
+        "split": split,
+        "snapshot_id": frozen["snapshot_id"],
+        "dataset_id": digest(dataset),
+        "baseline_run_sha256": digest(baseline),
+        "reranked_run_sha256": digest(reranked),
+        "baseline_judgments_run_sha256": baseline_judgments["run_sha256"],
+        "reranked_judgments_run_sha256": reranked_judgments["run_sha256"],
+        "judgment_policy": (
+            "Giudizi Groq nuovi e separati per ogni run; nessun giudizio "
+            "storico trasferito."
+        ),
+        "metrics": {
+            name: {
+                "precision_at_3": metric_summary(qids, 0),
+                "mrr_at_3": metric_summary(qids, 1),
+            }
+            for name, qids in groups.items()
+        },
+        "per_question": [
+            {
+                "question_id": qid,
+                "baseline_labels": per_method[0][qid][2],
+                "reranked_labels": per_method[1][qid][2],
+                "baseline_precision_at_3": per_method[0][qid][0],
+                "reranked_precision_at_3": per_method[1][qid][0],
+                "baseline_mrr_at_3": per_method[0][qid][1],
+                "reranked_mrr_at_3": per_method[1][qid][1],
+            }
+            for qid in expected_ids
+        ],
+    }
+
+
 def _run_cli(args) -> int:
     if not args.authorize_external:
         raise ValueError("Usare --authorize-external per inviare le query a Gemini.")
@@ -741,6 +1004,19 @@ def _run_cli(args) -> int:
     question_ids = question_ids_for_split(args.split)
     if args.out.exists():
         raise ValueError("La destinazione esiste già; scegliere una nuova cartella.")
+
+    reranker = (
+        LocalOnnxCrossEncoder(args.reranker_model)
+        if args.strategy == "cross_encoder_rerank"
+        else None
+    )
+    pool_size = args.pool_size
+    if pool_size is None:
+        pool_size = (
+            RERANK_CANDIDATES
+            if args.strategy == "cross_encoder_rerank"
+            else DEFAULT_POOL_SIZE
+        )
 
     key = api_key(args.root)
     if not key:
@@ -768,7 +1044,8 @@ def _run_cli(args) -> int:
             question_ids=question_ids,
             embedder_factory=embedder_factory,
             authorize_external=True,
-            pool_size=args.pool_size,
+            pool_size=pool_size,
+            reranker=reranker,
             root=args.root,
         )
     finally:
@@ -793,6 +1070,20 @@ def main(argv=None) -> int:
         type=Path,
         default=Path("evaluation/results/retrieval_experiment_gt150/analisi_offline.md"),
     )
+    compare = commands.add_parser(
+        "compare",
+        help="Confronta offline run baseline/reranking e giudizi Groq collegati.",
+    )
+    compare.add_argument("--dataset", type=Path, required=True)
+    compare.add_argument("--snapshot", type=Path, required=True)
+    compare.add_argument("--baseline-run", type=Path, required=True)
+    compare.add_argument("--baseline-judgments", type=Path, required=True)
+    compare.add_argument("--reranked-run", type=Path, required=True)
+    compare.add_argument("--reranked-judgments", type=Path, required=True)
+    compare.add_argument(
+        "--split", choices=("development", "holdout", "all"), default="all"
+    )
+    compare.add_argument("--out", type=Path, required=True)
     run = commands.add_parser("run", help="Esegue solo retrieval, mai generazione RAG.")
     run.add_argument("--root", type=Path, default=Path.cwd())
     run.add_argument("--snapshot", type=Path, required=True)
@@ -801,7 +1092,14 @@ def main(argv=None) -> int:
         "--split", choices=("development", "holdout", "all"), required=True
     )
     run.add_argument("--strategy", choices=STRATEGIES, required=True)
-    run.add_argument("--pool-size", type=int, default=DEFAULT_POOL_SIZE)
+    run.add_argument("--pool-size", type=int)
+    run.add_argument(
+        "--reranker-model",
+        type=Path,
+        default=Path.home()
+        / ".cache/edicola/models/mmarco-mMiniLMv2-L12-H384-v1",
+        help="Directory locale del modello ONNX e del tokenizer; non scarica modelli.",
+    )
     run.add_argument("--out", type=Path, required=True)
     run.add_argument("--authorize-external", action="store_true")
     args = parser.parse_args(argv)
@@ -810,8 +1108,23 @@ def main(argv=None) -> int:
             output = write_offline_analysis(args.root, args.out)
             print(f"Analisi offline salvata in {output}")
             return 0
+        if args.command == "compare":
+            if args.out.exists():
+                raise ValueError("Il file di confronto esiste già; scegliere una nuova destinazione.")
+            report = compare_retrieval_runs(
+                read_json(args.dataset),
+                read_json(args.snapshot),
+                read_json(args.baseline_run),
+                read_json(args.baseline_judgments),
+                read_json(args.reranked_run),
+                read_json(args.reranked_judgments),
+                split=args.split,
+            )
+            write_json(args.out, report)
+            print(f"Confronto offline salvato in {args.out}")
+            return 0
         return _run_cli(args)
-    except (OSError, RuntimeError, TypeError, ValueError):
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError):
         print(
             "Esperimento non completato: verificare snapshot, Ground Truth, "
             "catalogo, autorizzazione e destinazione."
