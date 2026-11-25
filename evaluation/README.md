@@ -218,6 +218,31 @@ python -m edicola.prompt_experiment \
   --authorize-external
 ```
 
+Per una run selettiva passare gli ID con `--only-ids` e il CSV Ground Truth.
+Prima di creare la directory il comando verifica che ogni ID sia incompleto
+nella baseline, abbia retrieval e chunk disponibili, non sia `Non rispondibile`
+e non abbia gia una risposta `answered` in una run indicata con
+`--exclude-validated-run`. I chunk esatti della baseline vengono riusati e,
+in questa modalita, si effettua una sola generazione per domanda:
+
+```bash
+python -m edicola.prompt_experiment \
+  --snapshot evaluation/work/snapshot.json \
+  --dataset evaluation/work/annotations/dataset_gt100_parte2.json \
+  --baseline-run evaluation/results/rag_gt100_parte2_01/run.json \
+  --out evaluation/results/prompt-completeness-recupero9-v2 \
+  --authorize-external \
+  --ground-truth-csv evaluation/data/Ground_Truth_Edicola_150_domande.csv \
+  --exclude-validated-run evaluation/results/prompt-completeness-gt100-parte2/run.json \
+  --exclude-validated-run evaluation/results/prompt-completeness-recupero9/run.json \
+  --only-ids GT-103,GT-104,GT-105,GT-106,GT-113,GT-118,GT-120,GT-121,GT-136
+```
+
+Si puo ripetere `--exclude-validated-run` per controllare piu esperimenti.
+`--only-ids` e `--retry-errors` sono mutuamente esclusivi. La selezione non
+modifica run, Ground Truth o giudizi precedenti; ogni risposta resta soggetta
+alla validazione RAG normale.
+
 Il comando sopra e un protocollo da eseguire in seguito, non e stato avviato.
 Eseguire una volta per ogni run/coorte, cambiando dataset, baseline e destinazione.
 Nel checkout e disponibile anche la coppia `dataset_gt50_sviluppo.json` /
@@ -227,6 +252,44 @@ run `rag_gt100_parte1_v2` (hash `50169bd7...`); il sottoinsieme di
 sostituto. Per una comparazione completa delle 150 domande occorre ripristinare
 quel JSON originale. Non fondere run con dataset diversi e non rietichettare
 annotazioni.
+
+Comandi selettivi per i candidati attualmente rimasti (non eseguiti):
+
+```bash
+python -m edicola.prompt_experiment \
+  --snapshot evaluation/work/snapshot.json \
+  --dataset evaluation/work/annotations/dataset_gt50_sviluppo.json \
+  --baseline-run evaluation/results/rag_gt50_completo_01/run.json \
+  --out evaluation/results/prompt-completeness-recupero-gt50 \
+  --authorize-external \
+  --ground-truth-csv evaluation/data/Ground_Truth_Edicola_150_domande.csv \
+  --only-ids GT-002,GT-011,GT-012,GT-041
+
+python -m edicola.prompt_experiment \
+  --snapshot evaluation/work/snapshot.json \
+  --dataset evaluation/work/annotations/dataset_gt100_parte1_originale.json \
+  --baseline-run evaluation/results/rag_gt100_parte1_v2/run.json \
+  --out evaluation/results/prompt-completeness-recupero-gt100-parte1 \
+  --authorize-external \
+  --ground-truth-csv evaluation/data/Ground_Truth_Edicola_150_domande.csv \
+  --only-ids GT-070,GT-076,GT-080,GT-100
+
+python -m edicola.prompt_experiment \
+  --snapshot evaluation/work/snapshot.json \
+  --dataset evaluation/work/annotations/dataset_gt100_parte2.json \
+  --baseline-run evaluation/results/rag_gt100_parte2_01/run.json \
+  --out evaluation/results/prompt-completeness-recupero-gt100-parte2 \
+  --authorize-external \
+  --ground-truth-csv evaluation/data/Ground_Truth_Edicola_150_domande.csv \
+  --exclude-validated-run evaluation/results/prompt-completeness-gt100-parte2/run.json \
+  --exclude-validated-run evaluation/results/prompt-completeness-recupero9/run.json \
+  --only-ids GT-103,GT-104,GT-105,GT-106,GT-113,GT-118,GT-120,GT-121,GT-136
+```
+
+Il secondo comando e pronto solo dopo aver ripristinato il dataset originale
+esatto, non presente nel checkout; `dataset_gt100_finale.json` non e un
+sostituto valido. Le tre destinazioni sono nuove e mantengono intatti tutti i
+risultati precedenti.
 
 Se una run sperimentale contiene errori di generazione, si possono ritentare
 soltanto quei record indicando la directory gia esistente e `--retry-errors`.
@@ -278,9 +341,11 @@ output il JSON originale. Entrambi usano la configurazione predefinita dello
 stesso giudice Groq. Eseguire i comandi solo dopo approvazione esplicita: sono
 valutazioni reali, non parte dei test mock.
 
-Le chiamate API sono seriali, contate e senza fallback a un altro modello; il
-retry e limitato al singolo tentativo gia previsto per citazioni letterali non
-valide. Il risultato `run.json` conserva `source_run_id`, gli hash di
+Le chiamate API sono seriali, contate e senza fallback a un altro modello. Il
+percorso integrale conserva il retry gia previsto per citazioni letterali non
+valide; la selezione `--only-ids` non ripete la generazione dopo un esito di
+validazione. I retry tecnici restano disponibili con `--retry-errors`, solo
+dopo un'azione esplicita. Il risultato `run.json` conserva `source_run_id`, gli hash di
 snapshot/dataset, il modello e la versione/hash del prompt. I chunk e il loro
 numero effettivo per domanda provengono dal baseline; `retrieval_seconds` resta
 mancante e `generation_seconds` misura solo la generazione sperimentale. Report
@@ -315,4 +380,139 @@ Test offline:
 
 ```bash
 python -m pytest -q tests/test_prompt_experiment.py
+```
+
+## 11. Report offline sulle run Ground Truth 150
+
+Per aggregare le tre run originali, i giudizi Groq già collegati tramite hash
+e gli esperimenti di recupero senza nuove chiamate esterne:
+
+```bash
+python -m edicola.final_report
+```
+
+Il comando verifica ID, hash, validità dei giudizi e identità dei chunk riusati,
+poi crea una nuova cartella `evaluation/results/report_finale_gt150`. Rifiuta
+di sovrascrivere una destinazione esistente. I recuperi sono analizzati
+separatamente e le domande sovrapposte non vengono sommate. I test sintetici
+sono offline:
+
+```bash
+python -m pytest -q tests/test_final_report.py
+```
+
+## 12. Esperimento retrieval GT150 (separato dalla produzione)
+
+L'analisi delle run originali è riproducibile offline e non chiama API:
+
+```bash
+python -m edicola.retrieval.experimental analyze
+```
+
+Il report `evaluation/results/retrieval_experiment_gt150/analisi_offline.md`
+elenca i chunk N con posizione, PDF/pagina, estratto e motivazione Groq; i
+giudizi sono controllati rispetto agli hash delle tre run. Sono AI-silver, non
+etichette umane esaustive. La causa apparente del terzo gruppo va interpretata
+con cautela: le categorie e i giudizi cambiano fra coorti; inoltre i risultati
+storici su GT-051..GT-150 sono già noti, quindi non sono un holdout cieco.
+
+Il modulo `edicola.retrieval.experimental` non cambia `semantic_search`
+dell'app. Esegue solo retrieval e mantiene sempre K=3. Le strategie sono:
+
+- `production_baseline`: percorso esistente di ricerca, per controllo appaiato;
+- `cosine_all`: cosine puro su tutti i chunk correnti;
+- `hybrid_rrf`: pool di 50 candidati semantici e 50 lessicali BM25, fusi con
+  Reciprocal Rank Fusion;
+- `hybrid_rrf_dedup`: stessa fusione, saltando quasi-duplicati soltanto
+  all'interno della stessa edizione. Chunk da PDF diversi restano distinti.
+
+Sviluppo: confrontare strategie esclusivamente su GT-001..GT-050; ogni run
+deve ricevere nuovi giudizi Groq. Non riutilizzare quelli storici perché il
+ranking, i candidati o persino gli embedding possono essere diversi:
+
+```bash
+python -m edicola.retrieval.experimental run \
+  --snapshot evaluation/work/snapshot.json \
+  --ground-truth-csv evaluation/data/Ground_Truth_Edicola_150_domande.csv \
+  --split development --strategy production_baseline \
+  --out evaluation/results/retrieval_experiment_gt150/dev_baseline \
+  --authorize-external
+
+python -m edicola.retrieval.experimental run \
+  --snapshot evaluation/work/snapshot.json \
+  --ground-truth-csv evaluation/data/Ground_Truth_Edicola_150_domande.csv \
+  --split development --strategy hybrid_rrf \
+  --out evaluation/results/retrieval_experiment_gt150/dev_hybrid_rrf \
+  --authorize-external
+
+python -m edicola.retrieval.experimental run \
+  --snapshot evaluation/work/snapshot.json \
+  --ground-truth-csv evaluation/data/Ground_Truth_Edicola_150_domande.csv \
+  --split development --strategy hybrid_rrf_dedup \
+  --out evaluation/results/retrieval_experiment_gt150/dev_hybrid_rrf_dedup \
+  --authorize-external
+
+python evaluation/llm_relevance_judge.py \
+  --run evaluation/results/retrieval_experiment_gt150/dev_hybrid_rrf/run.json \
+  --dataset evaluation/results/retrieval_experiment_gt150/dev_hybrid_rrf/dataset.json \
+  --snapshot evaluation/work/snapshot.json --limit 50 \
+  --out evaluation/results/retrieval_experiment_gt150/dev_hybrid_rrf/judgments.json \
+  --autorizza-api
+
+python evaluation/llm_relevance_judge.py \
+  --run evaluation/results/retrieval_experiment_gt150/dev_baseline/run.json \
+  --dataset evaluation/results/retrieval_experiment_gt150/dev_baseline/dataset.json \
+  --snapshot evaluation/work/snapshot.json --limit 50 \
+  --out evaluation/results/retrieval_experiment_gt150/dev_baseline/judgments.json \
+  --autorizza-api
+
+python evaluation/llm_relevance_judge.py \
+  --run evaluation/results/retrieval_experiment_gt150/dev_hybrid_rrf_dedup/run.json \
+  --dataset evaluation/results/retrieval_experiment_gt150/dev_hybrid_rrf_dedup/dataset.json \
+  --snapshot evaluation/work/snapshot.json --limit 50 \
+  --out evaluation/results/retrieval_experiment_gt150/dev_hybrid_rrf_dedup/judgments.json \
+  --autorizza-api
+```
+
+Dopo aver congelato una strategia e i suoi parametri, valutare GT-051..GT-150
+una sola volta. Per confronto complessivo autorizzato su tutti i 150 quesiti,
+sostituire `hybrid_rrf` nel seguente esempio con la strategia congelata e
+produrre una nuova run separata con `--split all`. I risultati storici su tutti
+gli ID sono già stati consultati: il sottoinsieme GT-051..GT-150 resta separato
+dallo sviluppo, ma non è un holdout cieco. I nuovi risultati Groq sono giudicati
+in due blocchi senza sovrascrivere quelli della prima metà:
+
+```bash
+python -m edicola.retrieval.experimental run \
+  --snapshot evaluation/work/snapshot.json \
+  --ground-truth-csv evaluation/data/Ground_Truth_Edicola_150_domande.csv \
+  --split all --strategy hybrid_rrf \
+  --out evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf \
+  --authorize-external
+
+python evaluation/llm_relevance_judge.py \
+  --run evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf/run.json \
+  --dataset evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf/dataset.json \
+  --snapshot evaluation/work/snapshot.json --start 0 --limit 100 \
+  --out evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf/judgments.json \
+  --autorizza-api
+
+python evaluation/llm_relevance_judge.py \
+  --run evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf/run.json \
+  --dataset evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf/dataset.json \
+  --snapshot evaluation/work/snapshot.json --start 100 --limit 100 \
+  --solo-mancanti \
+  --out evaluation/results/retrieval_experiment_gt150/final_hybrid_rrf/judgments.json \
+  --autorizza-api
+```
+
+Ogni invio a Gemini/Groq resta subordinato alla relativa autorizzazione
+esplicita. La run di retrieval non invia fonti per generare risposte, non usa
+modelli per PDF e non modifica corpus, indice, run originali, Ground Truth o
+giudizi precedenti. Il dataset accanto alla run è un adattamento tecnico delle
+sole domande CSV: non contiene etichette di rilevanza; i nuovi giudizi vengono
+salvati in un file distinto. I test sintetici non attestano un aumento reale:
+
+```bash
+python -m pytest -q tests/test_retrieval_experiment.py
 ```

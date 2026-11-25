@@ -278,6 +278,18 @@ def calculate_metrics(labels, k):
     return precision, mrr
 
 
+def select_run_records(records, start, limit):
+    if (
+        type(start) is not int
+        or start < 0
+        or type(limit) is not int
+        or not 1 <= limit <= 100
+        or start >= len(records)
+    ):
+        raise ValueError("Intervallo di record non valido.")
+    return records[start : start + limit]
+
+
 def export_results(run, questions, results, output):
     relevance_rows = []
     metric_rows = []
@@ -536,6 +548,12 @@ def main():
         default="openai/gpt-oss-120b"
     )
     parser.add_argument("--limit", type=int, default=50)
+    parser.add_argument(
+        "--start",
+        type=int,
+        default=0,
+        help="Indice iniziale in run.records, per lavorare su gruppi oltre 100 domande.",
+    )
     parser.add_argument("--out", required=True)
     parser.add_argument(
         "--valuta-risposte",
@@ -576,6 +594,8 @@ def main():
 
     if not 1 <= args.limit <= 100:
         parser.error("--limit deve essere tra 1 e 100.")
+    if args.start < 0:
+        parser.error("--start non può essere negativo.")
 
     if args.model not in {
         "openai/gpt-oss-120b",
@@ -639,7 +659,10 @@ def main():
     results.setdefault("records", {})
     results.setdefault("answer_records", {})
 
-    todo = run["records"][:args.limit]
+    try:
+        todo = select_run_records(run["records"], args.start, args.limit)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     client = GroqJudge(args.model)
     rate_limited = False

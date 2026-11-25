@@ -2,8 +2,10 @@
 
 import argparse
 import copy
+import csv
 import hashlib
 import json
+import math
 import os
 import tempfile
 import time
@@ -41,6 +43,7 @@ from edicola.indexing import ROOT
 
 
 EXPERIMENT_ID = "completeness-v1"
+INCOMPLETE_RESPONSE_STATES = {"model_abstention", "validation_failed", "not_run"}
 COMPLETENESS_INSTRUCTION = SYSTEM_INSTRUCTION + """
 
 Prima di rispondere, scomponi la domanda nei suoi elementi richiesti e controlla
@@ -62,6 +65,8 @@ non presentarlo come vero; se nessun fatto pertinente e verificabile, astieniti.
 
 
 def _validate_baseline(dataset, frozen, baseline_run):
+    if not isinstance(dataset, dict) or not isinstance(frozen, dict) or not isinstance(baseline_run, dict):
+        raise ValueError("Dataset, snapshot o run originale non validi.")
     validate_dataset(dataset, frozen)
     catalog = validate_snapshot(frozen)
     score_run(dataset, frozen, baseline_run, catalog)
@@ -92,6 +97,8 @@ def _validate_baseline(dataset, frozen, baseline_run):
 
 
 def _validate_experiment_run(dataset, frozen, baseline_run, experiment_run):
+    if not isinstance(experiment_run, dict):
+        raise ValueError("La run sperimentale esistente non e un oggetto JSON valido.")
     catalog, model = _validate_baseline(dataset, frozen, baseline_run)
     score_run(dataset, frozen, experiment_run, catalog)
     source_run_id = digest(baseline_run)
@@ -112,6 +119,17 @@ def _validate_experiment_run(dataset, frozen, baseline_run, experiment_run):
     configuration = experiment_run.get("configuration")
     if not isinstance(configuration, dict):
         raise ValueError("Configurazione della run sperimentale mancante.")
+    code_hash = configuration.get("experiment_code_sha256")
+    pause_seconds = configuration.get("inter_question_pause_seconds")
+    if (
+        not isinstance(code_hash, str)
+        or len(code_hash) != 64
+        or any(character not in "0123456789abcdef" for character in code_hash)
+        or type(pause_seconds) not in (int, float)
+        or not math.isfinite(pause_seconds)
+        or pause_seconds < 0
+    ):
+        raise ValueError("Metadati della configurazione sperimentale non validi.")
     overridden = {
         "generation_prompt",
         "generation_prompt_sha256",
@@ -150,18 +168,28 @@ def _validate_experiment_run(dataset, frozen, baseline_run, experiment_run):
 
     original_records = baseline_run["records"]
     saved_records = experiment_run["records"]
-    if len(original_records) != len(saved_records):
-        raise ValueError("La run sperimentale non contiene gli stessi record della baseline.")
+    original_indexes = {
+        (record["question_id"], record["repeat"]): index
+        for index, record in enumerate(original_records)
+    }
     failed_indexes = []
-    for index, (original, saved) in enumerate(zip(original_records, saved_records)):
+    previous_original_index = -1
+    for saved_index, saved in enumerate(saved_records):
+        identity = (saved["question_id"], saved["repeat"])
+        original_index = original_indexes.get(identity)
+        if original_index is None or original_index <= previous_original_index:
+            raise ValueError(
+                "La run sperimentale contiene record non presenti nella baseline "
+                "o in ordine incompatibile."
+            )
+        original = original_records[original_index]
         if (
-            saved.get("question_id") != original["question_id"]
-            or saved.get("repeat") != original["repeat"]
-            or saved.get("retrieval_status") != original["retrieval_status"]
+            saved.get("retrieval_status") != original["retrieval_status"]
             or saved.get("retrieved") != original["retrieved"]
             or saved["status"] not in ("ok", "error")
         ):
             raise ValueError("Chunk o identita dei record sperimentali alterati.")
+        previous_original_index = original_index
         if saved["status"] == "error":
             if (
                 saved.get("error_phase") != "generation"
@@ -169,8 +197,23 @@ def _validate_experiment_run(dataset, frozen, baseline_run, experiment_run):
                 or not saved["retrieved"]
             ):
                 raise ValueError("La run contiene errori non recuperabili tramite sola generazione.")
-            failed_indexes.append(index)
+            failed_indexes.append((saved_index, original_index))
     return model, failed_indexes
+
+
+def _validated_answer_ids(dataset, frozen, baseline_run, experiment_run):
+    _validate_experiment_run(dataset, frozen, baseline_run, experiment_run)
+    validated = set()
+    for record in experiment_run["records"]:
+        state, _ = rag_assessment(
+            record.get("raw_response"),
+            sources_from_hits(record["retrieved"]),
+        )
+        if record.get("response_state") != state:
+            raise ValueError("Lo stato della risposta non corrisponde alla validazione RAG.")
+        if record["status"] == "ok" and state == "answered":
+            validated.add(record["question_id"])
+    return validated
 
 
 def _atomic_write_json(path, data):
@@ -196,12 +239,122 @@ def _atomic_write_json(path, data):
             temporary.unlink()
 
 
+def _parse_only_ids(value):
+    ids = tuple(identity.strip() for identity in value.split(","))
+    if not ids or any(not identity for identity in ids):
+        raise argparse.ArgumentTypeError("Specificare ID separati da virgole.")
+    if len(set(ids)) != len(ids):
+        raise argparse.ArgumentTypeError("Gli ID specificati non devono essere duplicati.")
+    return ids
+
+
+def _read_ground_truth_categories(path):
+    categories = {}
+    try:
+        with Path(path).open("r", encoding="utf-8-sig", newline="") as stream:
+            reader = csv.DictReader(stream)
+            if not {"ID", "Categoria"} <= set(reader.fieldnames or ()):
+                raise ValueError("Il CSV Ground Truth deve contenere ID e Categoria.")
+            for row in reader:
+                identity = (row.get("ID") or "").strip()
+                category = (row.get("Categoria") or "").strip()
+                if not identity or not category or identity in categories:
+                    raise ValueError("CSV Ground Truth con ID/categoria mancanti o ID duplicati.")
+                categories[identity] = category
+    except csv.Error as exc:
+        raise ValueError("CSV Ground Truth non valido.") from exc
+    if not categories:
+        raise ValueError("CSV Ground Truth vuoto.")
+    return categories
+
+
+def _select_recovery_records(
+    dataset,
+    baseline_run,
+    only_ids,
+    *,
+    ground_truth_categories=None,
+    already_validated_ids=(),
+):
+    if only_ids is None:
+        return baseline_run["records"]
+    try:
+        requested = tuple(only_ids)
+        requested_ids = set(requested)
+    except TypeError as exc:
+        raise ValueError("Gli ID selezionati non sono validi.") from exc
+    if (
+        not requested_ids
+        or len(requested) != len(requested_ids)
+        or any(not isinstance(identity, str) or not identity.strip() for identity in requested)
+    ):
+        raise ValueError("Specificare ID domanda validi e non duplicati.")
+
+    baseline_records = {
+        record["question_id"]: record for record in baseline_run["records"]
+    }
+    missing_ids = requested_ids - baseline_records.keys()
+    if missing_ids:
+        raise ValueError(
+            "ID non presenti nella baseline: " + ", ".join(sorted(missing_ids))
+        )
+
+    questions = {question["id"]: question for question in dataset["questions"]}
+    already_validated = set(already_validated_ids)
+    previously_answered = requested_ids & already_validated
+    if previously_answered:
+        raise ValueError(
+            "ID gia recuperati con risposta validata: "
+            + ", ".join(sorted(previously_answered))
+        )
+
+    selected_records = []
+    for identity in requested:
+        record = baseline_records[identity]
+        state, _ = rag_assessment(
+            record.get("raw_response"),
+            sources_from_hits(record["retrieved"]),
+        )
+        if record.get("response_state") != state:
+            raise ValueError(
+                f"{identity}: stato della baseline non coerente con la validazione RAG."
+            )
+        if (
+            state not in INCOMPLETE_RESPONSE_STATES
+            or record.get("retrieval_status") != "ok"
+            or not record.get("retrieved")
+            or (
+                record.get("status") == "error"
+                and record.get("error_phase") != "generation"
+            )
+        ):
+            raise ValueError(
+                f"{identity}: la baseline non e una risposta incompleta recuperabile."
+            )
+        if ground_truth_categories is not None:
+            category = ground_truth_categories.get(identity)
+            if category is None:
+                raise ValueError(f"{identity}: assente dalla Ground Truth.")
+            if category.casefold() == "non rispondibile":
+                raise ValueError(f"{identity}: domanda Non rispondibile, esclusa.")
+        if identity not in questions:
+            raise ValueError(f"{identity}: domanda assente dal dataset.")
+        selected_records.append(record)
+
+    order = {record["question_id"]: index for index, record in enumerate(baseline_run["records"])}
+    return sorted(selected_records, key=lambda record: order[record["question_id"]])
+
+
 def prompt_experiment(
     dataset,
     frozen,
     baseline_run,
     *,
     authorize_external=False,
+    only_ids=None,
+    ground_truth_categories=None,
+    already_validated_ids=(),
+    allow_literal_quote_retry=True,
     root: Path = ROOT,
     client=None,
     inter_question_sleep=None,
@@ -214,6 +367,15 @@ def prompt_experiment(
     sleeper = time.sleep if inter_question_sleep is None else inter_question_sleep
     if not callable(sleeper):
         raise ValueError("La funzione di attesa non e valida.")
+
+    questions = {question["id"]: question for question in dataset["questions"]}
+    selected_records = _select_recovery_records(
+        dataset,
+        baseline_run,
+        only_ids,
+        ground_truth_categories=ground_truth_categories,
+        already_validated_ids=already_validated_ids,
+    )
 
     own_client = client is None
     if own_client:
@@ -229,11 +391,10 @@ def prompt_experiment(
             ),
         )
 
-    questions = {question["id"]: question for question in dataset["questions"]}
     records = []
-    total_samples = len(baseline_run["records"])
+    total_samples = len(selected_records)
     try:
-        for index, original in enumerate(baseline_run["records"], 1):
+        for index, original in enumerate(selected_records, 1):
             record = copy.deepcopy(original)
             record.update(
                 retrieval_seconds=None,
@@ -280,7 +441,12 @@ def prompt_experiment(
                     system_instruction=COMPLETENESS_INSTRUCTION,
                 )
                 state, checked = rag_assessment(raw, sources)
-                if state == "validation_failed" and "quote_mismatch" in chat_response_rejection_reasons(raw, sources):
+                if (
+                    allow_literal_quote_retry
+                    and only_ids is None
+                    and state == "validation_failed"
+                    and "quote_mismatch" in chat_response_rejection_reasons(raw, sources)
+                ):
                     initial_raw = raw
                     try:
                         raw = generate_response(
@@ -427,16 +593,17 @@ def retry_errors(
         "inter_question_pause_seconds", evaluation_gemini_pause_seconds()
     )
     try:
-        for retry_index, record_index in enumerate(failed_indexes):
+        for retry_index, (record_index, baseline_index) in enumerate(failed_indexes):
             single_record_baseline = copy.deepcopy(baseline_run)
             single_record_baseline["records"] = [
-                copy.deepcopy(baseline_run["records"][record_index])
+                copy.deepcopy(baseline_run["records"][baseline_index])
             ]
             attempt = prompt_experiment(
                 dataset,
                 frozen,
                 single_record_baseline,
                 authorize_external=True,
+                allow_literal_quote_retry=False,
                 root=root,
                 client=client,
                 inter_question_sleep=lambda _seconds: None,
@@ -467,6 +634,26 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--authorize-external", action="store_true")
     parser.add_argument(
+        "--ground-truth-csv",
+        type=Path,
+        help="Ground Truth CSV usata per escludere le domande Non rispondibile.",
+    )
+    parser.add_argument(
+        "--exclude-validated-run",
+        type=Path,
+        action="append",
+        default=[],
+        metavar="RUN_JSON",
+        help="Run sperimentale precedente da consultare prima della selezione; ripetibile.",
+    )
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--only-ids",
+        type=_parse_only_ids,
+        metavar="ID[,ID...]",
+        help="Rigenera soltanto gli ID indicati, separati da virgole.",
+    )
+    selection.add_argument(
         "--retry-errors",
         action="store_true",
         help="Riprova solo gli errori di generazione in una run sperimentale esistente.",
@@ -475,9 +662,18 @@ def main(argv=None):
     try:
         if not args.authorize_external:
             raise ValueError("Usare --authorize-external per autorizzare Gemini.")
+        recovery_options = args.ground_truth_csv is not None or bool(
+            args.exclude_validated_run
+        )
+        if args.only_ids is None and recovery_options:
+            raise ValueError(
+                "--ground-truth-csv e --exclude-validated-run richiedono --only-ids."
+            )
         frozen = read_json(args.snapshot)
         dataset = read_json(args.dataset)
         baseline_run = read_json(args.baseline_run)
+        if not isinstance(frozen, dict) or not isinstance(baseline_run, dict):
+            raise ValueError("Snapshot o run baseline non validi.")
         if frozen["origin"] != "real" or baseline_run.get("origin") != "real":
             raise ValueError("L'esperimento Gemini richiede snapshot e run reali.")
         _validate_baseline(dataset, frozen, baseline_run)
@@ -502,12 +698,38 @@ def main(argv=None):
             print(f"Risultati aggiornati: {run_path}")
             return 0
 
+        ground_truth_categories = None
+        already_validated_ids = set()
+        if args.only_ids is not None:
+            if args.ground_truth_csv is None:
+                raise ValueError("--only-ids richiede --ground-truth-csv.")
+            ground_truth_categories = _read_ground_truth_categories(
+                args.ground_truth_csv
+            )
+            for previous_path in args.exclude_validated_run:
+                previous_run = read_json(previous_path)
+                already_validated_ids.update(
+                    _validated_answer_ids(
+                        dataset, frozen, baseline_run, previous_run
+                    )
+                )
+            _select_recovery_records(
+                dataset,
+                baseline_run,
+                args.only_ids,
+                ground_truth_categories=ground_truth_categories,
+                already_validated_ids=already_validated_ids,
+            )
+
         out = new_directory(args.out)
         run = prompt_experiment(
             dataset,
             frozen,
             baseline_run,
             authorize_external=True,
+            only_ids=args.only_ids,
+            ground_truth_categories=ground_truth_categories,
+            already_validated_ids=already_validated_ids,
             root=args.root,
         )
         write_json(out / "run.json", run)
